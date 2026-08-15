@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.20.0] - 2026-08-15
+
+**Curadoria: a descrição manual do produto (a anotação livre do pesquisador — não a
+descrição oficial da fonte) agora é editável a qualquer momento, não só na criação.**
+
+### Added
+- **Campo "Descrição" editável inline** no Cadastro de produtos (`ViewCadastroProdutos.jsx`):
+  cada linha da tabela ganhou um input compacto (componente `CcDescricaoField`, no mesmo
+  padrão module-level de `CcGroupSelect`) para a anotação `descricao_produto`, que estava
+  sujeita a edição SOMENTE no formulário de "+ Adicionar produto" — depois de cadastrado o
+  produto, não havia como corrigir ou atualizar a anotação. Commita no blur/Enter, só quando
+  o valor (trimado) realmente muda (evita escrita no-op a cada clique); Esc reverte sem
+  salvar. Nenhuma mudança de backend/BigQuery/dbt foi necessária: `descricao_produto` já era
+  uma coluna mutável comum em `research_inputs.produto_catalog_log` (mesmo mecanismo
+  append-only + "latest-wins" já usado por `agrupamento`/`ciclo_de_vida`), e o endpoint
+  `POST /api/catalog/entry` já a aceitava sem lógica de write-once — só faltava o controle na
+  UI. Verificado ponta a ponta contra o BigQuery real (dev local): editar, recarregar a
+  página e confirmar que o valor persistiu.
+
+### Changed
+- **Colunas da tabela de produtos alinhadas entre agrupamentos, sem scroll horizontal**
+  (`dashboard.css`, ≥769px): cada agrupamento renderiza sua PRÓPRIA `<table>` (uma por card);
+  com o layout automático do navegador, cada tabela calculava a largura das colunas a partir
+  do seu próprio conteúdo, então a mesma coluna caía numa posição x diferente em cada card —
+  forçando o olho a "zigzaguear" entre caixas — e textos longos empurravam a tabela além da
+  largura do card, exigindo scroll lateral em cada uma. Fix: `table-layout: fixed` +
+  larguras percentuais fixas por `nth-child`, IDÊNTICAS em toda `.cc-table` (compartilhadas
+  via CSS, sem tocar o componente React), alinhando as colunas entre todos os cards; texto
+  agora QUEBRA (`white-space: normal` + `overflow-wrap: anywhere`) em vez de forçar
+  overflow — nada é truncado. As duas colunas `<select>` (Agrupamento/Ciclo de vida) — que
+  nunca quebram seu próprio valor exibido, apenas cortam nativamente quando estreitas —
+  cederam proporção às colunas de texto/número que realmente precisam evitar quebras feias
+  no meio de um número. Escopado a `min-width:769px` para não colidir com o layout de cards
+  empilhados do mobile (≤768px, inalterado). Verificado sem overflow horizontal em 1280px,
+  1400px e 820px (medição via `scrollWidth`/`clientWidth`), com o layout mobile intacto.
+- **"Convenções métricas" recolhida por padrão, no mesmo padrão do bloco de filtros**
+  (`MetricConventions.jsx`): a tira sempre vinha 100% aberta (moeda, correção monetária,
+  grupos de unidade por família + checkbox de auto-escala), ocupando bastante altura e
+  empurrando o page hero de cada perspectiva para bem mais abaixo — diferente do bloco de
+  filtros, que já ficava atrás de um botão "Editar filtros". Agora mostra só um resumo
+  compacto (chips somente-leitura reaproveitando `.fm-chip-filter`/`.fm-chip-k`/`.fm-edit-btn`
+  do próprio bloco de filtros, para leitura visual consistente) + um botão "Editar métricas";
+  os grupos completos só entram no DOM quando expandido, com "Recolher" para fechar de volta.
+  **Achado durante a implementação:** o estado de expandido/recolhido não podia ficar local
+  ao componente — `DataGate` (main.jsx) desmonta TODOS os seus filhos (incluindo este) e
+  mostra um placeholder de carregamento a cada troca de convenção (toda mudança de
+  moeda/correção/unidade recarrega o snapshot), o que resetaria um `useState` interno e
+  fecharia o painel sozinho a cada clique — inviabilizando editar várias convenções em
+  sequência. Corrigido subindo o estado (`metricsExpanded`) para `main.jsx`, acima do
+  `DataGate`, no mesmo padrão já usado por `filterOpen`. Verificado ao vivo: 3 mudanças de
+  convenção em sequência (moeda → correção → unidade) mantêm o painel aberto; "Recolher"
+  fecha e o resumo reflete corretamente o estado final.
+
+---
+
 ## [1.19.0] - 2026-08-15
 
 **Correção do erro 500 em "Cadastro de produtos" (órfãos) + classificação transiente vs. real

@@ -21,7 +21,7 @@ const ENTRIES = {
     {
       codigo_produto: '4403', banco: 'comex', agrupamento: 'Madeira',
       ciclo_de_vida: 'Fazer Ingestão e deixar disponível', agrupamento_id: 'madeira',
-      descricao_fonte: 'Madeira em toras (NCM)',
+      descricao_fonte: 'Madeira em toras (NCM)', descricao_produto: 'Nota antiga',
     },
     {
       codigo_produto: '4407', banco: 'comtrade', agrupamento: 'Madeira',
@@ -238,6 +238,33 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(postUrl).toContain('/api/catalog/entry');
     expect(postBody.agrupamento_id).toBe('castanha');
     expect(postBody.agrupamento).toBe('Castanha');
+  });
+
+  it('shows the existing manual descrição pre-filled, and edits it after creation via blur-commit', async () => {
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    // 4403 already has a saved descricao_produto — the field round-trips it, not just at creation.
+    const input = container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]');
+    expect(input.value).toBe('Nota antiga');
+    // Typing alone must NOT fire a save (no round-trip on every keystroke) — only blur commits.
+    fireEvent.change(input, { target: { value: 'Nota atualizada' } });
+    expect(postBody).toBeNull();
+    fireEvent.blur(input);
+    await waitFor(() => expect(postBody).toBeTruthy());
+    expect(postUrl).toContain('/api/catalog/entry');
+    expect(postBody.codigo_produto).toBe('4403');
+    expect(postBody.descricao_produto).toBe('Nota atualizada');
+    // Every other field round-trips unchanged (this is an edit of ONE attribute, not a re-add).
+    expect(postBody.agrupamento_id).toBe('madeira');
+  });
+
+  it('does not re-save the manual descrição on blur when the (trimmed) value is unchanged', async () => {
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    const input = container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]');
+    fireEvent.change(input, { target: { value: '  Nota antiga  ' } }); // same content, stray whitespace
+    fireEvent.blur(input);
+    expect(postBody).toBeNull();
   });
 
   it('removes a commodity via the tombstone endpoint (after confirming in the accessible modal)', async () => {

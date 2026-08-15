@@ -374,6 +374,11 @@ function Dashboard() {
   const [crossState, setCrossState] = useState(initial.crossState || window.DEFAULT_CROSS_STATE);
   const [mode, setMode] = useState(initial.mode || 'single');
   const [filterOpen, setFilterOpen] = useState(false);
+  // Lifted above DataGate for the same reason as filterOpen: every conventions onChange
+  // re-triggers a snapshot load, and DataGate swaps its children (MetricConventions
+  // included) for a loading placeholder while that's in flight — local state inside the
+  // component would be wiped on every single toggle, closing the panel after each click.
+  const [metricsExpanded, setMetricsExpanded] = useState(false);
   const [, forceTick] = useState(0);
 
   // Conventions → data layer bridge: currency/correction pick the deflated value
@@ -553,6 +558,8 @@ function Dashboard() {
             families={window.familiesInBasket
               ? window.familiesInBasket(summary.basket, database)
               : undefined}
+            expanded={metricsExpanded}
+            onToggleExpanded={() => setMetricsExpanded((e) => !e)}
           />
         )}
         <ViewErrorBoundary resetKey={`${view}|${database}|${infoPage}`}>
