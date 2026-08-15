@@ -30,6 +30,7 @@ from embrapa_dashboard.comex import client
 from embrapa_dashboard.config import Settings
 from embrapa_dashboard.core import (
     ChunkOutcome,
+    SourceTransientError,
     download_raw,
     land_raw_file,
     mark_raw_bronze_loaded,
@@ -475,4 +476,6 @@ def _run_one_chunk(
             force=force,
         )
     except Exception as exc:
-        return ChunkOutcome(chunk_id, "failed", detail=str(exc))
+        return ChunkOutcome(
+            chunk_id, "failed", detail=str(exc), transient=isinstance(exc, SourceTransientError)
+        )

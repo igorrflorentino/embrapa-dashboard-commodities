@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.19.0] - 2026-08-15
+
+**Correção do erro 500 em "Cadastro de produtos" (órfãos) + classificação transiente vs. real
+nos alertas de ingestão.** Disparado pela investigação de dois alertas simultâneos (Cloud
+Monitoring `embrapa-ingest-all` + o aviso amarelo na tela de curadoria), que se mostraram
+independentes — mas ambos valiam correção.
+
+### Fixed
+- **`GET /api/catalog/orphans` 500 quando 2+ bancos têm produtos removidos simultaneamente**
+  (`gateway.fetch_orphan_produtos`): o `EXISTS` correlacionado contra um `UNION ALL` de 2+
+  tabelas Gold não é algo que o BigQuery consegue decorrelacionar
+  ("Correlated subqueries that reference other tables are not supported..."). Reescrito como
+  `JOIN` simples, semanticamente idêntico. Bug latente desde a v1.10.8 (#206) — só se manifestou
+  agora que a primeira remoção cross-banco (comex + comtrade) aconteceu em produção. Confirmado
+  reproduzindo a query real no BigQuery antes e depois da correção.
+
+### Changed
+- **Classificação transiente vs. inesperado no CLI de ingestão** (`embrapa ingest all` /
+  `comtrade` / `comex` / `reconcile`): cada falha por chunk/fonte agora carrega se foi um
+  `SourceTransientError` marcado (upstream já esgotou o orçamento de retry do `tenacity` —
+  esperado, autocurável na próxima janela delta) ou algo inesperado (bug de código, erro de
+  permissão/schema). Se **todas** as falhas de uma execução forem transientes, o comando sai com
+  código 0 (mesma lógica já usada para a exaustão de cota diária do COMTRADE, agora generalizada
+  a qualquer rate-limit/timeout esgotado); se **qualquer** falha não for transiente, sai com
+  código 1 como antes. O log de cada execução marca cada falha com `(transient)` ou
+  `(unexpected — investigate)`. Objetivo: o alerta `embrapa-ingest-job-failed` do Cloud
+  Monitoring deixa de disparar para condições que se autocorrigem na próxima execução agendada,
+  reservando a página para bugs reais. O texto do alerta (`deploy/ingestion/alert_policy.json`)
+  também deixou de afirmar erroneamente que o job é só "nightly" (é compartilhado pelos gatilhos
+  mensais de comtrade/pam/ppm/reconcile) e agora aponta para essa nova marcação nos logs.
+
+---
+
 ## [1.18.0] - 2026-07-14
 
 **Anomalia agronômica do PAM promovida a flag de qualidade in-product + correção de docs.**
