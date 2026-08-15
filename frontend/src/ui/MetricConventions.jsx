@@ -7,15 +7,22 @@
 // are used for mass / volume readouts.
 //
 // Controlled component:
-//   <MetricConventions value={...} onChange={fn(next)} />
+//   <MetricConventions value={...} onChange={fn(next)} expanded={bool} onToggleExpanded={fn} />
 // where value is:
 //   { currency: 'BRL'|'USD'|'EUR',
 //     correction: 'Nominal'|'IPCA'|'IGP-M'|'IGP-DI',
 //     units: { mass: 't', volume: 'm³', … }  // display unit per family }
+//
+// `expanded`/`onToggleExpanded` are lifted to the root (main.jsx), NOT local useState —
+// unlike a typical collapsible, every onChange here re-triggers a snapshot load
+// (contract map §0.2), and DataGate swaps ALL of its children (this component included)
+// for a loading placeholder while that fetch is in flight. Local state would be wiped by
+// that unmount on every single toggle, slamming the panel shut after each click. Lifting
+// it above DataGate (same reasoning as filterOpen) survives the remount.
 
 import { magnitudeParts } from '../charts/magnitude.js';
 
-function MetricConventions({ value, onChange, families, banco }) {
+function MetricConventions({ value, onChange, families, banco, expanded, onToggleExpanded }) {
   const set = (patch) => onChange({ ...value, ...patch });
 
   // Currency + monetary-correction only apply to a banco that carries a monetary
@@ -69,64 +76,105 @@ function MetricConventions({ value, onChange, families, banco }) {
   // Reuses window.clampConvention so the strip and the deep-link decoder share one rule.
   const setCurrency = (id) => onChange(window.clampConvention({ ...value, currency: id }));
 
+  // Collapsed-state summary chips — read-only, mirror FilterTriggerBar's
+  // .fm-chip-filter/.fm-chip-k pattern so the compact row reads consistently with the
+  // filter chips above it. Every current convention gets a chip (unlike filter chips,
+  // which are capability-gated per banco) since there's no "default/inactive" state to
+  // omit here — moeda/correção/unit/escala always have a value.
+  const chips = [
+    monetary && { k: 'Moeda', v: (window.CURRENCY_FX[value.currency] || {}).symbol || value.currency },
+    monetary && { k: 'Correção', v: value.correction === 'Nominal' ? 'Sem correção' : value.correction },
+    ...physFams.map((fid) => ({ k: window.UNIT_FAMILIES[fid].label, v: unitFor(fid) })),
+    { k: 'Escala', v: value.autoScale ? 'Automática' : 'Fixa' },
+  ].filter(Boolean);
+
   return (
     <div className="mc-bar">
-      <div className="mc-head">
-        <span className="mc-overline">Convenções métricas</span>
-        <span className="mc-caption">
-          Como os valores e quantidades são exibidos — não altera quais linhas entram na visualização.
-        </span>
-        <label className="mc-check" title="Reescala automaticamente entre mil/mi/bi para evitar números longos">
-          <input type="checkbox"
-                 checked={!!value.autoScale}
-                 onChange={(e) => set({ autoScale: e.target.checked })} />
-          <span>Auto-escala (mil/mi/bi)</span>
-        </label>
-      </div>
+      {!expanded ? (
+        <div className="mc-head mc-head-compact">
+          <span className="mc-overline">Convenções métricas</span>
+          {chips.map((c, i) => (
+            <span key={i} className="fm-chip-filter">
+              <span className="fm-chip-k">{c.k}</span>{c.v}
+            </span>
+          ))}
+          <span className="fm-spacer"></span>
+          <button type="button" className="fm-edit-btn" aria-expanded="false" onClick={onToggleExpanded}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 20h4l10-10-4-4L4 16zM14 6l4 4"/>
+            </svg>
+            Editar métricas
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="mc-head">
+            <span className="mc-overline">Convenções métricas</span>
+            <span className="mc-caption">
+              Como os valores e quantidades são exibidos — não altera quais linhas entram na visualização.
+            </span>
+            <label className="mc-check" title="Reescala automaticamente entre mil/mi/bi para evitar números longos">
+              <input type="checkbox"
+                     checked={!!value.autoScale}
+                     onChange={(e) => set({ autoScale: e.target.checked })} />
+              <span>Auto-escala (mil/mi/bi)</span>
+            </label>
+            <span className="fm-spacer"></span>
+            <button type="button" className="fm-edit-btn" aria-expanded="true" onClick={onToggleExpanded}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="18 15 12 9 6 15"/>
+              </svg>
+              Recolher
+            </button>
+          </div>
 
-      <div className="mc-groups">
-        {monetary && (
-          <Group
-            label="Moeda"
-            mono
-            options={[
-              // BRL/USD/EUR are real Gold columns (BCB PTAX series).
-              { id: 'BRL', sub: 'R$'  },
-              { id: 'USD', sub: 'US$' },
-              { id: 'EUR', sub: '€'   },
-            ]}
-            active={value.currency}
-            onPick={setCurrency}
-          />
-        )}
+          <div className="mc-groups">
+            {monetary && (
+              <Group
+                label="Moeda"
+                mono
+                options={[
+                  // BRL/USD/EUR are real Gold columns (BCB PTAX series).
+                  { id: 'BRL', sub: 'R$'  },
+                  { id: 'USD', sub: 'US$' },
+                  { id: 'EUR', sub: '€'   },
+                ]}
+                active={value.currency}
+                onPick={setCurrency}
+              />
+            )}
 
-        {monetary && (
-          <Group
-            label="Correção monetária"
-            options={[
-              { id: 'Nominal', sub: 'sem corr.' },
-              { id: 'IPCA',    sub: 'IBGE' },
-              { id: 'IGP-M',   sub: 'FGV', disabled: isUnservedCombo(value.currency, 'IGP-M'), disabledReason: UNSERVED_REASON },
-              { id: 'IGP-DI',  sub: 'FGV', disabled: isUnservedCombo(value.currency, 'IGP-DI'), disabledReason: UNSERVED_REASON },
-            ]}
-            active={value.correction}
-            onPick={(id) => set({ correction: id })}
-          />
-        )}
+            {monetary && (
+              <Group
+                label="Correção monetária"
+                options={[
+                  { id: 'Nominal', sub: 'sem corr.' },
+                  { id: 'IPCA',    sub: 'IBGE' },
+                  { id: 'IGP-M',   sub: 'FGV', disabled: isUnservedCombo(value.currency, 'IGP-M'), disabledReason: UNSERVED_REASON },
+                  { id: 'IGP-DI',  sub: 'FGV', disabled: isUnservedCombo(value.currency, 'IGP-DI'), disabledReason: UNSERVED_REASON },
+                ]}
+                active={value.correction}
+                onPick={(id) => set({ correction: id })}
+              />
+            )}
 
-        {physFams.map(fid => {
-          const fam = window.UNIT_FAMILIES[fid];
-          return (
-            <Group key={fid}
-              label={fam.label}
-              mono
-              options={(fam.units || []).map(u => ({ id: u.id, sub: u.long }))}
-              active={unitFor(fid)}
-              onPick={(id) => setUnitFor(fid, id)}
-            />
-          );
-        })}
-      </div>
+            {physFams.map(fid => {
+              const fam = window.UNIT_FAMILIES[fid];
+              return (
+                <Group key={fid}
+                  label={fam.label}
+                  mono
+                  options={(fam.units || []).map(u => ({ id: u.id, sub: u.long }))}
+                  active={unitFor(fid)}
+                  onPick={(id) => setUnitFor(fid, id)}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

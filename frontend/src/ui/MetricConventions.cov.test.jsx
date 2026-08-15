@@ -6,6 +6,15 @@
 // disable, the auto-scale checkbox, physical-unit groups, the clampConvention snap on
 // currency switch) and exercise every exported helper (formatValue, applyConv,
 // formatMassQty/VolumeQty/CountQty, scaleSeries, scaleLabel, valueAxisLabel, …).
+//
+// Collapsed by default (mirrors FilterTriggerBar): the component renders a compact chip
+// summary + "Editar métricas" first render, and the editable .seg-opt/.mc-check groups
+// only exist in the DOM once expanded. `expanded`/`onToggleExpanded` are CONTROLLED props
+// (lifted to main.jsx in the real app — see MetricConventions.jsx's top comment for why:
+// DataGate unmounts this component on every conventions change, which would wipe local
+// state). Most tests below render with expanded={true} directly to reach the editor
+// controls; `Harness` (a tiny stateful wrapper) drives the real toggle interaction for the
+// dedicated collapse/expand test.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
@@ -22,10 +31,48 @@ afterEach(() => cleanup());
 
 const BASE = { currency: 'BRL', correction: 'IPCA', units: { mass: 't', volume: 'm³' }, autoScale: false };
 
-describe('MetricConventions — controlled component', () => {
+// Stateful wrapper: drives the real expanded/onToggleExpanded contract so a test can
+// click "Editar métricas" / "Recolher" and observe the panel actually toggle, the way
+// main.jsx's lifted metricsExpanded state does in the real app.
+function Harness(props) {
+  const [expanded, setExpanded] = React.useState(false);
+  return <MetricConventions {...props} expanded={expanded} onToggleExpanded={() => setExpanded((e) => !e)} />;
+}
+
+describe('MetricConventions — collapsed-by-default summary', () => {
+  it('starts collapsed: chip summary + Editar métricas button, no .mc-groups in the DOM', () => {
+    const { container } = render(
+      <MetricConventions value={BASE} onChange={() => {}} families={['mass', 'volume']} banco="ibge_pevs"
+                          expanded={false} onToggleExpanded={() => {}} />
+    );
+    expect(container.querySelector('.mc-groups')).toBeNull();
+    expect(container.textContent).toContain('Editar métricas');
+    // Chips summarize the CURRENT convention read-only (no seg-opt buttons in this state).
+    const chips = [...container.querySelectorAll('.fm-chip-filter')].map((e) => e.textContent);
+    expect(chips.some((c) => c.includes('R$'))).toBe(true); // Moeda chip
+    expect(chips.some((c) => c.includes('IPCA'))).toBe(true); // Correção chip
+    expect(chips.some((c) => c.includes('t'))).toBe(true); // Massa chip
+    expect(container.querySelector('.seg-opt')).toBeNull();
+  });
+
+  it('expands on "Editar métricas" and collapses back on "Recolher" (via the lifted toggle contract)', () => {
+    const { container } = render(
+      <Harness value={BASE} onChange={() => {}} families={['mass']} banco="ibge_pevs" />
+    );
+    fireEvent.click([...container.querySelectorAll('.fm-edit-btn')].find((b) => b.textContent.includes('Editar métricas')));
+    expect(container.querySelector('.mc-groups')).toBeTruthy();
+    expect(container.textContent).toContain('Recolher');
+    fireEvent.click([...container.querySelectorAll('.fm-edit-btn')].find((b) => b.textContent.includes('Recolher')));
+    expect(container.querySelector('.mc-groups')).toBeNull();
+    expect(container.textContent).toContain('Editar métricas');
+  });
+});
+
+describe('MetricConventions — controlled component (expanded)', () => {
   it('renders moeda + correção + physical-unit groups for a monetary banco', () => {
     const { container } = render(
-      <MetricConventions value={BASE} onChange={() => {}} families={['mass', 'volume']} banco="ibge_pevs" />
+      <MetricConventions value={BASE} onChange={() => {}} families={['mass', 'volume']} banco="ibge_pevs"
+                          expanded={true} onToggleExpanded={() => {}} />
     );
     const labels = [...container.querySelectorAll('.mc-label')].map((e) => e.textContent);
     expect(labels).toContain('Moeda');
@@ -40,7 +87,8 @@ describe('MetricConventions — controlled component', () => {
   it('disables the USD × IGP-M / IGP-DI combos (unserved) and keeps them under USD', () => {
     const usd = { ...BASE, currency: 'USD' };
     const { container } = render(
-      <MetricConventions value={usd} onChange={() => {}} families={['mass']} banco="mdic_comex" />
+      <MetricConventions value={usd} onChange={() => {}} families={['mass']} banco="mdic_comex"
+                          expanded={true} onToggleExpanded={() => {}} />
     );
     const disabled = [...container.querySelectorAll('.seg-opt.disabled')].map((e) => e.textContent);
     // IGP-M and IGP-DI buttons are disabled under USD.
@@ -52,7 +100,8 @@ describe('MetricConventions — controlled component', () => {
     const onChange = vi.fn();
     const igpm = { ...BASE, currency: 'BRL', correction: 'IGP-M' };
     const { container } = render(
-      <MetricConventions value={igpm} onChange={onChange} families={['mass']} banco="mdic_comex" />
+      <MetricConventions value={igpm} onChange={onChange} families={['mass']} banco="mdic_comex"
+                          expanded={true} onToggleExpanded={() => {}} />
     );
     // Click the USD currency button.
     const usdBtn = [...container.querySelectorAll('.seg-opt')].find((b) => b.textContent.startsWith('USD'));
@@ -66,7 +115,8 @@ describe('MetricConventions — controlled component', () => {
   it('toggles the auto-scale checkbox through onChange', () => {
     const onChange = vi.fn();
     const { container } = render(
-      <MetricConventions value={BASE} onChange={onChange} families={['mass']} banco="ibge_pevs" />
+      <MetricConventions value={BASE} onChange={onChange} families={['mass']} banco="ibge_pevs"
+                          expanded={true} onToggleExpanded={() => {}} />
     );
     const check = container.querySelector('.mc-check input[type="checkbox"]');
     fireEvent.click(check);
@@ -76,7 +126,8 @@ describe('MetricConventions — controlled component', () => {
   it('picks a correction and a physical unit via onChange', () => {
     const onChange = vi.fn();
     const { container } = render(
-      <MetricConventions value={BASE} onChange={onChange} families={['mass']} banco="ibge_pevs" />
+      <MetricConventions value={BASE} onChange={onChange} families={['mass']} banco="ibge_pevs"
+                          expanded={true} onToggleExpanded={() => {}} />
     );
     // Click the Nominal correction.
     const nominal = [...container.querySelectorAll('.seg-opt')].find((b) => b.textContent.startsWith('Nominal'));
@@ -93,7 +144,8 @@ describe('MetricConventions — controlled component', () => {
   it('hides moeda/correção for a non-monetary banco, showing only unit groups', () => {
     window.isMonetaryBanco = () => false; // force the physical-only branch
     const { container } = render(
-      <MetricConventions value={BASE} onChange={() => {}} families={['mass']} banco="future_physical" />
+      <MetricConventions value={BASE} onChange={() => {}} families={['mass']} banco="future_physical"
+                          expanded={true} onToggleExpanded={() => {}} />
     );
     const labels = [...container.querySelectorAll('.mc-label')].map((e) => e.textContent);
     expect(labels).not.toContain('Moeda');
@@ -104,7 +156,8 @@ describe('MetricConventions — controlled component', () => {
 
   it('defaults the physical families to [mass, volume] when none are passed', () => {
     const { container } = render(
-      <MetricConventions value={BASE} onChange={() => {}} banco="ibge_pevs" />
+      <MetricConventions value={BASE} onChange={() => {}} banco="ibge_pevs"
+                          expanded={true} onToggleExpanded={() => {}} />
     );
     const labels = [...container.querySelectorAll('.mc-label')].map((e) => e.textContent);
     expect(labels).toContain('Massa');

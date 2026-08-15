@@ -75,6 +75,38 @@ function CcGroupSelect({ value, onChange, placeholder, groups, busy, ariaLabel }
   );
 }
 
+// Inline-editable "Descrição" (the researcher's own free-text annotation — NOT the read-only
+// descrição da fonte) for one catalog entry, editable both at creation AND afterward. MODULE-level
+// (stable identity, like CcGroupSelect) so React doesn't remount it — and so doesn't blow away
+// in-progress typing — across the parent's frequent re-renders (any save anywhere reloads `data`).
+// Keeps its own local draft so typing doesn't round-trip a save on every keystroke; commits on
+// blur/Enter only when the trimmed value actually differs from the saved one (skips a no-op
+// write). Esc reverts the draft without saving.
+function CcDescricaoField({ value, onSave, busy, ariaLabel }) {
+  const [draft, setDraft] = useCcState(value || '');
+  // Re-seed the local draft whenever the SAVED value changes under us (e.g. after this field's
+  // own commit reloads `data`, or a group rename re-stamps every member). A same-content string
+  // is reference-equal for React's dependency check, so this never clobbers an unrelated row's
+  // in-progress typing.
+  useCcEffect(() => { setDraft(value || ''); }, [value]);
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed !== (value || '')) onSave(trimmed);
+    else if (trimmed !== draft) setDraft(trimmed); // normalize stray whitespace locally, no write
+  };
+  return (
+    <input type="text" className="cc-descricao-input" value={draft} disabled={busy}
+           aria-label={ariaLabel} title="Sua anotação (opcional) — não é a descrição da fonte"
+           placeholder="Sua anotação (opcional)"
+           onChange={(ev) => setDraft(ev.target.value)}
+           onBlur={commit}
+           onKeyDown={(ev) => {
+             if (ev.key === 'Enter') ev.currentTarget.blur(); // blur triggers commit
+             else if (ev.key === 'Escape') { setDraft(value || ''); ev.currentTarget.blur(); }
+           }} />
+  );
+}
+
 // Accessible in-app confirmation — replaces the browser's inaccessible window.confirm/prompt
 // with the same modal chrome as the citation/feedback dialogs (cite-backdrop/cite-modal/…),
 // so it's announced (role=dialog + aria-modal), Esc-dismissable and design-system-consistent.
@@ -466,11 +498,12 @@ function ViewCadastroProdutos() {
                 <td className="tnum" data-label="Código">{e.codigo_produto}</td>
                 <td data-label="Descrição">
                   {e.descricao_fonte || <span className="dt-null">—</span>}
-                  {/* Round-trip the researcher's own annotation + the PPM SIDRA-table tag, so a
-                      saved descrição / tabela is VISIBLE on reload (not silently dropped). */}
-                  {e.descricao_produto && (
-                    <small className="pc-cap" style={{ display: 'block' }} title="Sua descrição">✎ {e.descricao_produto}</small>
-                  )}
+                  {/* The researcher's own free-text annotation — editable here, not just at
+                      creation (commits on blur/Enter; see CcDescricaoField). Distinct from the
+                      read-only descrição da fonte above. */}
+                  <CcDescricaoField value={e.descricao_produto} busy={locked}
+                                    ariaLabel={`Sua descrição de ${e.codigo_produto}`}
+                                    onSave={(text) => saveEntry({ ...e, descricao_produto: text })} />
                   {e.banco === 'ppm' && e.sidra_tabela && (
                     <small className="pc-cap" style={{ display: 'block' }}>{_CC_PPM_LABEL[e.sidra_tabela] || e.sidra_tabela}</small>
                   )}
