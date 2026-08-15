@@ -27,6 +27,8 @@ from embrapa_dashboard.config import Settings, get_settings
 from embrapa_dashboard.core import (
     ChunkOutcome,
     ChunkTracker,
+    IngestPartialFailure,
+    SourceTransientError,
     chunked_run,
     pipeline_run,
 )
@@ -118,6 +120,25 @@ INGESTS: list[IngestSpec] = [
 # core.chunked_run (the ChunkTracker yielded below).
 
 
+def _is_transient_failure(exc: BaseException) -> bool:
+    """True when a source-level failure is a known, self-healing upstream
+    condition rather than a code bug or data-integrity problem.
+
+    Covers both shapes a source-level ``except Exception`` sees: a direct
+    ``SourceTransientError`` (single-chunk sources — IBGE PEVS, BCB inflation/FX
+    — propagate their real exception unwrapped), and an ``IngestPartialFailure``
+    (chunked sources — COMEX/COMTRADE — aggregate every chunk's outcome; it is
+    transient only when every one of its chunks was). Used to decide the
+    nightly job's exit code: 0 for "expected, resumes on its own", 1 for
+    "needs a human". See ``ChunkOutcome.transient``.
+    """
+    if isinstance(exc, SourceTransientError):
+        return True
+    if isinstance(exc, IngestPartialFailure):
+        return exc.all_transient
+    return False
+
+
 def _echo_chunk_result(tracker: ChunkTracker, outcome: ChunkOutcome) -> None:
     """Print one finished chunk's result line, mirroring its status."""
     duration = tracker.last_duration_s
@@ -127,7 +148,8 @@ def _echo_chunk_result(tracker: ChunkTracker, outcome: ChunkOutcome) -> None:
     elif outcome.status == "skipped":
         console.print(f"  [dim]·[/dim] {cid} — {outcome.detail} [dim](skipped, {duration}s)[/dim]")
     else:
-        console.print(f"  [red]✗ {cid} failed:[/red] {outcome.detail[:200]}")
+        tag = "[dim](transient)[/dim]" if outcome.transient else "[bold](unexpected)[/bold]"
+        console.print(f"  [red]✗ {cid} failed:[/red] {outcome.detail[:200]} {tag}")
 
 
 def _make_chunk_handlers(
@@ -154,21 +176,43 @@ def _make_chunk_handlers(
 def _summarize_and_exit(
     tracker: ChunkTracker, *, label: str, success_msg: str, retry_hint: str = ""
 ) -> None:
-    """Print the run's closing summary and exit non-zero if any chunk failed.
+    """Print the run's closing summary and pick the exit code from what failed.
 
     Shared tail of every chunked command so the failure listing and exit code
     are identical across sources; ``retry_hint`` carries the source-specific
     "how to re-run" line (empty to omit).
+
+    Exit 0 when every failed chunk was ``transient`` (a marked
+    ``SourceTransientError`` that already exhausted its retry budget — expected,
+    self-healing on the next scheduled/resumed run): the Cloud Monitoring
+    job-failure alert should not page for that. Exit 1 — same as before — when
+    at least one failure was NOT transient, since that's a real bug or
+    data-integrity problem a human needs to look at.
     """
     if tracker.chunks_failed:
+        all_transient = tracker.all_failures_transient
+        severity = "yellow" if all_transient else "red"
+        qualifier = "(all transient — expected)" if all_transient else "(NOT all transient)"
         console.print(
-            f"\n[yellow bold]⚠ {len(tracker.chunks_failed)} {label} chunk(s) failed; "
-            f"{len(tracker.chunks_ok)} succeeded[/yellow bold]"
+            f"\n[{severity} bold]⚠ {len(tracker.chunks_failed)} {label} chunk(s) failed "
+            f"{qualifier}; {len(tracker.chunks_ok)} succeeded[/{severity} bold]"
         )
         for chunk_id, err in tracker.chunks_failed:
-            console.print(f"  [red]✗[/red] {chunk_id} — {err}")
+            tag = (
+                "[dim](transient)[/dim]"
+                if chunk_id in tracker.chunks_failed_transient
+                else "[bold](unexpected — investigate)[/bold]"
+            )
+            console.print(f"  [red]✗[/red] {chunk_id} — {err} {tag}")
         if retry_hint:
             console.print(retry_hint)
+        if all_transient:
+            console.print(
+                "[dim]Every failure was a known transient upstream condition — "
+                "no code bug detected, so exiting 0 (un-archived chunks resume on "
+                "the next run).[/dim]"
+            )
+            raise typer.Exit(code=0)
         raise typer.Exit(code=1)
     console.print(success_msg)
 
@@ -585,11 +629,22 @@ def ingest_comtrade(
         # Daily quota exhaustion is EXPECTED and self-healing: the next scheduled run
         # resumes from the un-archived chunks (no data lost), so it is NOT a job
         # failure. Exit 0 so the Cloud Monitoring job-failure alert stops paging on
-        # every backfill day — UNLESS a genuine (non-quota) chunk also failed, which
-        # must still alert.
+        # every backfill day — UNLESS a genuine (non-transient) chunk also failed,
+        # which must still alert.
         if tracker.chunks_failed:
             for chunk_id, err in tracker.chunks_failed:
-                console.print(f"  [red]✗[/red] {chunk_id} — {err}")
+                tag = (
+                    "[dim](transient)[/dim]"
+                    if chunk_id in tracker.chunks_failed_transient
+                    else "[bold](unexpected — investigate)[/bold]"
+                )
+                console.print(f"  [red]✗[/red] {chunk_id} — {err} {tag}")
+            if tracker.all_failures_transient:
+                console.print(
+                    "[dim]Every failed chunk was itself transient (alongside the quota "
+                    "exhaustion) — no code bug detected, exiting 0.[/dim]"
+                )
+                raise typer.Exit(code=0)
             raise typer.Exit(code=1)
         console.print(
             f"[dim]Quota-limited run: {len(tracker.chunks_ok)} chunk(s) archived; "
@@ -618,11 +673,18 @@ def ingest_all(
     inside each pipeline: a source that raises (a hard error, or an aggregated
     ``IngestPartialFailure`` from its own chunk loop) is recorded and the next
     source still runs. The blind nightly cron thus never aborts the whole batch
-    on one source's transient trouble. A non-zero exit at the end reports that
-    at least one source failed.
+    on one source's transient trouble.
+
+    Exit code reflects WHAT failed, not just THAT something failed: if every
+    failure was a marked ``SourceTransientError`` (an upstream API hiccup that
+    already exhausted its retry budget — expected, and self-healing on the next
+    scheduled delta run), exit 0 so the Cloud Monitoring job-failure alert
+    doesn't page for a condition that needs no human action. Exit 1 — a real
+    alert — only when at least one failure was NOT transient (a code bug,
+    permission/schema error, or other unexpected condition).
     """
     settings = get_settings()
-    failures: list[tuple[str, str]] = []
+    failures: list[tuple[str, str, bool]] = []
     for spec in INGESTS:
         if not spec.in_all:
             continue
@@ -637,13 +699,28 @@ def ingest_all(
                 console.print(f"[dim]event log:[/dim] {log_path}")
                 spec.module.run(settings, **kwargs)
         except Exception as exc:
-            failures.append((spec.label, str(exc)[:200]))
-            console.print(f"[red]✗ {spec.label} failed:[/red] {str(exc)[:200]}")
+            transient = _is_transient_failure(exc)
+            failures.append((spec.label, str(exc)[:200], transient))
+            tag = "transient — expected" if transient else "unexpected — investigate"
+            console.print(f"[red]✗ {spec.label} failed:[/red] {str(exc)[:200]} [dim]({tag})[/dim]")
 
     if failures:
-        console.print(f"\n[yellow bold]⚠ {len(failures)} source(s) failed[/yellow bold]")
-        for label, err in failures:
-            console.print(f"  [red]✗[/red] {label} — {err}")
+        all_transient = all(transient for _, _, transient in failures)
+        severity = "yellow" if all_transient else "red"
+        qualifier = "(all transient — expected)" if all_transient else "(NOT all transient)"
+        console.print(
+            f"\n[{severity} bold]⚠ {len(failures)} source(s) failed {qualifier}[/{severity} bold]"
+        )
+        for label, err, transient in failures:
+            tag = "[dim](transient)[/dim]" if transient else "[bold](unexpected)[/bold]"
+            console.print(f"  [red]✗[/red] {label} — {err} {tag}")
+        if all_transient:
+            console.print(
+                "[dim]Every failed source hit a known transient upstream condition — "
+                "no code bug detected, so exiting 0 (self-healing on the next scheduled "
+                "delta run).[/dim]"
+            )
+            raise typer.Exit(code=0)
         raise typer.Exit(code=1)
     console.print("[green bold]✓ All Bronze pipelines completed[/green bold]")
 
@@ -680,13 +757,19 @@ def ingest_reconcile(
     revision all the way to Gold — no `--full-refresh` needed.
     """
     settings = get_settings()
-    failures: list[tuple[str, str]] = []
+    failures: list[tuple[str, str, bool]] = []
 
     failures.extend(_reconcile_ibge(settings, chunk_years))
     failures.extend(_reconcile_full_sources(settings))
 
     if failures:
         _report_source_failures(failures)
+        if all(transient for _, _, transient in failures):
+            console.print(
+                "[dim]Every failed source hit a known transient upstream condition — "
+                "no code bug detected, so exiting 0.[/dim]"
+            )
+            raise typer.Exit(code=0)
         raise typer.Exit(code=1)
     console.print("[green bold]✓ Reconcile complete — every source fully re-ingested[/green bold]")
     console.print(
@@ -695,7 +778,7 @@ def ingest_reconcile(
     )
 
 
-def _reconcile_ibge(settings: Settings, chunk_years: int | None) -> list[tuple[str, str]]:
+def _reconcile_ibge(settings: Settings, chunk_years: int | None) -> list[tuple[str, str, bool]]:
     """IBGE phase of reconcile: chunked full window (not the single-shot
     ``ibge --full``) so the huge 1986→today SIDRA pull survives the unattended
     slow-byte deadline. A BadParameter (IBGE_START_YEAR unset) is a real
@@ -707,13 +790,19 @@ def _reconcile_ibge(settings: Settings, chunk_years: int | None) -> list[tuple[s
         raise
     except Exception as exc:
         console.print(f"[red]✗ IBGE PEVS failed:[/red] {str(exc)[:200]}")
-        return [("IBGE PEVS", str(exc)[:200])]
+        return [("IBGE PEVS", str(exc)[:200], _is_transient_failure(exc))]
     if tracker.chunks_failed:
-        return [("IBGE PEVS", f"{len(tracker.chunks_failed)} chunk(s) failed")]
+        return [
+            (
+                "IBGE PEVS",
+                f"{len(tracker.chunks_failed)} chunk(s) failed",
+                tracker.all_failures_transient,
+            )
+        ]
     return []
 
 
-def _reconcile_full_sources(settings: Settings) -> list[tuple[str, str]]:
+def _reconcile_full_sources(settings: Settings) -> list[tuple[str, str, bool]]:
     """Full phase for every non-PEVS, non-COMTRADE source: ``--full`` re-fetches
     each one's whole configured window. Covers BCB inflation/FX, COMEX **and** the
     out-of-``all`` annual SIDRA sources PAM/PPM — so reconcile catches an old-year
@@ -722,7 +811,7 @@ def _reconcile_full_sources(settings: Settings) -> list[tuple[str, str]]:
     accepts_full so a future non-delta source wouldn't trip on an unexpected full=
     kwarg. NOTE: a full PPM pull is heavier (1974→ both SIDRA tables); on a
     memory-constrained reconcile Job, bump the Job memory as for the PPM backfill."""
-    failures: list[tuple[str, str]] = []
+    failures: list[tuple[str, str, bool]] = []
     for spec in INGESTS:
         # Reconcile re-fetches every delta/ETag source FULLY — including the
         # out-of-`all` annual SIDRA sources PAM/PPM, so an upstream CORRECTION to an
@@ -738,17 +827,25 @@ def _reconcile_full_sources(settings: Settings) -> list[tuple[str, str]]:
                 console.print(f"[dim]event log:[/dim] {log_path}")
                 spec.module.run(settings, **kwargs)
         except Exception as exc:
-            failures.append((spec.label, str(exc)[:200]))
-            console.print(f"[red]✗ {spec.label} failed:[/red] {str(exc)[:200]}")
+            transient = _is_transient_failure(exc)
+            failures.append((spec.label, str(exc)[:200], transient))
+            tag = "transient — expected" if transient else "unexpected — investigate"
+            console.print(f"[red]✗ {spec.label} failed:[/red] {str(exc)[:200]} [dim]({tag})[/dim]")
     return failures
 
 
-def _report_source_failures(failures: list[tuple[str, str]]) -> None:
+def _report_source_failures(failures: list[tuple[str, str, bool]]) -> None:
     """Print the aggregated source-level failure summary (shared by the batch
-    commands). The caller raises the non-zero exit."""
-    console.print(f"\n[yellow bold]⚠ {len(failures)} source(s) failed[/yellow bold]")
-    for label, err in failures:
-        console.print(f"  [red]✗[/red] {label} — {err}")
+    commands). The caller decides the exit code from each entry's transient flag."""
+    all_transient = all(transient for _, _, transient in failures)
+    severity = "yellow" if all_transient else "red"
+    qualifier = "(all transient — expected)" if all_transient else "(NOT all transient)"
+    console.print(
+        f"\n[{severity} bold]⚠ {len(failures)} source(s) failed {qualifier}[/{severity} bold]"
+    )
+    for label, err, transient in failures:
+        tag = "[dim](transient)[/dim]" if transient else "[bold](unexpected)[/bold]"
+        console.print(f"  [red]✗[/red] {label} — {err} {tag}")
 
 
 # ─── discover ─────────────────────────────────────────────────────────────────

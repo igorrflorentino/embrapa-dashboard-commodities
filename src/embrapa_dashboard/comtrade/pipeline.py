@@ -34,6 +34,7 @@ from embrapa_dashboard.comtrade.client import ComtradeQuotaError, ComtradeTrunca
 from embrapa_dashboard.config import Settings
 from embrapa_dashboard.core import (
     ChunkOutcome,
+    SourceTransientError,
     land_raw,
     mark_raw_bronze_loaded,
     raw_bronze_loaded,
@@ -490,4 +491,6 @@ def _run_one_chunk(
         )
         return ChunkOutcome(chunk_id, "failed", detail=f"permanent truncation: {exc}")
     except Exception as exc:
-        return ChunkOutcome(chunk_id, "failed", detail=str(exc))
+        return ChunkOutcome(
+            chunk_id, "failed", detail=str(exc), transient=isinstance(exc, SourceTransientError)
+        )

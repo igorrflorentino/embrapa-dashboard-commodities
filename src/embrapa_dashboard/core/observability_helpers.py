@@ -56,6 +56,13 @@ class ChunkOutcome:
           fetch, or a legitimate current-year 404). ``detail`` says which.
         * ``"failed"``  — the chunk raised; ``detail`` carries the error text.
 
+    ``transient`` (only meaningful when ``status == "failed"``): the chunk raised
+    a :class:`~embrapa_dashboard.core.exceptions.SourceTransientError` (a retryable
+    upstream-API failure that already exhausted the tenacity retry budget) rather
+    than a code bug or a data-integrity problem. Lets the CLI's exit-code /
+    alerting decision tell "expected, self-healing on the next scheduled run"
+    apart from "needs a human" without parsing error text.
+
     Kept free of timing/console so a pipeline can build it without importing the
     CLI; the :class:`ChunkTracker` measures duration and renders it.
     """
@@ -64,6 +71,7 @@ class ChunkOutcome:
     status: ChunkStatus
     destination: str = ""
     detail: str = ""
+    transient: bool = False
 
 
 class IngestPartialFailure(Exception):
@@ -75,10 +83,15 @@ class IngestPartialFailure(Exception):
     they never see this — they read the tracker's collected failures instead.
 
     ``failures`` is the list of ``(chunk_id, error_text)`` that failed.
+    ``all_transient`` is True when every failed chunk was a marked
+    :class:`~embrapa_dashboard.core.exceptions.SourceTransientError` (see
+    :class:`ChunkOutcome`) — the source-level handler uses it to tell an
+    expected, self-healing degradation apart from a real bug.
     """
 
-    def __init__(self, failures: list[tuple[str, str]]) -> None:
+    def __init__(self, failures: list[tuple[str, str]], *, all_transient: bool = False) -> None:
         self.failures = failures
+        self.all_transient = all_transient
         joined = "; ".join(f"{cid}: {err}" for cid, err in failures)
         super().__init__(f"{len(failures)} chunk(s) failed: {joined}")
 
@@ -107,18 +120,20 @@ def run_chunks(
     """
     last_destination = ""
     failures: list[tuple[str, str]] = []
+    all_transient = True
     for chunk_id, process in chunks:
         if on_chunk_start is not None:
             on_chunk_start(chunk_id)
         outcome = process()
         if outcome.status == "failed":
             failures.append((chunk_id, outcome.detail[:200]))
+            all_transient = all_transient and outcome.transient
         elif outcome.destination:
             last_destination = outcome.destination
         if on_chunk is not None:
             on_chunk(outcome)
     if failures and on_chunk is None:
-        raise IngestPartialFailure(failures)
+        raise IngestPartialFailure(failures, all_transient=all_transient)
     return last_destination
 
 
@@ -190,6 +205,10 @@ class ChunkTracker:
     log_path: Path | None = None
     chunks_ok: list[str] = field(default_factory=list)
     chunks_failed: list[tuple[str, str]] = field(default_factory=list)
+    # chunk_ids from chunks_failed whose ChunkOutcome was marked transient — lets
+    # the command decide "all failures were expected/self-healing" without
+    # re-parsing error text. See ChunkOutcome.transient.
+    chunks_failed_transient: list[str] = field(default_factory=list)
     _n: int = 0
     _chunk_started: float = 0.0
 
@@ -218,6 +237,8 @@ class ChunkTracker:
                 error=outcome.detail[:300],
             )
             self.chunks_failed.append((outcome.chunk_id, outcome.detail[:200]))
+            if outcome.transient:
+                self.chunks_failed_transient.append(outcome.chunk_id)
         else:
             observability.emit(
                 "chunk_end",
@@ -233,6 +254,14 @@ class ChunkTracker:
     def last_duration_s(self) -> float:
         """Seconds the most recently finished chunk took (for console echo)."""
         return round(time.monotonic() - self._chunk_started, 2)
+
+    @property
+    def all_failures_transient(self) -> bool:
+        """True when there's at least one failure and every one of them was
+        transient (expected, self-healing on the next scheduled run)."""
+        return bool(self.chunks_failed) and len(self.chunks_failed_transient) == len(
+            self.chunks_failed
+        )
 
 
 @contextmanager

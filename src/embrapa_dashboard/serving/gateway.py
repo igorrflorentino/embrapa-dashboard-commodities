@@ -1054,14 +1054,15 @@ def fetch_orphan_produtos():
         for src, (tbl, col) in _GOLD_CODE_SOURCES.items()
         if src in bancos
     )
+    # A correlated EXISTS against a UNION ALL'd subquery (2+ bancos) is not something
+    # BigQuery can de-correlate ("Correlated subqueries that reference other tables are
+    # not supported..."); a plain JOIN expresses the same semantics and *is* supported.
     sql = f"""
         with tombstoned as ({tombstoned_sql}),
         gold_codes as ({gold_union})
         select distinct t.codigo_produto, t.banco, t.agrupamento, t.removed_at
         from tombstoned t
-        where exists (
-          select 1 from gold_codes g where g.src = t.banco and g.code = t.codigo_produto
-        )
+        join gold_codes g on g.src = t.banco and g.code = t.codigo_produto
     """
     return run_query(sql, [], max_bytes=RAW_TABLE_MAX_BYTES)
 

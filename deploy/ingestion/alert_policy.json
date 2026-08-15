@@ -25,7 +25,7 @@
     "autoClose": "1800s"
   },
   "documentation": {
-    "content": "The nightly Cloud Run Job `__JOB_NAME__` (`embrapa ingest all`) had a FAILED execution: the Bronze refresh that feeds Silver -> Gold -> the serving marts did not complete, so the dashboard data will go stale. A Cloud Run job execution counts as `failed` only when a task exhausted its retries (the CLI itself also retries upstream calls via tenacity), so this is a real, non-transient failure. Investigate: `gcloud run jobs executions list --job __JOB_NAME__ --region <INGEST_JOB_REGION>` then `... executions describe <execution>`. The pipeline also emits structured events consumable by `embrapa monitor`.",
+    "content": "The Cloud Run Job `__JOB_NAME__` had a FAILED execution. This job is shared by several triggers (nightly `embrapa ingest all`, and monthly `comtrade` / `ibge-pam` / `ibge-ppm` / `reconcile` overrides) — check `containerOverrides.args` on the execution to see which one ran. Since the CLI already exits 0 (no alert) when every failure is a marked transient upstream condition that self-heals on the next scheduled/resumed run (rate limits, timeouts — see `SourceTransientError` in the codebase), a `result=failed` here means at least one source failed for a reason that is NOT expected-transient — a real bug, permission/schema error, or a genuine data problem, and it needs a human. Investigate: `gcloud run jobs executions list --job __JOB_NAME__ --region <INGEST_JOB_REGION>` then `... executions describe <execution>`, or read the execution's logs for lines tagged `(unexpected — investigate)` vs `(transient)`. The pipeline also emits structured events consumable by `embrapa monitor`.",
     "mimeType": "text/markdown"
   },
   "enabled": true
