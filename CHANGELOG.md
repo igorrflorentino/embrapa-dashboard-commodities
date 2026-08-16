@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.23.1] - 2026-08-16
+
+### Changed
+- **"Ingestão" e "Exibição" viraram colunas próprias no Cadastro de produtos**, no lugar
+  dos dois seletores empilhados dentro de uma coluna "Ciclo de vida". Os dois eixos são
+  decisões independentes, então lêem melhor como irmãos de "Agrupamento" do que como duas
+  metades de um campo composto — e o `<th>` passa a rotular cada seletor, dispensando os
+  rótulos internos que a célula fundida exigia. No mobile o ganho é maior: cada eixo vira
+  uma linha rotulada do card, sem a duplicação de rótulo que havia antes.
+- Larguras rebalanceadas para 10 colunas, sem scroll horizontal e sem select cortado
+  (verificado em 1400px, 1280px e 375px). A ~1280px os 10 cabeçalhos não cabem todos em
+  uma linha; a folga foi deixada com **"Descrição (fonte)"**, que quebra no espaço
+  ("Descrição / (fonte)") — dar esse ponto percentual a ela faria "Agrupamento", uma
+  palavra só, quebrar no meio ("Agrupame/nto"), o que lê como defeito. Uma linha de
+  cabeçalho um pouco mais alta, não.
+
 ## [1.23.0] - 2026-08-16
 
 **Ciclo de vida do produto virou DOIS EIXOS independentes, com códigos estáveis.** O enum
