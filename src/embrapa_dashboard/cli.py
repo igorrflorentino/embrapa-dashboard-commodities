@@ -463,8 +463,16 @@ def _ibge_batch_ingest(settings: Settings, chunk_years: int | None) -> ChunkTrac
             except Exception as exc:
                 # Continue-on-failure: a single hung chunk must not strand the
                 # rest; the chunk_error event + summary point at the year ranges
-                # that need a re-run.
-                outcome = ChunkOutcome(chunk_id, "failed", detail=str(exc))
+                # that need a re-run. Mark a SourceTransientError as transient, exactly
+                # like the comex/comtrade chunk runners do — a SIDRA connection drop on a
+                # large window is THE transient failure this command exists to survive, so
+                # without this the run would page a human for a condition that self-heals.
+                outcome = ChunkOutcome(
+                    chunk_id,
+                    "failed",
+                    detail=str(exc),
+                    transient=isinstance(exc, SourceTransientError),
+                )
             else:
                 outcome = (
                     ChunkOutcome(chunk_id, "loaded", destination=destination)

@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import BadRequest, NotFound
 from google.cloud import bigquery
 
 from embrapa_dashboard.config import Settings, get_settings
@@ -110,21 +110,34 @@ def _active_member_rows(bq: bigquery.Client, catalog_fqn: str, group_id: str) ->
     member — which a rename/delete would then silently re-stamp (reverting the move) or
     resurrect (undoing the removal). Dedup the full log first, THEN filter by the current
     state — the same pattern as ``_current_groups`` and ``gateway.fetch_agrupamentos``."""
-    sql = f"""
-        select codigo_produto, banco, descricao_produto, ciclo_de_vida
-        from (
-          select *, row_number() over (
-            partition by codigo_produto, banco order by edited_at desc, change_id desc
-          ) as _rn
-          from `{catalog_fqn}`
-        ) where _rn = 1 and active and agrupamento_id = @group_id
-    """
+
+    def _sql(cols: str) -> str:
+        return f"""
+            select {cols}
+            from (
+              select *, row_number() over (
+                partition by codigo_produto, banco order by edited_at desc, change_id desc
+              ) as _rn
+              from `{catalog_fqn}`
+            ) where _rn = 1 and active and agrupamento_id = @group_id
+        """
+
+    base_cols = "codigo_produto, banco, descricao_produto, ciclo_de_vida"
     params = [bigquery.ScalarQueryParameter("group_id", "STRING", group_id)]
     try:
-        job = bq.query(sql, job_config=bigquery.QueryJobConfig(query_parameters=params))
+        job = bq.query(
+            _sql(f"{base_cols}, ingestao, visibilidade"),
+            job_config=bigquery.QueryJobConfig(query_parameters=params),
+        )
         return list(job.result())
     except NotFound:
         return []
+    except BadRequest:
+        # The log table predates the two-axis columns. Re-read without them: the caller
+        # reads the axes with getattr(..., None), so the writer falls back to its own
+        # preservation. Without this branch a rename would 500 on a pre-split table.
+        job = bq.query(_sql(base_cols), job_config=bigquery.QueryJobConfig(query_parameters=params))
+        return list(job.result())
 
 
 def record_group(
@@ -296,6 +309,12 @@ def _restamp_members(bq, cfg, headers, group_id, group_name) -> None:
             agrupamento=group_name,
             descricao_produto=m.descricao_produto,
             ciclo_de_vida=m.ciclo_de_vida,
+            # Forward the stored lifecycle axes. The writer would PRESERVE them anyway
+            # when omitted, but only by issuing an extra read per member — and this row
+            # was already fetched. On a large agrupamento that is one avoided BigQuery
+            # round-trip per member.
+            ingestao=getattr(m, "ingestao", None),
+            visibilidade=getattr(m, "visibilidade", None),
             agrupamento_id=group_id,
             settings=cfg,
             client=bq,
