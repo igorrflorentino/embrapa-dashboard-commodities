@@ -668,8 +668,14 @@ function ViewCadastroProdutos() {
           <span className="caption">{_CC_HELP_COLUNAS.length} colunas · {_CC_HELP_ACOES.length} ações</span>
         </summary>
         <div className="cc-help-body">
-          <div className="cc-help-block">
-            <h3 className="cc-help-h">As colunas</h3>
+          {/* Two clearly separate panels: reference (what you READ) vs actions (what you DO).
+              The left accent colour carries that distinction — blue for the informational
+              half, green for the one that writes — mirroring .mc-bar's accent convention. */}
+          <div className="cc-help-block cc-help-block-ler">
+            <h3 className="cc-help-h">
+              O que cada coluna mostra
+              <span className="cc-help-h-n">{_CC_HELP_COLUNAS.length} colunas</span>
+            </h3>
             <dl className="cc-help-list">
               {_CC_HELP_COLUNAS.map((c) => (
                 <div key={c.k} className="cc-help-item">
@@ -679,8 +685,11 @@ function ViewCadastroProdutos() {
               ))}
             </dl>
           </div>
-          <div className="cc-help-block">
-            <h3 className="cc-help-h">As edições</h3>
+          <div className="cc-help-block cc-help-block-editar">
+            <h3 className="cc-help-h">
+              O que cada edição faz
+              <span className="cc-help-h-n">{_CC_HELP_ACOES.length} ações</span>
+            </h3>
             <dl className="cc-help-list">
               {_CC_HELP_ACOES.map((a) => (
                 <div key={a.k} className="cc-help-item">
