@@ -3123,6 +3123,43 @@ def test_every_seed_csv_is_a_consultable_reference_table():
     )
 
 
+def test_reference_table_catalog_ids_have_a_backing_dbt_model():
+    """Every _REFERENCE_TABLE_CATALOG id must be a real Silver dbt MODEL (<id>.sql).
+
+    These entries are the non-seed half of the Referências perspective: they pass
+    _resolve_seed_table's allowlist just like seeds, so a typo'd/renamed id would only
+    fail at READ time as a BigQuery 404. This is the same bijection guard the seed
+    catalog gets from test_every_seed_csv_is_exposed_as_a_reference — and it also asserts
+    the two catalogs stay DISJOINT, since a table listed twice would render twice in the
+    picker."""
+    from pathlib import Path
+
+    from embrapa_dashboard.serving import gateway
+
+    models_dir = Path(__file__).resolve().parents[1] / "dbt" / "models"
+    assert models_dir.is_dir(), f"expected models dir at {models_dir}"
+
+    model_ids = {p.stem for p in models_dir.rglob("*.sql")}
+    dangling = set(gateway._REFERENCE_BY_ID) - model_ids
+    assert not dangling, (
+        f"_REFERENCE_TABLE_CATALOG id(s) with no backing dbt model: {sorted(dangling)}. "
+        "The id must be BOTH the BigQuery table name in the silver dataset and the "
+        "model filename — fix the id, or drop the entry if the model was retired."
+    )
+
+    overlap = set(gateway._REFERENCE_BY_ID) & set(gateway._SEED_BY_ID)
+    assert not overlap, (
+        f"id(s) in BOTH _SEED_CATALOG and _REFERENCE_TABLE_CATALOG: {sorted(overlap)}. "
+        "A reference table belongs to exactly one catalog (seeds are CSV-backed)."
+    )
+
+    # The perspective lists both catalogs, and _resolve_seed_table must accept both.
+    listed = {t["id"] for t in gateway.seed_tables()}
+    assert set(gateway._REFERENCE_BY_ID) <= listed
+    assert set(gateway._SEED_BY_ID) <= listed
+    assert listed == set(gateway._CONSULTABLE_BY_ID)
+
+
 # ── Curadoria (catalog): the editable commodity catalog writer ────────────────
 
 
