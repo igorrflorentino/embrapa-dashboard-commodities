@@ -83,6 +83,35 @@ def test_defaults_to_the_installed_version(tmp_path, monkeypatch):
     assert release.release_date() == date(2026, 8, 16)
 
 
+def test_frontend_manifest_version_matches_pyproject():
+    """frontend/package.json must carry the SAME version as pyproject.toml.
+
+    It is the pre-load fallback the Sobre page renders before /api/source-meta resolves
+    (`window.APP_VERSION || pkg.version`), so a drifted manifest shows a WRONG version for
+    the first paint — it had silently fallen to 1.11.0 against a 1.24.7 project, thirteen
+    minors behind, while a comment in ViewAbout.jsx claimed it was "kept in sync". This is
+    the guard that makes that claim true instead of aspirational.
+
+    package-lock.json mirrors the manifest version twice; keep all three in step.
+    """
+    import json
+    import tomllib
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    shipped = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        "version"
+    ]
+    manifest = json.loads((root / "frontend/package.json").read_text(encoding="utf-8"))
+    assert manifest["version"] == shipped, (
+        f"frontend/package.json is {manifest['version']} but pyproject.toml ships {shipped} — "
+        "bump the manifest (and the two version fields in package-lock.json) to match."
+    )
+    lock = json.loads((root / "frontend/package-lock.json").read_text(encoding="utf-8"))
+    assert lock["version"] == shipped, (
+        f"frontend/package-lock.json is {lock['version']}, expected {shipped}."
+    )
+
+
 def test_the_real_changelog_dates_the_shipped_version():
     """Against the REPO's actual files: the shipped version must carry a CHANGELOG date.
 

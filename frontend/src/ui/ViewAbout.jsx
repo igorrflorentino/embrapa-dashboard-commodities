@@ -6,8 +6,10 @@
 
 // App version — the live value comes from the BACKEND (pyproject → importlib.metadata →
 // /api/source-meta.appVersion → window.APP_VERSION, hydrated by dataStore), the single source
-// of truth the release tag bumps. package.json is only the pre-load fallback (a frontend-only
-// manifest that historically drifted — kept in sync but never load-bearing for display).
+// of truth the release tag bumps. package.json is only the pre-load fallback (shown for the
+// first paint, before source-meta resolves). Keeping it in sync used to be a convention the
+// manifest quietly broke — it sat at 1.11.0 against a 1.24.7 project — so a test now asserts
+// package.json + package-lock.json match pyproject.toml (tests/test_release.py).
 import pkg from '../../package.json';
 
 const { useState: useAbState, useEffect: useAbEffect } = React;

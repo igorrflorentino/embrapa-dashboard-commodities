@@ -291,14 +291,23 @@ def _check_catalog_resolver_parity(settings: Settings) -> CheckResult:
 
 
 def _check_orphan_lifecycle(settings: Settings) -> CheckResult:
-    """Soft-warn on catalog orphans awaiting the auto-marker (the spec's doctor check).
+    """Soft-warn on catalog ORPHANS awaiting the auto-marker (the spec's doctor check).
 
-    Counts catalog entries whose CURRENT state is removed (active=false tombstone) vs those
-    the lifecycle log already covers ('descontinuado' or 'purged'). A positive gap means a
-    removal has NOT been marked — the nightly build-boundary ``mark-orphans`` step probably
-    didn't run, so the Descontinuados view would understate what needs review. Advisory
-    (ok=True): a legitimately removed product is expected, not an error. Flask-free (direct
-    BQ over the small append-only logs) so it runs inside a bare ``embrapa doctor``; any
+    An orphan is a removal that LEFT DATA BEHIND: the entry's current state is a tombstone
+    (active=false) AND its exact code still exists in that banco's Gold. Only those are
+    marked by ``mark-orphans``, so only those may be counted here.
+
+    Counting bare tombstones instead was wrong in a way that could never clear: a CLEAN
+    removal (no lingering Gold rows) is never marked — correctly, there is nothing to
+    purge — so `removed > marked` was the permanent steady state after any tidy-up. The
+    check warned forever, blamed a build step that had in fact succeeded, and prescribed a
+    `mark-orphans` run that was a guaranteed no-op. This repo's trade catalogs were migrated
+    from 4-digit HS to NCM-8/HS-6 on 2026-07-02, leaving 20 such tombstones and a permanently
+    red-herring advisory. An operator who learns to ignore doctor's output is the real cost.
+
+    Advisory (ok=True): a legitimately removed product is expected, not an error. Flask-free
+    (direct BQ over the small logs + a Gold semi-join) so it runs inside a bare
+    ``embrapa doctor`` — hence sqlbuild.GOLD_CODE_SOURCES rather than importing gateway. Any
     fault (tables absent / perms) degrades to 'skipped'."""
     try:
         from embrapa_dashboard.gcp.clients import resolve_bq_client
@@ -311,12 +320,26 @@ def _check_orphan_lifecycle(settings: Settings) -> CheckResult:
         lifecycle_log = sqlbuild.table_ref(
             settings, "bq_research_inputs_dataset", settings.bq_catalog_lifecycle_log_table
         )
-        removed_sql = f"""
+        # Same shape as gateway.fetch_orphan_produtos: tombstoned ⋈ Gold on the EXACT code.
+        gold_union = " union all ".join(
+            f"select '{src}' as src, {col} as code from "
+            f"`{sqlbuild.table_ref(settings, 'bq_gold_dataset', tbl)}`"
+            for src, (tbl, col) in sqlbuild.GOLD_CODE_SOURCES.items()
+        )
+        orphan_sql = f"""
+            with tombstoned as (
+              select codigo_produto, banco from (
+                select codigo_produto, banco, active, row_number() over (
+                  partition by codigo_produto, banco order by edited_at desc, change_id desc
+                ) as _rn from `{catalog_log}`
+              ) where _rn = 1 and not active
+            ),
+            gold_codes as ({gold_union})
             select count(*) as n from (
-              select active, row_number() over (
-                partition by codigo_produto, banco order by edited_at desc, change_id desc
-              ) as _rn from `{catalog_log}`
-            ) where _rn = 1 and not active
+              select distinct t.codigo_produto, t.banco
+              from tombstoned t
+              join gold_codes g on g.src = t.banco and g.code = t.codigo_produto
+            )
         """
         marked_sql = f"""
             select count(*) as n from (
@@ -325,16 +348,20 @@ def _check_orphan_lifecycle(settings: Settings) -> CheckResult:
               ) as _rn from `{lifecycle_log}` where element_kind = 'commodity'
             ) where _rn = 1 and status in ('descontinuado', 'purged')
         """
-        removed = next(iter(bq.query(removed_sql).result())).n
+        orphans = next(iter(bq.query(orphan_sql).result())).n
         marked = next(iter(bq.query(marked_sql).result())).n
-        if removed > marked:
+        if orphans > marked:
             return CheckResult(
                 "Catalog orphan lifecycle",
                 True,
-                f"{removed} removed, {marked} marked — {removed - marked} unmarked; "
-                "run `embrapa mark-orphans` (the build-boundary step may have failed).",
+                f"{orphans} orphan(s) with Gold data, {marked} marked — {orphans - marked} "
+                "unmarked; run `embrapa mark-orphans` (the build-boundary step may have failed).",
             )
-        return CheckResult("Catalog orphan lifecycle", True, f"{removed} removed, all marked")
+        if orphans:
+            return CheckResult("Catalog orphan lifecycle", True, f"{orphans} orphan(s), all marked")
+        return CheckResult(
+            "Catalog orphan lifecycle", True, "no orphans (no removal left Gold data behind)"
+        )
     except Exception as exc:  # never fail — advisory
         return CheckResult("Catalog orphan lifecycle", True, f"skipped: {str(exc)[:100]}")
 

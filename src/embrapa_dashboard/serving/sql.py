@@ -1538,3 +1538,23 @@ def raw_table_count(
         conditions.append(visibility_predicate)
     sql = f"select count(*) as n from `{table}` {_where(conditions)}"
     return sql, params
+
+
+# banco token → (Gold fact table, the column holding that source's EXACT product code).
+# Lives here, in the flask-free module, because TWO callers need it and they must agree on
+# what "this commodity still has Gold data" means: gateway.fetch_orphan_produtos (the
+# researcher-facing Descontinuados worklist, flask-caching memoized) and
+# doctor._check_orphan_lifecycle (runs inside a bare `embrapa doctor`, so it cannot import
+# gateway). Duplicating the map would let the operator's health check and the UI disagree
+# about which produtos are orphans.
+#
+# NOTE the granularity differs per banco and MUST match the catalog's registration
+# granularity for the exact-match join to mean anything: comex is 8-digit NCM, comtrade
+# 6-digit HS, the IBGE bancos their SIDRA codes.
+GOLD_CODE_SOURCES: dict[str, tuple[str, str]] = {
+    "pevs": ("gold_pevs_production", "product_code"),
+    "comex": ("gold_comex_flows", "ncm_code"),
+    "comtrade": ("gold_comtrade_flows", "cmd_code"),
+    "pam": ("gold_pam_production", "product_code"),
+    "ppm": ("gold_ppm_production", "product_code"),
+}

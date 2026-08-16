@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.8] - 2026-08-16
+
+**Dois diagnósticos que mentiam em silêncio**, achados na verificação final da sessão.
+
+### Fixed
+- **O check de órfãos do `doctor` contava tombstones, não órfãos** (`doctor.py`). Um órfão é
+  uma remoção que **deixou dado para trás** — tombstone (`active=false`) **e** o código exato
+  ainda presente no Gold do banco. Só esses são marcados pelo `mark-orphans`. Contando
+  tombstones puros, uma remoção **limpa** (sem dado remanescente) nunca é marcada — e
+  corretamente, não há o que expurgar —, então `removed > marked` virava o estado permanente
+  após qualquer faxina.
+
+  O resultado: o check avisava para sempre, culpava um passo de build que na verdade tinha
+  rodado com sucesso (`detected=0`), e prescrevia um `mark-orphans` que era no-op garantido.
+  Neste repositório, a migração dos catálogos de comércio de HS-4 para NCM-8/HS-6 em
+  **02/07** deixou 20 tombstones limpos, e o alerta era 100% falso positivo desde então. O
+  custo real não é o texto — é treinar o operador a ignorar a saída do `doctor`.
+
+  A constante `GOLD_CODE_SOURCES` (banco → tabela Gold + coluna do código) saiu do `gateway`
+  para o `serving/sql.py`, que é flask-free: os dois consumidores — a worklist de
+  Descontinuados na UI e o check do `doctor`, que roda num `embrapa doctor` puro e por isso
+  não pode importar o gateway — precisam concordar sobre o que é um órfão.
+
+- **`frontend/package.json` estava em 1.11.0** contra um projeto em 1.24.7 — treze minors
+  atrás, enquanto um comentário no `ViewAbout.jsx` afirmava que era "kept in sync". Ele é o
+  fallback de pré-carga do número de versão, então a **primeira pintura** da página *Sobre*
+  mostrava uma versão errada até `/api/source-meta` resolver. Sincronizado (manifest + os dois
+  campos do `package-lock.json`) e agora **coberto por teste**, que falha se divergirem do
+  `pyproject.toml` — a afirmação do comentário deixa de ser aspiracional.
+
 ## [1.24.7] - 2026-08-16
 
 **A versão do node não estava declarada em lugar nenhum** — CI, Dockerfile e dev local
