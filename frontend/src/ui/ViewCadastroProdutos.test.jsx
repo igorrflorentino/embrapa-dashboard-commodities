@@ -240,6 +240,35 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(postBody.agrupamento).toBe('Castanha');
   });
 
+  it('tags a PPM row with its SIDRA table next to the BANCO (not inside the Descrição cell)', async () => {
+    // PPM is the one banco storing two SIDRA tables (3939 rebanho / 74 produção animal) under
+    // one banco token, so the tag qualifies the SOURCE. It must sit in the banco cell — putting
+    // it under the researcher's annotation (where it used to be) read like part of that note.
+    mockFetch({
+      entries: {
+        entries: [{
+          codigo_produto: '2670', banco: 'ppm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          ciclo_de_vida: 'Fazer Ingestão e deixar disponível',
+          descricao_fonte: 'Bovino', sidra_tabela: '3939',
+        }],
+        total: 1,
+      },
+    });
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    const tag = container.querySelector('.cc-sidra-tag');
+    expect(tag.textContent).toBe('Rebanho (efetivo)');
+    // It lives in the banco (title) cell, and NOT in the Descrição cell.
+    expect(tag.closest('td').classList.contains('cc-cell-title')).toBe(true);
+    expect(container.querySelector('td[data-label="Descrição"] .cc-sidra-tag')).toBeNull();
+  });
+
+  it('omits the SIDRA tag for non-PPM bancos', async () => {
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    expect(container.querySelector('.cc-sidra-tag')).toBeNull(); // comex + comtrade rows
+  });
+
   it('shows the existing manual descrição pre-filled, and edits it after creation via blur-commit', async () => {
     const { container } = render(<ViewCadastroProdutos />);
     await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());

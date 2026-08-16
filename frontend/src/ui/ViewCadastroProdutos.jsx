@@ -94,16 +94,22 @@ function CcDescricaoField({ value, onSave, busy, ariaLabel }) {
     if (trimmed !== (value || '')) onSave(trimmed);
     else if (trimmed !== draft) setDraft(trimmed); // normalize stray whitespace locally, no write
   };
+  // The ✎ marks the line as YOUR note (vs the source description directly above it). Always
+  // in the DOM — never conditional on content — so the input's left edge doesn't shift sideways
+  // the moment you type the first character; CSS fades the whole wrapper instead.
   return (
-    <input type="text" className="cc-descricao-input" value={draft} disabled={busy}
-           aria-label={ariaLabel} title="Sua anotação (opcional) — não é a descrição da fonte"
-           placeholder="Sua anotação (opcional)"
-           onChange={(ev) => setDraft(ev.target.value)}
-           onBlur={commit}
-           onKeyDown={(ev) => {
-             if (ev.key === 'Enter') ev.currentTarget.blur(); // blur triggers commit
-             else if (ev.key === 'Escape') { setDraft(value || ''); ev.currentTarget.blur(); }
-           }} />
+    <span className="cc-descricao-wrap">
+      <span className="cc-descricao-mark" aria-hidden="true">✎</span>
+      <input type="text" className="cc-descricao-input" value={draft} disabled={busy}
+             aria-label={ariaLabel} title="Sua anotação (opcional) — não é a descrição da fonte"
+             placeholder="+ anotação"
+             onChange={(ev) => setDraft(ev.target.value)}
+             onBlur={commit}
+             onKeyDown={(ev) => {
+               if (ev.key === 'Enter') ev.currentTarget.blur(); // blur triggers commit
+               else if (ev.key === 'Escape') { setDraft(value || ''); ev.currentTarget.blur(); }
+             }} />
+    </span>
   );
 }
 
@@ -494,19 +500,27 @@ function ViewCadastroProdutos() {
             const st = statusMap[e.banco + ':' + e.codigo_produto];
             return (
               <tr key={e.banco + '|' + e.codigo_produto}>
-                <td className="cc-cell-title">{_CC_BANCO_LABEL[e.banco] || e.banco}</td>
+                <td className="cc-cell-title">
+                  {_CC_BANCO_LABEL[e.banco] || e.banco}
+                  {/* Which SIDRA table this row came from. PPM is the ONE banco that stores two
+                      tables (3939 rebanho / 74 produção animal) under the same banco token, so the
+                      same produto can be cadastered twice — this qualifies WHICH one. It belongs
+                      here, next to the banco it qualifies, NOT in the Descrição cell (where it
+                      used to sit below the researcher's annotation and read like part of it). */}
+                  {e.banco === 'ppm' && e.sidra_tabela && (
+                    <span className="cc-sidra-tag">{_CC_PPM_LABEL[e.sidra_tabela] || e.sidra_tabela}</span>
+                  )}
+                </td>
                 <td className="tnum" data-label="Código">{e.codigo_produto}</td>
                 <td data-label="Descrição">
                   {e.descricao_fonte || <span className="dt-null">—</span>}
                   {/* The researcher's own free-text annotation — editable here, not just at
                       creation (commits on blur/Enter; see CcDescricaoField). Distinct from the
-                      read-only descrição da fonte above. */}
+                      read-only descrição da fonte above; when empty it fades out (CSS) so an
+                      un-annotated row reads as a single clean line. */}
                   <CcDescricaoField value={e.descricao_produto} busy={locked}
                                     ariaLabel={`Sua descrição de ${e.codigo_produto}`}
                                     onSave={(text) => saveEntry({ ...e, descricao_produto: text })} />
-                  {e.banco === 'ppm' && e.sidra_tabela && (
-                    <small className="pc-cap" style={{ display: 'block' }}>{_CC_PPM_LABEL[e.sidra_tabela] || e.sidra_tabela}</small>
-                  )}
                 </td>
                 <td className="num tnum" data-label="Linhas">{st ? _ccInt(st.n_rows) : (statusErr ? '—' : '…')}</td>
                 <td className="tnum" data-label="Período">{st && st.year_start != null ? `${st.year_start}–${st.year_end}` : '—'}</td>
