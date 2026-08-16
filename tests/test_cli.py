@@ -325,6 +325,69 @@ def test_ingest_ibge_batch_exits_zero_when_every_failure_is_transient(
     assert "transient" in result.output
 
 
+_SINGLE_SHOT_INGESTS = [
+    ("ibge", "ibge_pipeline", "sidra"),
+    ("ibge-pam", "pam_pipeline", "sidra"),
+    ("ibge-ppm", "ppm_pipeline", "sidra"),
+    ("bcb-inflation", "bcb_inflation", "bcb"),
+    ("bcb-currency", "bcb_currency", "bcb"),
+]
+
+
+def _transient_error(kind: str) -> Exception:
+    """The real per-source transient class, so a broken class hierarchy fails the test."""
+    if kind == "sidra":
+        from embrapa_dashboard.ibge.client import SidraTransientError
+
+        return SidraTransientError("HTTP 503 for SIDRA")
+    from embrapa_dashboard.bcb.client import BcbTransientError
+
+    return BcbTransientError("HTTP 503 for BCB SGS")
+
+
+@pytest.mark.parametrize(("command", "module", "kind"), _SINGLE_SHOT_INGESTS)
+def test_single_shot_ingest_exits_zero_when_the_failure_is_transient(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, command: str, module: str, kind: str
+) -> None:
+    """The single-shot commands must honour the same exit-code rule as the chunked ones.
+
+    ``ibge-pam`` and ``ibge-ppm`` each have their own ENABLED monthly Cloud Scheduler
+    trigger against the ingestion job, and the alert policy watches the JOB's
+    ``result="failed"`` — not the command's args. Before this, a transient SIDRA blip on
+    the 2nd/3rd of the month paged a human with the same red "unexpected failure" mail a
+    real bug produces."""
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
+
+    def boom(*_args: object, **_kwargs: object) -> str:
+        raise _transient_error(kind)
+
+    monkeypatch.setattr(getattr(cli, module), "run", boom)
+
+    result = runner.invoke(cli.app, ["ingest", command])
+
+    assert result.exit_code == 0, result.output
+    assert "transient" in result.output
+
+
+@pytest.mark.parametrize(("command", "module", "kind"), _SINGLE_SHOT_INGESTS)
+def test_single_shot_ingest_still_exits_nonzero_on_a_real_bug(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, command: str, module: str, kind: str
+) -> None:
+    """Only a MARKED transient failure is downgraded — anything else still pages, with its
+    traceback intact (the wrapper re-raises untouched rather than swallowing)."""
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
+
+    def boom(*_args: object, **_kwargs: object) -> str:
+        raise ValueError("a real bug")
+
+    monkeypatch.setattr(getattr(cli, module), "run", boom)
+
+    result = runner.invoke(cli.app, ["ingest", command])
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, ValueError)
+
+
 def test_ingest_ibge_batch_exits_one_when_any_failure_is_not_transient(
     monkeypatch: pytest.MonkeyPatch, settings: Settings
 ) -> None:

@@ -169,6 +169,57 @@ def test_record_produto_catalog_ppm_update_preserves_sidra_tabela(monkeypatch):
     assert params["sidra_tabela"] == "3939"
 
 
+# ── record_produto_catalog: descricao_produto is preserve-on-omit ─────────────
+
+
+def _record_with(monkeypatch, curation, **kwargs):
+    """Drive record_produto_catalog as an UPDATE and return the written parameters."""
+    monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)
+    monkeypatch.setattr(curation, "_is_active_entry", lambda *a, **k: True)  # UPDATE
+    monkeypatch.setattr(curation, "_check_code_status", lambda *a, **k: None)
+    monkeypatch.setattr(curation, "_current_lifecycle", lambda *a, **k: ("ativa", "visivel"))
+    client = mock.Mock()
+    client.query.return_value.result.return_value = []
+    curation.record_produto_catalog(
+        "3405",
+        "pevs",
+        _HEADERS,
+        agrupamento="Castanha-do-pará",
+        settings=_settings(),
+        client=client,
+        invalidate_cache=False,
+        **kwargs,
+    )
+    return {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
+
+
+def test_record_produto_catalog_update_preserves_descricao_produto(monkeypatch):
+    """An edit that changes only another field must NOT erase the researcher's note.
+
+    The writer overwrites the whole row, so omitting descricao_produto used to store NULL —
+    a free-text annotation gone for good (unlike an axis, which can be re-picked)."""
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    monkeypatch.setattr(curation, "_current_descricao", lambda *a, **k: "anotação do pesquisador")
+    params = _record_with(monkeypatch, curation, ingestao="pausada")
+    assert params["descricao_produto"] == "anotação do pesquisador"
+
+
+def test_record_produto_catalog_update_honours_an_explicit_empty_descricao(monkeypatch):
+    """`''` is an explicit CLEAR (the ✎ field emptied), NOT an omission — it must win over
+    the stored note. Collapsing '' to None would make the note impossible to erase."""
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    def _boom(*a, **k):  # preservation must not even be consulted for an explicit value
+        raise AssertionError("_current_descricao consulted for an explicit '' clear")
+
+    monkeypatch.setattr(curation, "_current_descricao", _boom)
+    params = _record_with(monkeypatch, curation, descricao_produto="")
+    assert params["descricao_produto"] == ""
+
+
 # ── _is_active_entry: NotFound fall-through (log table absent) ────────────────
 
 
