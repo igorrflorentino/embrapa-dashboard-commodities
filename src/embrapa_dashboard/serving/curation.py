@@ -120,9 +120,7 @@ def ensure_produto_catalog_log_table(
     # DDL/permission fault must not block the (rare) curation write.
     for column in ("sidra_tabela", "ingestao", "visibilidade"):
         try:
-            bq.query(
-                f"alter table `{table_fqn}` add column if not exists {column} STRING"
-            ).result()
+            bq.query(f"alter table `{table_fqn}` add column if not exists {column} STRING").result()
         except Exception as exc:
             logger.warning("Could not ensure %s column on %s: %s", column, table_fqn, exc)
     logger.info("Commodity-catalog log ready at %s", table_fqn)
@@ -272,6 +270,7 @@ def ingestao_efetiva(ingestao: str | None) -> str:
     ingesting every produto registered before the split."""
     return ingestao if ingestao in _INGESTAO_VALUES else INGESTAO_ATIVA
 
+
 # Source codes are numeric and short (NCM 8 digits, HS <=6, SIDRA <=~7); 32 is generous
 # headroom that still rejects a pathologically long value before it is stored.
 MAX_CODE_LEN = 32
@@ -282,9 +281,7 @@ def _validate_lifecycle(ingestao: str | None, visibilidade: str | None) -> None:
     fail-open of the visibility gate (an unrecognized value reads as VISIVEL, so a typo'd
     'ocluto' would quietly leave a produto the researcher meant to hide on display)."""
     if ingestao is not None and ingestao not in _INGESTAO_VALUES:
-        raise ValueError(
-            f"ingestao {ingestao!r} inválido — use um de {sorted(_INGESTAO_VALUES)}."
-        )
+        raise ValueError(f"ingestao {ingestao!r} inválido — use um de {sorted(_INGESTAO_VALUES)}.")
     if visibilidade is not None and visibilidade not in _VISIBILIDADE_VALUES:
         raise ValueError(
             f"visibilidade {visibilidade!r} inválido — use um de "
@@ -591,9 +588,7 @@ def record_produto_catalog(
     # show it (hiding is an explicit act).
     if ingestao is None or visibilidade is None:
         stored_ingestao, stored_visibilidade = (
-            _current_lifecycle(bq, table_fqn, codigo_produto, banco)
-            if is_active
-            else (None, None)
+            _current_lifecycle(bq, table_fqn, codigo_produto, banco) if is_active else (None, None)
         )
         if ingestao is None:
             ingestao = stored_ingestao or INGESTAO_ATIVA
