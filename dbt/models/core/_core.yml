@@ -294,19 +294,39 @@ unit_tests:
     given:
       - input: source('research_inputs', 'produto_catalog_log')
         rows:
+          # ── LEGACY rows (pre two-axis split): prose `ciclo_de_vida`, both codes NULL.
+          # The append-only log never rewrites these, so the gate must keep reading them
+          # correctly FOREVER — via the catalog_visibilidade macro's translation.
           # disponível → NOT hidden
-          - {codigo_produto: '11', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c1'}
+          - {codigo_produto: '11', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c1'}
           # active + indisponível → hidden
-          - {codigo_produto: '22', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c2'}
+          - {codigo_produto: '22', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c2'}
           # tombstone (active=false) → NOT hidden (left the catalog; orphan path handles it)
-          - {codigo_produto: '33', banco: 'comex', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', active: false, edited_at: '2024-01-01 00:00:00', change_id: 'c3'}
-          # latest-wins: same key flips disponível → indisponível on a newer edit → hidden
-          - {codigo_produto: '44', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c4'}
-          - {codigo_produto: '44', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', active: true, edited_at: '2024-06-01 00:00:00', change_id: 'c5'}
+          - {codigo_produto: '33', banco: 'comex', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', ingestao: null, visibilidade: null, active: false, edited_at: '2024-01-01 00:00:00', change_id: 'c3'}
+          # latest-wins ACROSS the migration: a legacy 'disponível' row superseded by a
+          # NEW coded 'oculto' row → hidden. This is the exact path a produto takes the
+          # first time it is edited after the split.
+          - {codigo_produto: '44', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c4'}
+          - {codigo_produto: '44', banco: 'pevs', ciclo_de_vida: null, ingestao: 'ativa', visibilidade: 'oculto', active: true, edited_at: '2024-06-01 00:00:00', change_id: 'c5'}
+          # ── NEW coded rows.
+          # visivel → NOT hidden
+          - {codigo_produto: '55', banco: 'pevs', ciclo_de_vida: null, ingestao: 'ativa', visibilidade: 'visivel', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c6'}
+          # oculto → hidden
+          - {codigo_produto: '66', banco: 'comex', ciclo_de_vida: null, ingestao: 'ativa', visibilidade: 'oculto', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c7'}
+          # The AXES ARE INDEPENDENT: paused ingestion does NOT hide. A frozen series still
+          # shows its history — that is the whole point of splitting the axes.
+          - {codigo_produto: '77', banco: 'comex', ciclo_de_vida: null, ingestao: 'pausada', visibilidade: 'visivel', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c8'}
+          # …and paused + oculto still hides (visibility alone decides).
+          - {codigo_produto: '88', banco: 'comex', ciclo_de_vida: null, ingestao: 'pausada', visibilidade: 'oculto', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c9'}
+          # Everything NULL (a row that never had a stage set) → NOT hidden. The gate must
+          # fail CLOSED-on-hiding: unknown never removes a produto from the dashboard.
+          - {codigo_produto: '99', banco: 'pevs', ciclo_de_vida: null, ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c10'}
     expect:
       rows:
         - {source: 'pevs', code: '22'}
         - {source: 'pevs', code: '44'}
+        - {source: 'comex', code: '66'}
+        - {source: 'comex', code: '88'}
 
   # Curadoria SOT: dim_produto_catalog = the CURRENT catalog (latest-wins per
   # (codigo_produto, banco), active rows only). Locks (a) the max edited_at row's

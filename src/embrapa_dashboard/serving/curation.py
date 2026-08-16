@@ -69,7 +69,13 @@ PRODUTO_CATALOG_LOG_SCHEMA = [
     bigquery.SchemaField("banco", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("agrupamento", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("descricao_produto", "STRING", mode="NULLABLE"),
+    # RETIRED (read-only history): the pre-split prose enum. New writes leave it NULL and
+    # set `ingestao`/`visibilidade` instead; readers translate it via visibilidade_efetiva.
     bigquery.SchemaField("ciclo_de_vida", "STRING", mode="NULLABLE"),
+    # The two lifecycle axes (coded). NULL on rows written before the split — readers
+    # default them to ativa/visivel. Added late → self-healed via ALTER on existing tables.
+    bigquery.SchemaField("ingestao", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("visibilidade", "STRING", mode="NULLABLE"),
     bigquery.SchemaField("agrupamento_id", "STRING", mode="NULLABLE"),
     # PPM only: which SIDRA table this code belongs to ('3939' herd headcount /
     # '74' animal production) so catalog-driven ingestion routes it to the right
@@ -109,13 +115,16 @@ def ensure_produto_catalog_log_table(
     table = bigquery.Table(table_fqn, schema=PRODUTO_CATALOG_LOG_SCHEMA)
     table.clustering_fields = ["banco", "codigo_produto"]
     bq.create_table(table, exists_ok=True)
-    # Self-heal a table that predates the sidra_tabela column: create_table(exists_ok)
-    # never widens an existing schema, so add it idempotently. Best-effort — a
-    # transient DDL/permission fault must not block the (rare) curation write.
-    try:
-        bq.query(f"alter table `{table_fqn}` add column if not exists sidra_tabela STRING").result()
-    except Exception as exc:
-        logger.warning("Could not ensure sidra_tabela column on %s: %s", table_fqn, exc)
+    # Self-heal a table that predates a late-added column: create_table(exists_ok) never
+    # widens an existing schema, so add them idempotently. Best-effort — a transient
+    # DDL/permission fault must not block the (rare) curation write.
+    for column in ("sidra_tabela", "ingestao", "visibilidade"):
+        try:
+            bq.query(
+                f"alter table `{table_fqn}` add column if not exists {column} STRING"
+            ).result()
+        except Exception as exc:
+            logger.warning("Could not ensure %s column on %s: %s", column, table_fqn, exc)
     logger.info("Commodity-catalog log ready at %s", table_fqn)
     return table_fqn
 
@@ -203,18 +212,84 @@ def _slug(name: str | None) -> str:
     return re.sub(r"[^a-z0-9]+", "_", s).strip("_")
 
 
-# The Ciclo de Vida (F7) vocabulary — MUST stay in lockstep with the UI dropdown
-# (frontend/src/ui/ViewCadastroProdutos.jsx `_CC_CICLO`) and the dbt visibility gate
-# (dbt/models/core/dim_produto_visibility.sql, which hides exactly CICLO_DE_VIDA_OCULTO).
-# Validating it server-side turns a reword-in-one-place into a LOUD 400 instead of a SILENT
-# fail-open of the visibility gate (the three layers couple on this exact pt-BR literal).
+# ── Lifecycle vocabulary ──────────────────────────────────────────────────────
+# TWO ORTHOGONAL AXES, stored as STABLE MACHINE CODES (never display prose):
+#
+#   ingestao      ativa | pausada    — should the pipeline keep FETCHING new data?
+#   visibilidade  visivel | oculto   — should the researcher SEE it in the dashboard?
+#
+# Why two axes: "buscar dados novos?" and "pesquisador vê?" are independent decisions.
+# The retired single `ciclo_de_vida` enum crossed them into two prose options that BOTH
+# began "Fazer Ingestão" — so the ingestion half carried no information (catalog_resolver
+# never read the column), and the useful "freeze the series but keep the history" state was
+# inexpressible: the only way to stop ingesting was to REMOVE the produto, turning it into
+# an orphan awaiting purge.
+#
+# Why codes, not the pt-BR sentence: the old value WAS the display string, hardcoded as a
+# literal in dim_produto_visibility.sql, in this module and in the UI dropdown — so a reword
+# meant a coordinated 3-place change plus a data migration, and a silent drift would fail
+# the visibility gate OPEN. Codes are stable; the pt-BR labels live only in the UI.
+INGESTAO_ATIVA = "ativa"
+INGESTAO_PAUSADA = "pausada"
+_INGESTAO_VALUES = frozenset({INGESTAO_ATIVA, INGESTAO_PAUSADA})
+
+VISIBILIDADE_VISIVEL = "visivel"
+VISIBILIDADE_OCULTO = "oculto"
+_VISIBILIDADE_VALUES = frozenset({VISIBILIDADE_VISIVEL, VISIBILIDADE_OCULTO})
+
+# LEGACY (retired, read-only): the prose values written into `ciclo_de_vida` before the
+# two-axis split. The log is APPEND-ONLY, so these rows are never rewritten — every reader
+# translates them on read instead (see `visibilidade_efetiva` here and the dbt
+# `catalog_visibilidade` macro, which MUST agree). Kept as constants so the translation is
+# expressed once, not re-typed as literals.
 CICLO_DE_VIDA_VISIVEL = "Fazer Ingestão e deixar disponível"
 CICLO_DE_VIDA_OCULTO = "Fazer Ingestão mas deixar indisponível"
 _CICLO_DE_VIDA_VALUES = frozenset({CICLO_DE_VIDA_VISIVEL, CICLO_DE_VIDA_OCULTO})
+_LEGACY_CICLO_TO_VISIBILIDADE = {
+    CICLO_DE_VIDA_VISIVEL: VISIBILIDADE_VISIVEL,
+    CICLO_DE_VIDA_OCULTO: VISIBILIDADE_OCULTO,
+}
+
+
+def visibilidade_efetiva(visibilidade: str | None, ciclo_de_vida: str | None) -> str:
+    """The effective visibility of a catalog row: the new coded column when present, else
+    the translated legacy prose, else visible.
+
+    The Python twin of the dbt `catalog_visibilidade` macro — the two MUST agree, since one
+    drives the researcher-facing gate (dbt) and the other the admin editor (this module).
+    Defaults to VISIVEL: an unset stage has always meant "not hidden" (the gate is a
+    NOT EXISTS over hidden codes), so an unknown/NULL value must never hide a produto."""
+    if visibilidade in _VISIBILIDADE_VALUES:
+        return visibilidade
+    return _LEGACY_CICLO_TO_VISIBILIDADE.get(ciclo_de_vida or "", VISIBILIDADE_VISIVEL)
+
+
+def ingestao_efetiva(ingestao: str | None) -> str:
+    """The effective ingestion state: the coded column when present, else ATIVA.
+
+    Legacy rows predate the axis and were all ingested (catalog_resolver filtered on
+    `active` alone), so NULL must read as ATIVA — anything else would silently stop
+    ingesting every produto registered before the split."""
+    return ingestao if ingestao in _INGESTAO_VALUES else INGESTAO_ATIVA
 
 # Source codes are numeric and short (NCM 8 digits, HS <=6, SIDRA <=~7); 32 is generous
 # headroom that still rejects a pathologically long value before it is stored.
 MAX_CODE_LEN = 32
+
+
+def _validate_lifecycle(ingestao: str | None, visibilidade: str | None) -> None:
+    """Reject an out-of-vocabulary lifecycle code — a LOUD 400 instead of a silent
+    fail-open of the visibility gate (an unrecognized value reads as VISIVEL, so a typo'd
+    'ocluto' would quietly leave a produto the researcher meant to hide on display)."""
+    if ingestao is not None and ingestao not in _INGESTAO_VALUES:
+        raise ValueError(
+            f"ingestao {ingestao!r} inválido — use um de {sorted(_INGESTAO_VALUES)}."
+        )
+    if visibilidade is not None and visibilidade not in _VISIBILIDADE_VALUES:
+        raise ValueError(
+            f"visibilidade {visibilidade!r} inválido — use um de "
+            f"{sorted(_VISIBILIDADE_VALUES)} (mantém o gate de visibilidade em sincronia)."
+        )
 
 
 def _validate_catalog_edit(codigo_produto: str, banco: str, ciclo_de_vida: str | None) -> None:
@@ -609,16 +684,23 @@ def _insert_catalog_row(
     change_id,
     *,
     sidra_tabela=None,
+    ingestao=None,
+    visibilidade=None,
 ) -> None:
-    """Append one catalog row with a server-side timestamp (parameterized DML)."""
+    """Append one catalog row with a server-side timestamp (parameterized DML).
+
+    New writes set the coded axes (ingestao/visibilidade) and leave the retired
+    `ciclo_de_vida` NULL; readers translate the legacy prose on the rows that still
+    carry it (visibilidade_efetiva / the catalog_visibilidade macro)."""
     sql = f"""
         insert into `{table_fqn}`
             (codigo_produto, banco, agrupamento, descricao_produto,
-             ciclo_de_vida, agrupamento_id, sidra_tabela, active, edited_by, edited_at, change_id)
+             ciclo_de_vida, ingestao, visibilidade, agrupamento_id, sidra_tabela,
+             active, edited_by, edited_at, change_id)
         values
             (@codigo_produto, @banco, @agrupamento, @descricao_produto,
-             @ciclo_de_vida, @agrupamento_id, @sidra_tabela, @active, @edited_by,
-             current_timestamp(), @change_id)
+             @ciclo_de_vida, @ingestao, @visibilidade, @agrupamento_id, @sidra_tabela,
+             @active, @edited_by, current_timestamp(), @change_id)
     """
     p = bigquery.ScalarQueryParameter
     params = [
@@ -627,6 +709,8 @@ def _insert_catalog_row(
         p("agrupamento", "STRING", agrupamento),
         p("descricao_produto", "STRING", descricao_produto),
         p("ciclo_de_vida", "STRING", ciclo_de_vida),
+        p("ingestao", "STRING", ingestao),
+        p("visibilidade", "STRING", visibilidade),
         p("agrupamento_id", "STRING", agrupamento_id),
         p("sidra_tabela", "STRING", sidra_tabela),
         p("active", "BOOL", active),
