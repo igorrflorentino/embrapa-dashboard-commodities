@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.21.0] - 2026-08-16
+
+**O título da página voltou a ser a primeira coisa da página.** Nas perspectivas, os blocos de
+filtro e de convenções métricas eram renderizados ACIMA do `MainScreen` — ou seja, dois blocos
+de controles vinham antes do `<h1>` da própria página.
+
+### Changed
+- **`page-hero` agora precede as barras de filtro e de convenções métricas.** O `<h1>` da view
+  é o **único** cabeçalho da página (o AppShell não tem nenhum), e vinha em terceiro lugar
+  dentro do `<main>`. Isso penalizava justamente quem depende de estrutura: navegar por
+  cabeçalhos é um dos modos principais de leitores de tela, e a ordem de tabulação chegava a
+  "Editar filtros" / "Exportar CSV" / "Editar métricas" antes de qualquer indicação de em que
+  página se está. Também era a causa de o hero ficar empurrado para baixo — o problema que
+  motivou recolher o bloco de convenções na v1.20.0. Nova ordem: hero → filtros → convenções →
+  conteúdo.
+- **Implementado como *slot*, não como prop drilling.** As duas barras continuam sendo
+  construídas e conectadas no `main.jsx` (estado, handlers e condições de renderização
+  inalterados) e são passadas ao `MainScreen` por um único prop `controls`, que decide apenas
+  ONDE colocá-las. Isso evitou passar ~7 props (`onOpen`/`onExport`/`setConventions`/
+  `metricsExpanded`/…) e manteve o `MainScreen` sem conhecer o encanamento de filtros.
+- **Deliberadamente NÃO usamos `order` do flexbox**, que seria o atalho óbvio: ele reordena só
+  o visual e deixa o DOM intacto, então leitor de tela e tabulação continuariam na ordem
+  antiga — trocaria um problema de acessibilidade por outro (descasamento entre ordem visual e
+  ordem de leitura, WCAG 1.3.2), consertando apenas o sintoma estético.
+- Visibilidade preservada: `{controls}` foi inserido nos **6** branches do `MainScreen` que já
+  mostravam as barras (view normal, glossário do banco com e sem verbete, banco *planejado* —
+  onde a barra aparece no modo *preview* e as convenções seguem ausentes por não ser banco
+  live —, view incompatível e view *em breve*). Páginas informativas continuam sem as barras.
+  Espaçamento idêntico: `.screen` tem o mesmo `flex column; gap: 24px` do `.content`.
+  Verificado ao vivo em cada branch pela ordem real do DOM (não só pelo visual), incluindo que
+  trocar a moeda continua aplicando e mantendo o painel de convenções aberto.
+
+---
+
 ## [1.20.1] - 2026-08-15
 
 **Cadastro de produtos: a célula "Descrição" carregava três linhas sem rótulo — duas delas
