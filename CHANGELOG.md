@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.5] - 2026-08-16
+
+**Dependabot agrupava majors com patches, e o resultado é que nada entrava.** Três PRs
+abertos (o mais antigo de 23/06) travados pelo mesmo motivo estrutural.
+
+### Changed
+- **Grupos do Dependabot restritos a `minor`/`patch`** (`.github/dependabot.yml`, os três
+  grupos: github-actions, python, npm). Um bump breaking em qualquer ponto do grupo bloqueava
+  **todos** os bumps seguros junto — o PR apodrecia e, um mês depois, ninguém distinguia mais o
+  rotineiro do arriscado. Majors continuam chegando, agora como PRs **individuais**, um por
+  dependência, cada um revisável e revertível sozinho.
+
+  O caso concreto: o PR #242 empacotou `react` 18→19, `plotly.js` 2→3, `maplibre-gl` 4→6 e
+  `eslint` 9→10 com uma dúzia de patches de rotina. Os três primeiros são breaking changes na UI
+  **viva** (gráficos, coroplético, renderização); o `eslint` 10 ainda quebrava o `npm ci` de
+  saída, por conflito com o peer range do `eslint-plugin-react`. Nada ali podia entrar, nem o
+  que era seguro.
+
+- **Base `node` do Dockerfile do webapi fixada no major** (mesmo arquivo), espelhando a regra
+  que já existia para o `python`. `ci.yml` e `release.yml` rodam build e testes da SPA em
+  **node 22**; um bump de major só no Dockerfile publicaria um bundle de produção compilado por
+  um runtime que nenhum job de CI exercita. **A divergência é o risco — não o build falhar.** Um
+  PR de node 26 ficou ~2 meses aberto exatamente por isso. Bumps de patch do major fixado seguem
+  fluindo; mover de major é migração deliberada, mudando Dockerfile **e** os dois workflows
+  juntos, de preferência para uma linha LTS.
+
 ## [1.24.4] - 2026-08-16
 
 **A imagem do Job de ingestão ficou um mês atrás do `main` — e ninguém tinha como perceber.**

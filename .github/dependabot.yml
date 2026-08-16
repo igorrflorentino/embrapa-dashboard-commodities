@@ -13,9 +13,19 @@ updates:
       prefix: ci
     groups:
       # One grouped PR per week instead of one per action — less review churn.
+      #
+      # MINOR/PATCH ONLY, deliberately. Grouping majors in here is what made the
+      # weekly PRs unmergeable in practice: one breaking bump anywhere in the group
+      # blocks every safe bump alongside it, the PR rots, and after a month nobody
+      # can tell the routine updates from the risky ones. Excluded majors still
+      # arrive — as INDIVIDUAL PRs, one per dependency, each reviewable and
+      # revertable on its own.
       github-actions:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Python deps (pyproject.toml + uv.lock). Keeps the ingestion/transform/webapi
   # libraries current with security + feature bumps; grouped into one weekly PR.
@@ -26,9 +36,13 @@ updates:
     commit-message:
       prefix: build
     groups:
+      # Minor/patch only — see the github-actions group above for why.
       python:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Frontend deps (frontend/package.json + package-lock.json). The bundle ships
   # plotly + maplibre, so security bumps matter; grouped into one weekly PR.
@@ -39,9 +53,19 @@ updates:
     commit-message:
       prefix: build
     groups:
+      # Minor/patch only — see the github-actions group above. This one is the
+      # reason the rule exists: the grouped PR bundled react 18→19, plotly 2→3,
+      # maplibre 4→6 and eslint 9→10 with a dozen routine patches. Those four
+      # majors are breaking changes to the LIVE dashboard UI (charts, choropleth,
+      # rendering), and eslint 10 additionally broke `npm ci` outright by
+      # conflicting with eslint-plugin-react's peer range — so nothing in the PR
+      # could land, safe or not. Each of those deserves its own migration.
       npm:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Cloud Run image base layers (deploy/*/Dockerfile). Both pin python:3.12-slim /
   # node:22-slim by floating tag; the docker updater bumps the pinned base (and,
@@ -58,11 +82,21 @@ updates:
       # The project is hard-pinned to Python 3.12 (`requires-python == "3.12.*"`,
       # `.python-version` 3.12.11, ruff `target-version = py312`), so a 3.13/3.14
       # base image would break `uv sync` inside the container. Stay on 3.12 —
-      # patch/digest bumps still flow, and node base bumps are unaffected.
+      # patch/digest bumps still flow.
       - dependency-name: "python"
         update-types:
           - "version-update:semver-major"
           - "version-update:semver-minor"
+      # Same reasoning, for the frontend build stage. `ci.yml` and `release.yml`
+      # both run the SPA build+tests on node 22, so a major bump HERE alone would
+      # ship a production bundle compiled by a runtime no CI job ever exercises —
+      # the divergence, not the build succeeding, is the risk (a node-26 PR sat
+      # open for ~2 months on exactly this). Moving node majors is a deliberate
+      # migration that changes the Dockerfile AND both workflows together, ideally
+      # onto an LTS line. Patch bumps of the pinned major still flow.
+      - dependency-name: "node"
+        update-types:
+          - "version-update:semver-major"
   - package-ecosystem: docker
     directory: /deploy/ingestion
     schedule:
