@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.7] - 2026-08-16
+
+**A versão do node não estava declarada em lugar nenhum** — CI, Dockerfile e dev local
+podiam divergir sem nada avisar, e divergiam.
+
+### Added
+- **`.nvmrc` (node 22) como fonte única**, lido agora pelo `ci.yml` e pelo `release.yml` via
+  `node-version-file` em vez de `"22"` escrito à mão nos dois. O `deploy/webapi/Dockerfile`
+  ganhou comentário amarrando o `node:22-slim` a ele. Antes, a versão aparecia hardcoded em
+  três lugares independentes e em nenhum que uma máquina de desenvolvimento fosse ler.
+
+  O sintoma que revelou isso: com node 25 local, os **36 testes do `AppShell` falham** com
+  `localStorage.removeItem is not a function` — uma interação do jsdom, sem relação com o
+  código — enquanto o CI, em node 22, fica verde. Um desenvolvedor perseguiria um bug que não
+  existe, ou pior, ignoraria a suíte por considerá-la quebrada. Sob node 22 passam 787/787.
+
+- **Nota em `docs/testing.md`** com o caminho para alinhar, inclusive sem gerenciador de versão
+  (`brew install node@22`, keg-only, sem tocar no node global).
+
+Fecha o outro lado da regra de node do #256: lá, impedir que a base do Dockerfile suba de major
+sozinha; aqui, garantir que os três pontos concordem e que o dev local saiba qual é.
+
 ## [1.24.6] - 2026-08-16
 
 **A data ao lado da versão, na página *Sobre*, não era a data da versão.**
