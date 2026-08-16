@@ -119,6 +119,9 @@ function fetchSourceMeta(id) {
         // single frontend global both ViewAbout (footer) and feedback.js (diagnostics) read,
         // so neither shows the stale package.json literal once any source-meta resolves.
         if (m.appVersion) window.APP_VERSION = m.appVersion;
+        // …and WHEN that version shipped (from CHANGELOG.md, backend-side). Sobre renders
+        // it beside the version; absent ⇒ the version shows alone, never a stand-in date.
+        if (m.appReleaseDate) window.APP_RELEASE_DATE = m.appReleaseDate;
         overlayBancoMetadata(id, m); // live maturity/coverage → registry banco
       } else {
         // HTTP error / empty: record an EMPTY resolution so hasMeta() turns true

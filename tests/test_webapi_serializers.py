@@ -7,6 +7,8 @@ mass quantity ÷1e3, volume ÷1e6) and the pt-BR→en family rename the views ne
 
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 import pytest
 
@@ -863,6 +865,32 @@ def test_serialize_source_meta_carries_app_version():
     assert out["appVersion"] == s._APP_VERSION
     assert isinstance(out["appVersion"], str) and out["appVersion"]  # present + non-empty
     assert "appVersion" not in s.serialize_source_meta({})
+
+
+def test_serialize_source_meta_carries_the_release_date_of_that_version(monkeypatch):
+    """appReleaseDate is the date the RUNNING version shipped, pt-BR formatted.
+
+    Sobre renders it right beside the version. It used to render the PEVS Gold refresh
+    stamp there instead, under a lone "Versão" label — so a build released today showed
+    a weeks-old date and read as stale, while also speaking for one banco out of five."""
+    from embrapa_dashboard import release
+
+    monkeypatch.setattr(s, "_APP_RELEASE_LABEL", s._UNRESOLVED)  # bypass the process cache
+    monkeypatch.setattr(release, "release_date", lambda *a, **k: date(2026, 8, 16))
+    out = s.serialize_source_meta({"source": "x", "gold_table": "g"})
+    assert out["appReleaseDate"] == "16 ago 2026"
+
+
+def test_serialize_source_meta_omits_the_release_date_when_unknown(monkeypatch):
+    """No CHANGELOG section (dev build, or the file absent from the image) ⇒ None, so the
+    SPA shows the version alone. Substituting today's date would present an OLD build as
+    fresh — the exact dishonesty this field exists to remove."""
+    from embrapa_dashboard import release
+
+    monkeypatch.setattr(s, "_APP_RELEASE_LABEL", s._UNRESOLVED)
+    monkeypatch.setattr(release, "release_date", lambda *a, **k: None)
+    out = s.serialize_source_meta({"source": "x", "gold_table": "g"})
+    assert out["appReleaseDate"] is None
 
 
 def test_serialize_monthly_empty_emits_twelve_values():
