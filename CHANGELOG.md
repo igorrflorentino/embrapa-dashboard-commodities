@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.0] - 2026-08-16
+
+### Added
+- **Legenda in-product no Cadastro de produtos**: "Como ler esta tabela e o que cada edição
+  faz" — o que cada uma das 10 colunas representa e o que cada uma das 8 edições realmente
+  provoca. Recolhida por padrão (mesmo padrão `<details>` da legenda de flags da Qualidade),
+  então não empurra a tabela para baixo.
+- As edições ganharam **etiquetas de consequência** — *reversível*, *pede confirmação*,
+  *em lote* — porque o risco real varia muito entre elas e não dava para inferir da tela.
+  A legenda é explícita justamente nos dois pontos mais fáceis de ler errado: **remover não
+  apaga dado** (os dados ficam órfãos no Gold, só um operador apaga, com backup) e **ocultar
+  não para a ingestão** (é só decisão de exibição). Fecha lembrando que o registro é
+  somente-adição e que as mudanças valem na próxima atualização.
+
+### Changed
+- O card de introdução dizia que "o **Ciclo de Vida** controla a exibição" — desatualizado
+  desde a divisão em dois eixos (v1.23.0). Agora explica que **Ingestão** e **Exibição**
+  controlam, separadamente, se o pipeline busca dados novos e se o pesquisador vê o produto.
+- Um teste passa a exigir que **toda coluna da tabela esteja documentada** na legenda: se
+  alguém adicionar uma coluna e esquecer de explicá-la, o teste quebra em vez de o
+  pesquisador encontrar um cabeçalho sem explicação. Os contadores do resumo ("10 colunas ·
+  8 ações") saem dos dados, não são digitados à mão.
+
 ## [1.23.1] - 2026-08-16
 
 ### Changed
