@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.4] - 2026-08-16
+
+**A imagem do Job de ingestão ficou um mês atrás do `main` — e ninguém tinha como perceber.**
+Descoberto ao disparar o Job manualmente para validar a v1.24.3.
+
+### Added
+- **Workflow `Deploy ingestion job`** (`.github/workflows/ingestion-job-deploy.yml`): a cada
+  merge no `main` que toque `src/embrapa_dashboard/**`, `pyproject.toml`, `uv.lock` ou
+  `deploy/ingestion/**`, reconstrói a imagem e aponta o Job para ela com um
+  `gcloud run jobs update --image` cirúrgico — só a imagem muda, então env, o secret
+  `COMTRADE_API_KEY`, a SA de runtime, `maxRetries` e o timeout persistem. **Nunca executa**
+  o Job (a identidade de CI não recebe `run.jobs.run`); a próxima execução agendada pega a
+  imagem. A tag é o SHA curto do commit, para que "qual commit o Job está rodando?" seja
+  respondível pelo console — a defasagem passou despercebida justamente por não ser.
+
+  Não entrou no `release.yml` de propósito: aquele workflow **desacopla build de deploy** por
+  design, e não foi uma tag `v*` que defasou — foi o `main` andando à frente do Job. O
+  precedente correto é o `dbt-build-prod.yml`, que já auto-roda contra prod no merge. Auto-deploy
+  é seguro para *este* artefato: é batch, sem UI e sem sessão de usuário viva — a imagem nova só
+  afeta a próxima execução, e o rollback é um `--image <anterior>`. O Service do webapi segue
+  manual.
+
+  Requer configuração GCP one-time (identidade dedicada `sa-ingest-deploy-ci` + variável
+  `GCP_INGEST_DEPLOY_SERVICE_ACCOUNT`), documentada no cabeçalho do workflow. **Enquanto a
+  variável não existir o job pula** (verde), então o merge não muda nada e o workflow se ativa
+  sozinho depois.
+
+### Contexto — o que a defasagem custou
+O Job rodava a imagem `v1.17.0`, de 14/07, até 16/08. A correção de alertas transientes da
+v1.19.0 nunca chegou à produção, então a execução mensal do UN Comtrade saía 1 e disparava
+alerta vermelho nos dias 15/07 e 15/08 — em ambos os casos por 2 chunks com `HTTP 429`
+rate-limited (`Retry-After` de 6s e 13s, ou seja `ComtradeTransientError`) contra 862 chunks
+bem-sucedidos. O log de 15/08 prova a versão: a linha de resumo não traz o qualificador
+`(all transient — expected)` que o código atual sempre imprime.
+
 ## [1.24.3] - 2026-08-16
 
 **Segunda rodada da auditoria — verificação mais profunda e busca por bugs relacionados.**

@@ -1,0 +1,239 @@
+# Build + deploy the ingestion Cloud Run JOB (`embrapa-ingest-all`) after merges
+# to main that touch the code baked into its image.
+#
+# WHY THIS EXISTS — the drift it prevents (observed 2026-08-16):
+#   The Job was running the image tagged `v1.17.0`, built 2026-07-14, while main
+#   had moved on for a MONTH. Nothing forced a redeploy when `cli.py` or a
+#   pipeline changed, and unlike the webapi Service (which an operator redeploys
+#   whenever a UI change ships) the Job has no user-visible surface to remind
+#   anyone it is stale. The concrete cost: v1.19.0 made chunked ingest failures
+#   transient-aware, but the Job never got it, so the monthly UN Comtrade run
+#   kept exiting 1 on two HTTP 429 rate-limit chunks (a textbook self-healing
+#   condition, 862/864 chunks fine) and paged a human every 15th of the month.
+#
+# WHY NOT A STEP IN release.yml:
+#   That workflow deliberately DECOUPLES build from deploy — it bakes an
+#   immutable versioned image on a `v*` tag and lets an operator point Cloud Run
+#   at it later. Adding a deploy there would contradict its premise, and a `v*`
+#   tag is not what drifted: main was ahead of the deployed Job, tag or no tag.
+#
+# WHY AUTO-DEPLOY IS SAFE *FOR THIS ARTIFACT*:
+#   The ingestion Job is a batch with NO UI and no live user sessions — a new
+#   image affects only the next scheduled run, and rolling back is one
+#   `gcloud run jobs update --image <previous>`. This mirrors the precedent
+#   already set by dbt-build-prod.yml, which auto-runs against prod on merges
+#   touching `dbt/**`. The webapi SERVICE deliberately stays manual.
+#
+# WHY THE SURGICAL `--image` SWAP INSTEAD OF deploy/ingestion/deploy.sh:
+#   deploy.sh rebuilds the Job's env from an allowlist over `.env`, which REPLACES
+#   the whole env block. CI has no `.env`, so running it here would strip
+#   GCP_PROJECT_ID/GCS_BUCKET/IBGE_*/BCB_* and the COMTRADE_API_KEY secret ref.
+#   `gcloud run jobs update --image` changes ONLY the image; env, secrets, the
+#   runtime SA, retries and timeout all persist. deploy.sh remains the right tool
+#   when the ENV itself must change — that stays an operator action.
+#
+# TRIGGER MODEL:
+#   • push to main + a deliberately BROAD paths filter → runs automatically
+#   • workflow_dispatch → manual redeploy (e.g. after an env-only change, or to
+#     re-point the Job at main's tip)
+#
+#   The paths filter covers all of `src/embrapa_dashboard/**` rather than an
+#   enumerated list of ingestion modules. Over-triggering costs one ~3-minute
+#   build and a no-op image swap; UNDER-triggering silently recreates the exact
+#   month-long drift this workflow exists to prevent. Bias to over-trigger.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ONE-TIME GCP SETUP (reuses the WIF pool that dbt-build-prod.yml created; adds a
+# dedicated least-privilege deploy identity, matching the per-purpose SA
+# convention of sa-dbt-build-ci / sa-release-ci / sa-dashboard-smoke-ci):
+#
+#   PROJECT_ID=embrapa-dashboard-commodities
+#   REGION=us-central1
+#   JOB_SA=sa-data-pipeline-prod@${PROJECT_ID}.iam.gserviceaccount.com   # the Job's RUNTIME SA
+#
+#   # 1) The CI deploy identity.
+#   gcloud iam service-accounts create sa-ingest-deploy-ci \
+#     --project="${PROJECT_ID}" --display-name="GitHub CI — build+deploy the ingestion Job"
+#
+#   # 2) Push images to the Job's Artifact Registry repo.
+#   gcloud artifacts repositories add-iam-policy-binding embrapa-jobs \
+#     --project="${PROJECT_ID}" --location="${REGION}" \
+#     --member="serviceAccount:sa-ingest-deploy-ci@${PROJECT_ID}.iam.gserviceaccount.com" \
+#     --role="roles/artifactregistry.writer"
+#
+#   # 3) Update the Cloud Run Job. run.developer is the narrowest PREDEFINED role
+#   #    that allows `jobs update`; it does NOT grant run.jobs.run, so this identity
+#   #    can redeploy the Job but cannot EXECUTE it (no unattended ingest, no spend).
+#   gcloud run jobs add-iam-policy-binding embrapa-ingest-all \
+#     --project="${PROJECT_ID}" --region="${REGION}" \
+#     --member="serviceAccount:sa-ingest-deploy-ci@${PROJECT_ID}.iam.gserviceaccount.com" \
+#     --role="roles/run.developer"
+#
+#   # 4) Deploying a Job that RUNS AS another SA requires actAs on that SA.
+#   #    Scoped to the one runtime SA — not project-wide.
+#   gcloud iam service-accounts add-iam-policy-binding "${JOB_SA}" \
+#     --project="${PROJECT_ID}" \
+#     --member="serviceAccount:sa-ingest-deploy-ci@${PROJECT_ID}.iam.gserviceaccount.com" \
+#     --role="roles/iam.serviceAccountUser"
+#
+#   # 5) Let THIS repo's Actions impersonate it via the existing WIF pool.
+#   PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
+#   gcloud iam service-accounts add-iam-policy-binding \
+#     "sa-ingest-deploy-ci@${PROJECT_ID}.iam.gserviceaccount.com" --project="${PROJECT_ID}" \
+#     --role="roles/iam.workloadIdentityUser" \
+#     --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/igorrflorentino/embrapa-dashboard-produtos-agricolas"
+#
+#   # 6) Repo → Settings → Secrets and variables → Actions → Variables (or:
+#   #    gh variable set GCP_INGEST_DEPLOY_SERVICE_ACCOUNT --body "sa-ingest-deploy-ci@${PROJECT_ID}.iam.gserviceaccount.com")
+#   #      GCP_INGEST_DEPLOY_SERVICE_ACCOUNT = sa-ingest-deploy-ci@${PROJECT_ID}.iam.gserviceaccount.com
+#   #    (GCP_PROJECT_ID + GCP_WIF_PROVIDER already exist from dbt-build-prod.yml.)
+#   #    Optional overrides (defaults shown): INGEST_JOB_REGION=us-central1,
+#   #      INGEST_JOB_AR_REPO=embrapa-jobs, INGEST_JOB_NAME=embrapa-ingest-all.
+#
+#   UNTIL step 6 is done this workflow SKIPS (see the guard on the job below), so
+#   it is safe to merge first and wire up GCP afterwards. Verify with a manual
+#   run: Actions → "Deploy ingestion job" → Run workflow.
+
+name: Deploy ingestion job
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/embrapa_dashboard/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'deploy/ingestion/**'
+      - '.github/workflows/ingestion-job-deploy.yml'
+  workflow_dispatch:
+
+# Never race two deploys onto the same Job. Don't cancel one mid-flight either —
+# a cancelled run could leave the Job pointing at a half-pushed image.
+concurrency:
+  group: ingestion-job-deploy
+  cancel-in-progress: false
+
+# id-token: write → mint the OIDC token for keyless WIF auth.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Build + deploy ingestion job
+    # Forks can't reach the WIF provider (security boundary).
+    #
+    # The SERVICE-ACCOUNT guard is what makes this workflow safe to merge BEFORE
+    # the one-time GCP setup above has been run: with the variable unset the job
+    # SKIPS (green) instead of failing auth and painting main red on every push.
+    # Once GCP_INGEST_DEPLOY_SERVICE_ACCOUNT is set, it activates on its own —
+    # no code change needed. A skipped job also satisfies required status checks.
+    if: >-
+      github.event.repository.fork == false
+      && vars.GCP_INGEST_DEPLOY_SERVICE_ACCOUNT != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Resolve image ref
+        id: vars
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.INGEST_JOB_REGION || 'us-central1' }}
+          AR_REPO: ${{ vars.INGEST_JOB_AR_REPO || 'embrapa-jobs' }}
+          JOB_NAME: ${{ vars.INGEST_JOB_NAME || 'embrapa-ingest-all' }}
+        run: |
+          set -euo pipefail
+          # Tag = the merged commit's short SHA: immutable, and it makes
+          # "which commit is the Job running?" answerable from the console alone
+          # (the drift above was invisible precisely because nobody could tell).
+          SHA="$(git rev-parse --short HEAD)"
+          HOST="${REGION}-docker.pkg.dev"
+          {
+            echo "host=${HOST}"
+            echo "region=${REGION}"
+            echo "job_name=${JOB_NAME}"
+            echo "project_id=${PROJECT_ID}"
+            echo "image=${HOST}/${PROJECT_ID}/${AR_REPO}/${JOB_NAME}:${SHA}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Auth to GCP via Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_INGEST_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: 'access_token'
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3
+
+      - name: Docker login to Artifact Registry
+        run: |
+          echo '${{ steps.auth.outputs.access_token }}' \
+            | docker login -u oauth2accesstoken --password-stdin "${{ steps.vars.outputs.host }}"
+
+      # Same image as deploy/ingestion/cloudbuild.yaml: deploy/ingestion/Dockerfile
+      # with the repo root as context — just built in the runner and pushed.
+      - name: Build + push image
+        run: |
+          set -euo pipefail
+          IMAGE='${{ steps.vars.outputs.image }}'
+          docker build -f deploy/ingestion/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      # ONLY the image changes. Env vars, the COMTRADE_API_KEY secret ref, the
+      # runtime SA, maxRetries and the task timeout all persist on the Job.
+      - name: Point the Job at the new image
+        run: |
+          set -euo pipefail
+          gcloud run jobs update '${{ steps.vars.outputs.job_name }}' \
+            --project '${{ steps.vars.outputs.project_id }}' \
+            --region '${{ steps.vars.outputs.region }}' \
+            --image '${{ steps.vars.outputs.image }}'
+
+      # Read the Job back and assert BOTH that the swap took AND that the env
+      # survived it. A silently-emptied env would not fail the update — it would
+      # fail hours later, unattended, in the nightly run.
+      - name: Verify the deployed image + surviving config
+        run: |
+          set -euo pipefail
+          JOB='${{ steps.vars.outputs.job_name }}'
+          COMMON=(--project '${{ steps.vars.outputs.project_id }}'
+                  --region '${{ steps.vars.outputs.region }}')
+
+          DEPLOYED="$(gcloud run jobs describe "$JOB" "${COMMON[@]}" \
+            --format='value(spec.template.spec.template.spec.containers[0].image)')"
+          if [ "$DEPLOYED" != '${{ steps.vars.outputs.image }}' ]; then
+            echo "ERROR: job is running '$DEPLOYED', expected '${{ steps.vars.outputs.image }}'" >&2
+            exit 1
+          fi
+
+          ENV_NAMES="$(gcloud run jobs describe "$JOB" "${COMMON[@]}" \
+            --format='value(spec.template.spec.template.spec.containers[0].env[].name)')"
+          for key in GCP_PROJECT_ID GCS_BUCKET BQ_LOCATION COMTRADE_API_KEY; do
+            case ";${ENV_NAMES};" in
+              *";${key};"*) ;;
+              *) echo "ERROR: env var '$key' missing after the image swap." >&2; exit 1 ;;
+            esac
+          done
+          echo "Image and env verified."
+
+      - name: Job summary
+        run: |
+          {
+            echo "### Ingestion Job redeployed"
+            echo ""
+            echo "- Job: \`${{ steps.vars.outputs.job_name }}\` (\`${{ steps.vars.outputs.region }}\`)"
+            echo "- Image: \`${{ steps.vars.outputs.image }}\`"
+            echo ""
+            echo "Only the image changed — env, secrets and the runtime SA persist."
+            echo "The next scheduled run picks this up; nothing was executed here."
+            echo ""
+            echo "Roll back with:"
+            echo '```bash'
+            echo "gcloud run jobs update ${{ steps.vars.outputs.job_name }} --region ${{ steps.vars.outputs.region }} --image <previous-image>"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

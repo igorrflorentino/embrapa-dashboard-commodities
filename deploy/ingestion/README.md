@@ -85,6 +85,31 @@ knobs, and the deploy-time `INGEST_*` / `INGEST_SCHEDULE_*` vars (read by these
 scripts, never by the app). The job runs **as** the ingestion SA, so it
 authenticates via the runtime identity — no keyfile, no impersonation.
 
+### Keeping the deployed image current (CI auto-deploy)
+
+`make ingest-job-deploy` is the **operator** path — it is what you run when the
+Job's **env or config** must change. Nothing about it is automatic, and that is
+how the Job silently fell a month behind `main`: it ran the `v1.17.0` image
+(built 2026-07-14) until 2026-08-16, so a fix merged in v1.19.0 never reached
+production and the monthly UN Comtrade run kept paging on self-healing HTTP 429s.
+
+`.github/workflows/ingestion-job-deploy.yml` closes that gap: on every merge to
+`main` touching `src/embrapa_dashboard/**`, `pyproject.toml`, `uv.lock` or
+`deploy/ingestion/**`, CI rebuilds the image and points the Job at it with a
+**surgical `gcloud run jobs update --image`** — only the image changes, so env,
+the `COMTRADE_API_KEY` secret ref, the runtime SA, retries and timeout all
+persist. It never *executes* the Job (the CI identity is deliberately not granted
+`run.jobs.run`); the next scheduled run picks the image up.
+
+The image is tagged with the commit's short SHA, so "which commit is the Job
+running?" is answerable from the console — the earlier drift was invisible
+precisely because it wasn't.
+
+Requires the one-time GCP setup documented in that workflow's header (a dedicated
+`sa-ingest-deploy-ci` identity + the `GCP_INGEST_DEPLOY_SERVICE_ACCOUNT` repo
+variable). **Until that variable is set the workflow skips**, so merging it
+changes nothing; it activates by itself once the variable exists.
+
 ## Schedule
 
 ```bash
