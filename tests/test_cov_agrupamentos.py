@@ -117,6 +117,70 @@ def test_record_group_rename_retags_members(monkeypatch):
     assert retagged == [("madeira", "Madeira Nova")]
 
 
+def test_record_group_rename_forwards_the_lifecycle_axes(monkeypatch):
+    """A rename must carry each member's stored ingestao/visibilidade through.
+
+    The writer would PRESERVE an omitted axis anyway, but only by issuing an extra read
+    per member — and _active_member_rows already fetched the row. Forwarding avoids one
+    BigQuery round-trip per member on a bulk path (a large agrupamento has 150+)."""
+    from embrapa_dashboard.serving import agrupamentos as cg
+    from embrapa_dashboard.serving import curation
+
+    _patch_common(monkeypatch, cg, {"madeira": "Madeira"})
+    member = SimpleNamespace(
+        codigo_produto="4403",
+        banco="comex",
+        descricao_produto=None,
+        ciclo_de_vida=None,
+        ingestao="pausada",
+        visibilidade="oculto",
+    )
+    monkeypatch.setattr(cg, "_active_member_rows", lambda bq, t, gid: [member])
+    seen = []
+    monkeypatch.setattr(
+        curation,
+        "record_produto_catalog",
+        lambda *a, **k: seen.append((k.get("ingestao"), k.get("visibilidade"))) or {"ok": True},
+    )
+    cg.record_group(
+        "Madeira Nova",
+        _HEADERS,
+        group_id="madeira",
+        settings=_settings(),
+        client=mock.Mock(),
+        invalidate_cache=False,
+    )
+    # A hidden + paused member stays hidden + paused after an unrelated rename.
+    assert seen == [("pausada", "oculto")]
+
+
+def test_record_group_rename_tolerates_a_pre_split_log_table(monkeypatch):
+    """_active_member_rows selects the two axis columns; on a log table that predates
+    them BigQuery raises BadRequest. Without a fallback the whole rename would 500."""
+    from google.api_core.exceptions import BadRequest
+
+    from embrapa_dashboard.serving import agrupamentos as cg
+
+    legacy_row = SimpleNamespace(
+        codigo_produto="4403", banco="comex", descricao_produto=None, ciclo_de_vida=None
+    )
+
+    class _BQ:
+        def __init__(self):
+            self.queries = []
+
+        def query(self, sql, job_config=None):
+            self.queries.append(sql)
+            if "ingestao" in sql:
+                raise BadRequest("Unrecognized name: ingestao")
+            return mock.Mock(result=lambda: [legacy_row])
+
+    bq = _BQ()
+    rows = cg._active_member_rows(bq, "proj.ds.tbl", "madeira")
+    assert rows == [legacy_row], "rename would have crashed on a pre-split table"
+    assert len(bq.queries) == 2, "expected the failed attempt + the legacy retry"
+
+
 def test_record_group_rename_missing_raises(monkeypatch):
     from embrapa_dashboard.serving import agrupamentos as cg
 

@@ -295,6 +295,62 @@ def test_ingest_ibge_batch_continues_after_chunk_failure(
     assert "2011 failed" in result.output or "2011-2011 failed" in result.output
 
 
+def test_ingest_ibge_batch_exits_zero_when_every_failure_is_transient(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    """A purely TRANSIENT chunk failure must not page a human.
+
+    A SIDRA connection drop on a large year window is the failure this command exists to
+    survive — it self-heals on the next run. The chunk runner marks it transient, so the
+    summary exits 0 and the Cloud Monitoring job-failure alert stays quiet. (Contrast with
+    the RuntimeError test above, which is NOT transient and still exits 1.)"""
+    from embrapa_dashboard.ibge.client import SidraTransientError
+
+    settings.ibge_start_year = 2010
+    settings.ibge_end_year = 2012
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
+    monkeypatch.setattr(cli, "recommended_chunk_years", lambda n_products: 1)
+    monkeypatch.setattr(cli, "resolve_clients", lambda s: (MagicMock(), MagicMock()))
+
+    def flaky(chunk_settings: Settings, **kwargs: object) -> str:
+        if chunk_settings.ibge_start_year == 2011:
+            raise SidraTransientError("HTTP 503 for SIDRA")
+        return "proj.bronze_ibge.sidra_t289_raw"
+
+    monkeypatch.setattr(cli.ibge_pipeline, "run", flaky)
+
+    result = runner.invoke(cli.app, ["ingest", "ibge-batch"])
+
+    assert result.exit_code == 0, result.output
+    assert "transient" in result.output
+
+
+def test_ingest_ibge_batch_exits_one_when_any_failure_is_not_transient(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    """One non-transient failure alongside a transient one must still alert."""
+    from embrapa_dashboard.ibge.client import SidraTransientError
+
+    settings.ibge_start_year = 2010
+    settings.ibge_end_year = 2012
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
+    monkeypatch.setattr(cli, "recommended_chunk_years", lambda n_products: 1)
+    monkeypatch.setattr(cli, "resolve_clients", lambda s: (MagicMock(), MagicMock()))
+
+    def flaky(chunk_settings: Settings, **kwargs: object) -> str:
+        if chunk_settings.ibge_start_year == 2010:
+            raise SidraTransientError("HTTP 503 for SIDRA")
+        if chunk_settings.ibge_start_year == 2011:
+            raise ValueError("a real bug")  # not a SourceTransientError
+        return "proj.bronze_ibge.sidra_t289_raw"
+
+    monkeypatch.setattr(cli.ibge_pipeline, "run", flaky)
+
+    result = runner.invoke(cli.app, ["ingest", "ibge-batch"])
+
+    assert result.exit_code == 1, result.output
+
+
 # ─── ingest comtrade ──────────────────────────────────────────────────────────
 def _wire_comtrade(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> Settings:
     """Common stubs for the comtrade ingest command (no GCP, explicit reporters so

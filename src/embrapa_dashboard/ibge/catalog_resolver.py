@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 
+from google.api_core.exceptions import BadRequest
 from google.cloud import bigquery
 
 from embrapa_dashboard import observability
@@ -147,32 +148,53 @@ def _query_catalog_codes(
         bigquery.ScalarQueryParameter("banco", "STRING", banco)
     ]
     if sidra_tabela is not None:
-        inner_cols = "codigo_produto, active, ingestao, sidra_tabela"
+        extra_cols = ", sidra_tabela"
         extra_filter = "and sidra_tabela = @sidra_tabela"
         params.append(bigquery.ScalarQueryParameter("sidra_tabela", "STRING", sidra_tabela))
     else:
-        inner_cols = "codigo_produto, active, ingestao"
+        extra_cols = ""
         extra_filter = ""
-    # `ingestao = 'pausada'` FREEZES a produto: stop fetching new data, keep everything
-    # already in Gold (and keep showing it — visibility is a separate axis). Before the
-    # two-axis split the only way to stop ingesting was to REMOVE the produto, which turned
-    # it into an orphan awaiting purge. NULL predates the axis and must read as 'ativa' —
-    # anything else would silently stop ingesting every produto registered before the split.
-    sql = f"""
-        select codigo_produto from (
-          select {inner_cols}, row_number() over (
-            partition by codigo_produto, banco order by edited_at desc, change_id desc
-          ) as _rn
-          from `{table}`
-          where banco = @banco
-        )
-        where _rn = 1 and active and coalesce(ingestao, 'ativa') != 'pausada' {extra_filter}
-        order by codigo_produto
-    """
+
+    def _sql(*, with_ingestao: bool) -> str:
+        # `ingestao = 'pausada'` FREEZES a produto: stop fetching new data, keep everything
+        # already in Gold (and keep showing it — visibility is a separate axis). Before the
+        # two-axis split the only way to stop ingesting was to REMOVE the produto, which
+        # turned it into an orphan awaiting purge. NULL predates the axis and must read as
+        # 'ativa' — anything else would silently stop ingesting every produto registered
+        # before the split.
+        ingestao_col = ", ingestao" if with_ingestao else ""
+        pause_filter = "and coalesce(ingestao, 'ativa') != 'pausada'" if with_ingestao else ""
+        return f"""
+            select codigo_produto from (
+              select codigo_produto, active{ingestao_col}{extra_cols}, row_number() over (
+                partition by codigo_produto, banco order by edited_at desc, change_id desc
+              ) as _rn
+              from `{table}`
+              where banco = @banco
+            )
+            where _rn = 1 and active {pause_filter} {extra_filter}
+            order by codigo_produto
+        """
+
     job_config = bigquery.QueryJobConfig(query_parameters=params)
     if settings.bq_max_bytes_billed:
         job_config.maximum_bytes_billed = settings.bq_max_bytes_billed
-    rows = client.query(sql, job_config=job_config).result()
+    try:
+        rows = client.query(_sql(with_ingestao=True), job_config=job_config).result()
+    except BadRequest:
+        # The log table predates the `ingestao` column. Retry WITHOUT the pause filter
+        # rather than let the caller's broad except fall back to the env codes: if the
+        # column does not exist, no row can be paused, so dropping the filter is EXACTLY
+        # equivalent — whereas the env fallback would abandon the catalog entirely
+        # (skipping codes the researcher added, and re-fetching ones they paused).
+        logger.warning(
+            "Catalog log has no `ingestao` column yet (pre two-axis split) — resolving "
+            "without the pause filter; no produto can be paused without that column."
+        )
+        job_config = bigquery.QueryJobConfig(query_parameters=params)
+        if settings.bq_max_bytes_billed:
+            job_config.maximum_bytes_billed = settings.bq_max_bytes_billed
+        rows = client.query(_sql(with_ingestao=False), job_config=job_config).result()
     # Strip FIRST, then keep only non-empty codes: a whitespace-only codigo_produto
     # (' ') is truthy BEFORE stripping, so a naive `if row[...]` would let it survive
     # as '' — inflating the resolved count against the safety cap and injecting an empty

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.2] - 2026-08-16
+
+**Correção dos 3 achados da auditoria da própria sessão (v1.19.0 → v1.24.1).** Nenhum causava
+perda de dado nem expunha produto oculto; o segundo era silencioso.
+
+### Fixed
+- **Chunks do IBGE em lote nunca eram marcados como transientes** (`cli.py`): o `ChunkOutcome`
+  do caminho de falha era criado sem `transient=`, então `ingest ibge-batch` e a fase IBGE do
+  `reconcile` sempre saíam com código 1 e disparavam o alerta — mesmo numa queda de conexão do
+  SIDRA, que se autocorrige na próxima execução. É justamente a falha que esse comando existe
+  para sobreviver (janelas grandes), e COMEX/COMTRADE já marcavam. A direção do erro era segura
+  (alerta a mais), mas a feature não funcionava na fonte transiente mais provável.
+- **Coluna ausente fazia a ingestão abandonar o catálogo em silêncio**
+  (`ibge/catalog_resolver.py`): a consulta passou a referenciar `ingestao`; numa tabela que
+  ainda não tem essa coluna o `BadRequest` era engolido pelo `except` amplo do chamador e a
+  ingestão caía para os códigos do `.env` — deixando de buscar o que o pesquisador cadastrou e
+  buscando o que ele **pausou**, tudo com o job saindo 0 (nada alertava). Agora o resolver
+  refaz a consulta **sem o filtro de pausa**, o que é exatamente equivalente: se a coluna não
+  existe, nenhuma linha pode estar pausada. O caminho de leitura já tinha proteção análoga.
+- **Renomear agrupamento fazia uma consulta extra por membro** (`serving/agrupamentos.py`):
+  `_restamp_members` não repassava os dois eixos, então cada membro caía no ramo de preservação
+  do writer e disparava um `_current_lifecycle` — apesar de a linha já ter sido lida. Num
+  agrupamento grande (Madeira tem 226 entradas) isso somava ~20-25% a uma operação já lenta.
+  Os eixos agora são repassados; a leitura tolera uma tabela pré-split (senão o rename passaria
+  a quebrar nela, que seria a mesma classe de bug do achado anterior).
+
+### Changed
+- 6 testes novos fixam as três correções: falha transiente do IBGE sai 0 **e** uma não-transiente
+  junto ainda sai 1; o resolver continua usando o catálogo quando a coluna falta (e o filtro de
+  pausa está mesmo na consulta); o rename repassa `ingestao`/`visibilidade` e sobrevive à tabela
+  antiga.
+
 ## [1.24.1] - 2026-08-16
 
 ### Changed

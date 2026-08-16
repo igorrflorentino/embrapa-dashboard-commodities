@@ -8,7 +8,7 @@ table absent, empty, a BQ error, or the safety cap tripping).
 
 from __future__ import annotations
 
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import BadRequest, NotFound
 
 from embrapa_dashboard.ibge import catalog_resolver
 
@@ -62,6 +62,47 @@ def test_catalog_codes_returned_when_flag_on(settings_factory):
     # column exists on the log table.
     sql = fake.calls[0][0]
     assert "sidra_tabela" not in sql
+
+
+class _FakeBQNoIngestaoColumn:
+    """A log table that predates the `ingestao` column: the first query (which selects
+    and filters on it) 400s, a retry without it succeeds."""
+
+    def __init__(self, rows):
+        self._rows = rows
+        self.calls: list = []
+
+    def query(self, sql, job_config=None):
+        self.calls.append((sql, job_config))
+        if "ingestao" in sql:
+            return _FakeJob([], exc=BadRequest("Unrecognized name: ingestao"))
+        return _FakeJob(self._rows)
+
+
+def test_missing_ingestao_column_still_uses_the_catalog(settings_factory):
+    """A pre-two-axis log table must NOT silently abandon the catalog.
+
+    The resolver's SELECT references `ingestao`; on a table without it BigQuery raises
+    BadRequest. Left to the caller's broad except, that would fall back to the ENV codes —
+    skipping codes the researcher registered and re-fetching ones they paused. Instead the
+    resolver retries without the pause filter, which is exactly equivalent: no row can be
+    paused if the column does not exist."""
+    settings = settings_factory(catalog_authoritative_ingestion=True)
+    fake = _FakeBQNoIngestaoColumn(rows=_rows("3405", "3450"))
+    out = catalog_resolver.resolve_product_codes(settings, "pevs", env_fallback=ENV, bq_client=fake)
+    assert out == ["3405", "3450"], "fell back to env instead of retrying without the filter"
+    assert len(fake.calls) == 2, "expected one failed attempt + one retry"
+    assert "ingestao" in fake.calls[0][0]
+    assert "ingestao" not in fake.calls[1][0]
+
+
+def test_paused_products_are_excluded_from_ingestion(settings_factory):
+    """The pause filter is actually in the query the resolver sends."""
+    settings = settings_factory(catalog_authoritative_ingestion=True)
+    fake = _FakeBQ(rows=_rows("3405"))
+    catalog_resolver.resolve_product_codes(settings, "pevs", env_fallback=ENV, bq_client=fake)
+    sql = fake.calls[0][0]
+    assert "coalesce(ingestao, 'ativa') != 'pausada'" in sql
 
 
 def test_empty_catalog_falls_back_to_env(settings_factory):
