@@ -950,13 +950,9 @@ def fetch_catalog_editors(resource: str):
 
 
 # Gold fact tables per source, for the orphan diff (DISTINCT code is column-pruned → cheap).
-_GOLD_CODE_SOURCES = {
-    "pevs": ("gold_pevs_production", "product_code"),
-    "comex": ("gold_comex_flows", "ncm_code"),
-    "comtrade": ("gold_comtrade_flows", "cmd_code"),
-    "pam": ("gold_pam_production", "product_code"),
-    "ppm": ("gold_ppm_production", "product_code"),
-}
+# Shared with doctor's orphan health check — see sqlbuild.GOLD_CODE_SOURCES for why it
+# lives in the flask-free module rather than here.
+_GOLD_CODE_SOURCES = sqlbuild.GOLD_CODE_SOURCES
 
 
 @cache.memoize(timeout=DEFAULT_CLASSIFICATION_TTL)
