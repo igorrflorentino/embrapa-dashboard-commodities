@@ -6,7 +6,8 @@
 # Replaces the Dash image (deploy/dashboard/) at cutover — same service, same
 # runtime SA, same private+IAP posture.
 #
-# Build context = repo ROOT (needs frontend/, pyproject.toml, uv.lock, src/, README.md):
+# Build context = repo ROOT (needs frontend/, pyproject.toml, uv.lock, src/, README.md,
+# CHANGELOG.md):
 #   Cloud Build: gcloud builds submit . --config deploy/webapi/cloudbuild.yaml \
 #                  --substitutions _IMAGE=<region>-docker.pkg.dev/<proj>/<repo>/embrapa-dashboard:<tag>
 #   Local:       docker build -f deploy/webapi/Dockerfile -t embrapa-webapi .
@@ -34,7 +35,12 @@ WORKDIR /app
 # gunicorn (NO dash/plotly — the charts are client-side Plotly.js in the SPA).
 # The seam (embrapa_dashboard.webapi.seam) is UI-framework-free and resolves
 # without dash installed.
-COPY pyproject.toml uv.lock README.md ./
+# CHANGELOG.md ships too: `embrapa_dashboard.release` reads the running version's
+# release date from it for the Sobre page. It lands at /app (next to pyproject.toml)
+# and is carried into the runtime stage by the `COPY --from=pybuild /app /app` below —
+# the package itself installs under /app/.venv/…, so a __file__-relative lookup would
+# NOT find it. Absent file ⇒ no date shown, never a fabricated one.
+COPY pyproject.toml uv.lock README.md CHANGELOG.md ./
 COPY src ./src
 RUN uv sync --frozen --no-dev --extra webapi
 

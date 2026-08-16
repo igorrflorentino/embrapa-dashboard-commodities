@@ -22,8 +22,13 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from embrapa_dashboard import __version__ as _APP_VERSION
+from embrapa_dashboard import release
 
 from . import format as fmt
+
+# Sentinel so a genuine "no release date" (None) is cached instead of re-read forever.
+_UNRESOLVED = object()
+_APP_RELEASE_LABEL: str | None | object = _UNRESOLVED
 
 # Gold timestamps are UTC; the dashboard provenance stamp is displayed in
 # Brasília time (e.g. "28 mai 2026 · 04:30 BRT").
@@ -150,6 +155,21 @@ def _refresh_label(ts: Any) -> str | None:
     return f"{t.day:02d} {month} {t.year} · {t.hour:02d}:{t.minute:02d} BRT"
 
 
+def _release_date_label() -> str | None:
+    """The running version's release date as 'DD mês YYYY' (pt-BR), or None.
+
+    Resolved once per process: it is a build-time constant, and the CHANGELOG is not
+    re-read on every provenance request.
+    """
+    global _APP_RELEASE_LABEL
+    if _APP_RELEASE_LABEL is _UNRESOLVED:
+        d = release.release_date()
+        _APP_RELEASE_LABEL = (
+            None if d is None else f"{d.day:02d} {fmt.MONTH_ABBR_PT[d.month - 1].lower()} {d.year}"
+        )
+    return _APP_RELEASE_LABEL
+
+
 def serialize_source_meta(meta: dict | None) -> dict:
     """gold_source_metadata row → page-hero provenance JSON.
 
@@ -201,6 +221,13 @@ def serialize_source_meta(meta: dict | None) -> dict:
         # it) instead of a frontend package.json that drifts. Global, not per-banco, but rides
         # along the provenance payload the hero/Sobre already load.
         "appVersion": _APP_VERSION,
+        # When that version shipped, from CHANGELOG.md (see embrapa_dashboard.release).
+        # Sobre renders it right beside the version, so it must be the VERSION's date —
+        # it previously sat next to the PEVS Gold refresh stamp under a lone "Versão"
+        # label, which read as "this version is from 01 ago" while the build was current.
+        # None when the CHANGELOG has no section for it; the SPA then shows the version
+        # alone rather than inventing a date.
+        "appReleaseDate": _release_date_label(),
     }
 
 

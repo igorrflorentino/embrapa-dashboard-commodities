@@ -52,8 +52,13 @@ function ViewAbout() {
   const totalViews = groups.reduce((n, g) => n + g.views.length, 0);
 
   const APP_VERSION = 'v' + (window.APP_VERSION || pkg.version);
-  const _pevMeta = window.dataStore && window.dataStore.meta ? window.dataStore.meta('ibge_pevs') : null;
-  const refreshDate = ((_pevMeta && _pevMeta.refresh) || '').split(' · ')[0] || '—';
+  // The date beside the version is the VERSION's release date (CHANGELOG.md → the backend),
+  // NOT a data-refresh stamp. It used to be the PEVS Gold refresh date, which under the lone
+  // "Versão" label read as "this build is from 01 ago" while the release had shipped that same
+  // day — and silently spoke for one banco out of five. Per-banco freshness is the job of the
+  // hero, Saúde and Dados views, which state which banco each date belongs to. No fallback:
+  // an unknown date renders the version alone rather than a stand-in.
+  const releaseDate = window.APP_RELEASE_DATE || null;
 
   const TIPS = [
     {
@@ -241,7 +246,7 @@ function ViewAbout() {
         <div className="ab-version">
           <div>
             <span className="meta-label">Versão</span>
-            <span className="meta-val tnum">{APP_VERSION} · {refreshDate}</span>
+            <span className="meta-val tnum">{APP_VERSION}{releaseDate ? ` · ${releaseDate}` : ''}</span>
           </div>
           <div>
             <span className="meta-label">Contato técnico</span>

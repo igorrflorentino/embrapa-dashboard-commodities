@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.6] - 2026-08-16
+
+**A data ao lado da versão, na página *Sobre*, não era a data da versão.**
+
+### Fixed
+- **A data exibida ao lado da versão passa a ser a data da release**
+  (`ViewAbout.jsx`, `webapi/serializers.py`, novo `embrapa_dashboard/release.py`). Sob um único
+  rótulo "Versão", a linha juntava a versão do app com a **data de refresh do Gold do PEVS** —
+  então lia-se `v1.24.3 · 01 ago 2026` para um build publicado naquele mesmo dia. Dois problemas
+  num campo só: a versão parecia velha, e a data falava por *um* banco entre cinco, escolhido
+  silenciosamente (o PEVS é o mais parado; o PAM atualizou hoje).
+
+  A data agora vem do `CHANGELOG.md` — a mesma fonte única que o `release.yml` já usa para
+  compor o corpo da GitHub Release, então ela não tem como divergir do registro de release.
+  Nada é gerado no build nem hardcoded: **versão sem seção no CHANGELOG simplesmente não tem
+  data, e a UI mostra a versão sozinha** em vez de inventar uma. Substituir por "hoje"
+  apresentaria um build antigo como recém-publicado — exatamente a desonestidade que este
+  campo existe para remover.
+
+  Frescor por banco continua sendo trabalho do hero, da *Saúde do sistema* e de *Dados*, que
+  dizem a qual banco cada data pertence.
+
+  O `CHANGELOG.md` passa a ser copiado para a imagem do webapi (fica em `/app`, ao lado do
+  `pyproject.toml`; o pacote instala sob `/app/.venv/…`, então uma busca relativa ao `__file__`
+  não o encontraria). Um teste roda contra o CHANGELOG **real** e falha se a versão publicada
+  não tiver seção — guarda de que o checklist de release foi seguido.
+
 ## [1.24.5] - 2026-08-16
 
 **Dependabot agrupava majors com patches, e o resultado é que nada entrava.** Três PRs

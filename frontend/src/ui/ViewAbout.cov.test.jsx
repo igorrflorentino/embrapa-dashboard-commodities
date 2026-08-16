@@ -152,20 +152,32 @@ describe('ViewAbout — render smoke + main sections', () => {
     expect(viewTitles).not.toContain('Sem descrição'); // desc-less view dropped
   });
 
-  it('shows the app version + the live Gold refresh date in the footer', () => {
+  it("shows the app version + that VERSION's release date in the footer", () => {
+    // The date beside the version is the release date (CHANGELOG → backend →
+    // window.APP_RELEASE_DATE), NOT a Gold refresh stamp. Give the store a PEVS
+    // refresh that differs from it: the footer must show the release date, since
+    // pairing a build with an unrelated data date read as "this version is old".
     stubGlobals(makeStore({ ibge_pevs: { refresh: '2026-06-20 · 03:00' } }));
+    window.APP_RELEASE_DATE = '16 ago 2026';
     const { container } = render(<ViewAbout />);
     const ver = container.querySelector('.ab-version .tnum')?.textContent || '';
-    expect(ver).toMatch(/^v\d/); // "v1.x.y …" from package.json
-    expect(ver).toContain('2026-06-20'); // refresh date, split on " · "
+    expect(ver).toMatch(/^v\d/); // "v1.x.y …" from the backend (package.json pre-load)
+    expect(ver).toContain('16 ago 2026');
+    expect(ver).not.toContain('2026-06-20'); // the Gold refresh must NOT leak in here
   });
 
-  it('falls back to BANCOS when visibleBancos is absent and "—" refresh when meta is empty', () => {
+  it('renders the version ALONE when no release date is known (never a stand-in)', () => {
+    stubGlobals(makeStore({ ibge_pevs: { refresh: '2026-06-20 · 03:00' } }));
+    delete window.APP_RELEASE_DATE; // unreleased dev build / CHANGELOG section absent
+    const { container } = render(<ViewAbout />);
+    const ver = container.querySelector('.ab-version .tnum')?.textContent || '';
+    expect(ver).toMatch(/^v\d[\d.]*$/); // version only — no separator, no date
+  });
+
+  it('falls back to BANCOS when visibleBancos is absent', () => {
     stubGlobals(makeStore());
     window.visibleBancos = undefined; // exercise the (window.BANCOS || []) fallback path
     const { container } = render(<ViewAbout />);
     expect(container.textContent).toContain('IBGE PEVS');
-    // No ibge_pevs meta → refresh date renders the em-dash fallback.
-    expect(container.querySelector('.ab-version .tnum')?.textContent).toContain('—');
   });
 });
