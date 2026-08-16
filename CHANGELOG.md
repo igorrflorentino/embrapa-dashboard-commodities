@@ -36,6 +36,12 @@ consultáveis dentro de "Estrutura de dados", na camada Silver de cada banco.
   disjuntos, e tudo que é listado precisa ser resolvível. Sem isso, um id renomeado só
   falharia na leitura, como um 404 do BigQuery — a mesma classe de bug que o teste dos
   seeds previne.
+- **Ordem do seletor por TEMA, não por catálogo de origem** (`_REFERENCE_DISPLAY_AFTER`):
+  as duas tabelas do BCB aparecem logo após "Fatores de reforma monetária", de modo que
+  reforma monetária → câmbio → inflação se leiam como uma história só, em vez de as do BCB
+  ficarem no fim, depois das dimensões de fonte. Um teste garante que o reordenamento é
+  *loss-free* (nada sumido nem duplicado) antes de checar a adjacência — reordenar lista é
+  justamente o tipo de código que perde um item silenciosamente.
 - Verificado ao vivo contra o BigQuery de produção: as duas tabelas carregam com dados
   reais, ordenação e paginação funcionam até o fim das 17 mil linhas, e um id fora do
   allowlist continua recebendo 400.

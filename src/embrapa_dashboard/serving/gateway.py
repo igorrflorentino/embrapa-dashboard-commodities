@@ -1819,17 +1819,37 @@ _CONSULTABLE_BY_ID: dict[str, tuple[str, str, bool, str]] = {
 }
 
 
+# Display order of the picker, by THEME rather than by which catalog an entry came from:
+# the monetary trio (currency reform → FX → inflation) reads as one story, so the two BCB
+# tables sit next to historical_currency_factors instead of trailing the source dimensions.
+# Only ids that need to be pulled forward are listed; everything else keeps catalog order.
+_REFERENCE_DISPLAY_AFTER: dict[str, tuple[str, ...]] = {
+    "historical_currency_factors": ("silver_bcb_currency", "silver_bcb_inflation"),
+}
+
+
 def seed_tables() -> list[dict]:
     """The read-only reference tables a researcher may consult ('Referências').
 
     Banco-agnostic (shared reference data): the dbt SEEDS (calibration + source dimensions)
-    followed by the non-seed Silver reference models (the BCB FX / inflation series). Returns
-    ``[{id, label, editable, description}]`` straight from the static catalogs — no BigQuery
-    round-trip (row counts arrive when one is opened, via its schema)."""
-    return [
-        {"id": sid, "label": label, "editable": editable, "description": desc}
-        for sid, label, editable, desc in (*_SEED_CATALOG, *_REFERENCE_TABLE_CATALOG)
-    ]
+    plus the non-seed Silver reference models (the BCB FX / inflation series), ordered by
+    theme via _REFERENCE_DISPLAY_AFTER. Returns ``[{id, label, editable, description}]``
+    straight from the static catalogs — no BigQuery round-trip (row counts arrive when one
+    is opened, via its schema)."""
+
+    def _as_dict(item: tuple[str, str, bool, str]) -> dict:
+        sid, label, editable, desc = item
+        return {"id": sid, "label": label, "editable": editable, "description": desc}
+
+    pulled = {sid for ids in _REFERENCE_DISPLAY_AFTER.values() for sid in ids}
+    out: list[dict] = []
+    for item in (*_SEED_CATALOG, *_REFERENCE_TABLE_CATALOG):
+        if item[0] in pulled:
+            continue  # emitted right after its anchor instead
+        out.append(_as_dict(item))
+        for sid in _REFERENCE_DISPLAY_AFTER.get(item[0], ()):
+            out.append(_as_dict(_CONSULTABLE_BY_ID[sid]))
+    return out
 
 
 def _resolve_seed_table(seed_id: str) -> str:

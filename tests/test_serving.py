@@ -3160,6 +3160,33 @@ def test_reference_table_catalog_ids_have_a_backing_dbt_model():
     assert listed == set(gateway._CONSULTABLE_BY_ID)
 
 
+def test_seed_tables_display_order_groups_the_monetary_tables():
+    """seed_tables() reorders by THEME, so guard that the reorder is loss-free.
+
+    The picker pulls the BCB FX/inflation tables up next to historical_currency_factors
+    (currency reform → FX → inflation reads as one story). A reorder is exactly the kind of
+    code that silently DROPS or DUPLICATES an entry, so assert the multiset is preserved
+    before asserting the adjacency."""
+    from embrapa_dashboard.serving import gateway
+
+    ids = [t["id"] for t in gateway.seed_tables()]
+
+    # Nothing lost, nothing duplicated — every consultable table appears exactly once.
+    assert len(ids) == len(set(ids)), f"duplicate id(s) in the picker: {ids}"
+    assert set(ids) == set(gateway._CONSULTABLE_BY_ID)
+
+    # Every anchor is immediately followed by the entries pinned to it.
+    for anchor, pinned in gateway._REFERENCE_DISPLAY_AFTER.items():
+        assert anchor in ids, f"display anchor {anchor!r} is not a consultable table"
+        at = ids.index(anchor)
+        assert tuple(ids[at + 1 : at + 1 + len(pinned)]) == pinned
+
+    # The seeds NOT pulled forward keep their relative catalog order.
+    pulled = {sid for sids in gateway._REFERENCE_DISPLAY_AFTER.values() for sid in sids}
+    seed_order = [s[0] for s in gateway._SEED_CATALOG if s[0] not in pulled]
+    assert [i for i in ids if i in set(seed_order)] == seed_order
+
+
 # ── Curadoria (catalog): the editable commodity catalog writer ────────────────
 
 
