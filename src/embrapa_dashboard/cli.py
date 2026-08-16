@@ -8,7 +8,8 @@ import logging
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -217,6 +218,45 @@ def _summarize_and_exit(
     console.print(success_msg)
 
 
+@contextmanager
+def _transient_aware_exit(label: str) -> Iterator[None]:
+    """Single-shot twin of ``_summarize_and_exit``'s exit-code rule.
+
+    The chunked commands (``ibge-batch``/``comex``/``comtrade``) and the
+    multi-source ones (``all``/``reconcile``) already exit 0 when every failure
+    was a known transient upstream condition. The single-shot commands had no
+    such handling: the exception propagated raw, typer exited 1, and the Cloud
+    Monitoring policy — which watches the JOB's ``result="failed"``, not the
+    command's args — fired the same red "unexpected failure" page it fires for a
+    real bug.
+
+    That mattered in production: ``ibge-pam`` and ``ibge-ppm`` each have their own
+    ENABLED monthly Cloud Scheduler trigger against that job, and both drive the
+    same SIDRA client that raises ``SidraTransientError``. Wrap the pipeline call
+    so a transient failure is reported clearly and exits 0 (the next scheduled run
+    picks it up), while anything else propagates untouched — still exit 1, still a
+    page, still a traceback.
+
+    Enter this OUTSIDE ``pipeline_run`` so the run's event log still records the
+    failure before the exit code is downgraded.
+    """
+    try:
+        yield
+    except Exception as exc:
+        if not _is_transient_failure(exc):
+            raise
+        console.print(
+            f"\n[yellow bold]⚠ {label} failed on a known transient upstream "
+            f"condition (all transient — expected)[/yellow bold]"
+        )
+        console.print(f"  [red]✗[/red] {str(exc)[:200]} [dim](transient)[/dim]")
+        console.print(
+            "[dim]No code bug detected — exiting 0; the next scheduled run "
+            "re-fetches this window (Bronze is append-only, ingestion is delta).[/dim]"
+        )
+        raise typer.Exit(code=0) from None
+
+
 # ─── ingest ───────────────────────────────────────────────────────────────────
 @ingest_app.command("ibge")
 def ingest_ibge(
@@ -233,16 +273,19 @@ def ingest_ibge(
 ) -> None:
     """Ingest IBGE PEVS into the configured Bronze table (extract→raw→bronze)."""
     settings = get_settings()
-    with pipeline_run(
-        "ibge",
-        params={
-            "start_year": settings.ibge_start_year,
-            "end_year": settings.ibge_end_year,
-            "products": settings.product_codes,
-            "full": full,
-            "from_raw": from_raw,
-        },
-    ) as (_run_id, log_path):
+    with (
+        _transient_aware_exit("IBGE PEVS"),
+        pipeline_run(
+            "ibge",
+            params={
+                "start_year": settings.ibge_start_year,
+                "end_year": settings.ibge_end_year,
+                "products": settings.product_codes,
+                "full": full,
+                "from_raw": from_raw,
+            },
+        ) as (_run_id, log_path),
+    ):
         console.print(f"[dim]event log:[/dim] {log_path}")
         destination = ibge_pipeline.run(settings, full=full, from_raw=from_raw)
     if destination:
@@ -270,16 +313,19 @@ def ingest_ibge_pam(
 ) -> None:
     """Ingest IBGE PAM (Produção Agrícola Municipal) into Bronze (extract→raw→bronze)."""
     settings = get_settings()
-    with pipeline_run(
-        "ibge-pam",
-        params={
-            "start_year": settings.pam_start_year,
-            "end_year": settings.pam_end_year,
-            "products": settings.pam_product_codes_list,
-            "full": full,
-            "from_raw": from_raw,
-        },
-    ) as (_run_id, log_path):
+    with (
+        _transient_aware_exit("IBGE PAM"),
+        pipeline_run(
+            "ibge-pam",
+            params={
+                "start_year": settings.pam_start_year,
+                "end_year": settings.pam_end_year,
+                "products": settings.pam_product_codes_list,
+                "full": full,
+                "from_raw": from_raw,
+            },
+        ) as (_run_id, log_path),
+    ):
         console.print(f"[dim]event log:[/dim] {log_path}")
         destination = pam_pipeline.run(settings, full=full, from_raw=from_raw)
     if destination:
@@ -310,17 +356,20 @@ def ingest_ibge_ppm(
     Ingests BOTH SIDRA tables: 3939 (efetivo dos rebanhos) + 74 (produção de origem animal).
     """
     settings = get_settings()
-    with pipeline_run(
-        "ibge-ppm",
-        params={
-            "start_year": settings.ppm_start_year,
-            "end_year": settings.ppm_end_year,
-            "herd_products": settings.ppm_herd_product_codes_list,
-            "animal_products": settings.ppm_animal_product_codes_list,
-            "full": full,
-            "from_raw": from_raw,
-        },
-    ) as (_run_id, log_path):
+    with (
+        _transient_aware_exit("IBGE PPM"),
+        pipeline_run(
+            "ibge-ppm",
+            params={
+                "start_year": settings.ppm_start_year,
+                "end_year": settings.ppm_end_year,
+                "herd_products": settings.ppm_herd_product_codes_list,
+                "animal_products": settings.ppm_animal_product_codes_list,
+                "full": full,
+                "from_raw": from_raw,
+            },
+        ) as (_run_id, log_path),
+    ):
         console.print(f"[dim]event log:[/dim] {log_path}")
         destination = ppm_pipeline.run(settings, full=full, from_raw=from_raw)
     if destination:
@@ -348,9 +397,12 @@ def ingest_bcb_inflation(
 ) -> None:
     """Ingest configured BCB SGS inflation series (extract→raw→bronze)."""
     settings = get_settings()
-    with pipeline_run("bcb-inflation", params={"full": full, "from_raw": from_raw}) as (
-        _run_id,
-        log_path,
+    with (
+        _transient_aware_exit("BCB inflation"),
+        pipeline_run("bcb-inflation", params={"full": full, "from_raw": from_raw}) as (
+            _run_id,
+            log_path,
+        ),
     ):
         console.print(f"[dim]event log:[/dim] {log_path}")
         destination = bcb_inflation.run(settings, full=full, from_raw=from_raw)
@@ -375,9 +427,12 @@ def ingest_bcb_currency(
 ) -> None:
     """Ingest configured BCB SGS FX series (extract→raw→bronze)."""
     settings = get_settings()
-    with pipeline_run("bcb-currency", params={"full": full, "from_raw": from_raw}) as (
-        _run_id,
-        log_path,
+    with (
+        _transient_aware_exit("BCB FX"),
+        pipeline_run("bcb-currency", params={"full": full, "from_raw": from_raw}) as (
+            _run_id,
+            log_path,
+        ),
     ):
         console.print(f"[dim]event log:[/dim] {log_path}")
         destination = bcb_currency.run(settings, full=full, from_raw=from_raw)

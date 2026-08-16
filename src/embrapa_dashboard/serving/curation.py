@@ -413,6 +413,46 @@ def _current_sidra_tabela(
     return rows[0].sidra_tabela if rows else None
 
 
+def _current_descricao(
+    bq: bigquery.Client, table_fqn: str, codigo_produto: str, banco: str
+) -> str | None:
+    """The active entry's stored ``descricao_produto`` — the researcher's own annotation —
+    so an update that doesn't re-send it PRESERVES it instead of erasing it.
+
+    Same hazard the two lifecycle axes have (the writer overwrites the whole row), but the
+    loss is worse: an axis can be re-picked from a dropdown, whereas a free-text note typed
+    by a researcher is gone for good. The live UI always re-sends the full entry, so nothing
+    was losing notes in practice — this closes the asymmetry so a partial write from a script
+    or curl can't silently wipe them either.
+
+    NOTE the None-vs-empty distinction, which is load-bearing: ``None`` means *omitted*
+    (preserve), while ``''`` is an explicit CLEAR the researcher asked for (the ✎ field
+    commits a trimmed empty string). Never normalize ``''`` to None on the way in.
+
+    Returns None when absent / the column doesn't exist yet; any other BQ fault PROPAGATES
+    rather than silently clearing the note."""
+    sql = f"""
+        select descricao_produto from (
+          select descricao_produto, row_number() over (
+            partition by codigo_produto, banco order by edited_at desc, change_id desc
+          ) as _rn
+          from `{table_fqn}`
+          where codigo_produto = @codigo and banco = @banco
+        ) where _rn = 1
+    """
+    params = [
+        bigquery.ScalarQueryParameter("codigo", "STRING", codigo_produto),
+        bigquery.ScalarQueryParameter("banco", "STRING", banco),
+    ]
+    try:
+        rows = list(
+            bq.query(sql, job_config=bigquery.QueryJobConfig(query_parameters=params)).result()
+        )
+    except (NotFound, BadRequest):
+        return None
+    return rows[0].descricao_produto if rows else None
+
+
 def _current_lifecycle(
     bq: bigquery.Client, table_fqn: str, codigo_produto: str, banco: str
 ) -> tuple[str | None, str | None]:
@@ -525,6 +565,12 @@ def record_produto_catalog(
     ativa/visivel. ``ciclo_de_vida`` is the RETIRED prose enum: still accepted so an old
     client keeps working (it is translated into the axes), never written going forward.
 
+    Every field a researcher OWNS is preserve-on-omit: the two axes, ``sidra_tabela`` and
+    ``descricao_produto``. The write is an append-only whole-row overwrite, so a caller that
+    sends only the field it means to change would otherwise NULL the rest — omitting a field
+    means "leave it alone", and only an explicit value (including ``''`` for the note) changes
+    it. That makes a partial write from any client safe by construction.
+
     Raises ValueError on a bad key / over-length / a bad sidra_tabela / an out-of-vocabulary
     lifecycle code."""
     cfg = settings or get_settings()
@@ -581,6 +627,12 @@ def record_produto_catalog(
         if sidra_tabela is None and is_active:
             sidra_tabela = _current_sidra_tabela(bq, table_fqn, codigo_produto, banco)
         _validate_sidra_tabela(banco, sidra_tabela, cfg, require_for_ppm=not is_active)
+
+    # PRESERVE the researcher's own annotation on an update that doesn't re-send it —
+    # same rule as sidra_tabela above. `None` = omitted (keep it); `''` = an explicit
+    # clear (write it through), which is how the ✎ field empties a note.
+    if descricao_produto is None and is_active:
+        descricao_produto = _current_descricao(bq, table_fqn, codigo_produto, banco)
 
     # PRESERVE an axis the caller didn't send. On an UPDATE that means keeping what is
     # stored (an unrelated edit must never un-hide a produto or resume a paused one); on a

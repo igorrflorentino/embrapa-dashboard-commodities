@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.3] - 2026-08-16
+
+**Segunda rodada da auditoria — verificação mais profunda e busca por bugs relacionados.**
+Um achado ativo em produção e uma assimetria latente; três suspeitas foram investigadas e
+descartadas (ver *Verificado*).
+
+### Fixed
+- **PAM e PPM ainda alertavam em falha transiente** (`cli.py`): a correção da v1.24.2 cobriu os
+  comandos em chunks (`ibge-batch`/`comex`/`comtrade`) e os multi-fonte (`all`/`reconcile`), mas
+  os de **disparo único** continuaram sem tratamento — a exceção subia crua e o typer saía 1.
+  Dois deles têm gatilho próprio do Cloud Scheduler **habilitado em produção**
+  (`embrapa-ingest-all-pam-monthly`, dia 2; `embrapa-ingest-all-ppm-monthly`, dia 3), usam o
+  mesmo cliente SIDRA que levanta `SidraTransientError`, e a política de alerta observa o
+  `result="failed"` do **job** — não os argumentos do comando. Ou seja: uma instabilidade do
+  SIDRA nos dias 2 ou 3 disparava o mesmo e-mail vermelho de "falha inesperada" que um bug real.
+  Novo `_transient_aware_exit` (gêmeo de disparo único do `_summarize_and_exit`) aplicado a
+  `ibge`, `ibge-pam`, `ibge-ppm`, `bcb-inflation` e `bcb-currency`. Entra **por fora** do
+  `pipeline_run`, então o log de eventos ainda registra a falha antes do código de saída ser
+  rebaixado; qualquer exceção não marcada continua propagando intacta (saída 1, com traceback).
+
+### Changed
+- **`descricao_produto` agora é preserve-on-omit** (`serving/curation.py`): a escrita é um
+  overwrite de linha inteira, e os dois eixos de ciclo de vida e o `sidra_tabela` já preservavam
+  o valor armazenado quando omitidos — a anotação livre do pesquisador, não. Nenhum cliente vivo
+  disparava isso (a UI reenvia a entrada inteira em todos os caminhos, e o
+  `seed_catalog_from_env` é protegido pela deduplicação do `change_id` determinístico), mas a
+  assimetria deixava um PATCH parcial de script/curl apagar anotações em silêncio — e uma nota
+  digitada à mão, diferente de um eixo, não se recupera de um dropdown. `None` = omitido
+  (preserva); `''` = limpeza explícita (grava), que é como o campo ✎ esvazia uma nota.
+
+### Verificado (investigado, sem defeito)
+- **Reescrita `EXISTS`→`JOIN` da detecção de órfãos** (v1.19.0): preserva a semântica —
+  `tombstoned` tem exatamente uma linha por `(codigo_produto, banco)` (`_rn = 1`), então as
+  quatro colunas do fan-out do join são idênticas e o `distinct` colapsa de volta a uma linha.
+- **Leitura do Gold na detecção de órfãos não passa pelo gate de visibilidade** — correto e
+  proposital: ocultar um produto não pode escondê-lo da detecção, senão "ocultar + remover"
+  deixaria dado órfão invisível para sempre.
+- **`auto_mark_orphans` escreve em log separado** (`catalog_lifecycle_log`, não
+  `produto_catalog_log`): o detector automático não tem como sobrescrever linha de catálogo nem
+  apagar anotação.
+
 ## [1.24.2] - 2026-08-16
 
 **Correção dos 3 achados da auditoria da própria sessão (v1.19.0 → v1.24.1).** Nenhum causava
