@@ -3439,10 +3439,29 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
 }
 .cc-help > summary::-webkit-details-marker { display: none; }
 .cc-help[open] > summary { border-bottom: 1px dashed var(--border-subtle); }
-.cc-help-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 18px; }
+.cc-help-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+/* Each half is its OWN bounded panel, so "what you read" and "what you do" can't blur into
+   one long list — with only a gap + a small heading between them they did. The left accent
+   carries the kind: blue = reference, green = writes something (same convention as .mc-bar). */
+.cc-help-block {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-2);
+  padding: 12px 14px;
+}
+.cc-help-block-ler { border-left: 3px solid var(--embrapa-blue); }
+.cc-help-block-editar { border-left: 3px solid var(--embrapa-green); }
 .cc-help-h {
-  font: 600 10.5px var(--font-body); letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--embrapa-green-darker); margin: 0 0 8px;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  font: 600 11px var(--font-body); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--fg-1); margin: 0 0 10px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);
+}
+.cc-help-block-ler .cc-help-h { color: var(--embrapa-blue); }
+.cc-help-block-editar .cc-help-h { color: var(--embrapa-green-darker); }
+.cc-help-h-n {
+  font: 400 10px var(--font-body); letter-spacing: 0.04em; text-transform: none;
+  color: var(--fg-3); white-space: nowrap;
 }
 /* Two columns of term/definition on wide screens; one on narrow. */
 .cc-help-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 24px; margin: 0; }

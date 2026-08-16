@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.1] - 2026-08-16
+
+### Changed
+- **A legenda do Cadastro separa visualmente "o que se lê" de "o que se faz".** Antes as duas
+  seções eram divididas só por um espaçamento e um título pequeno, e como a grade de duas
+  colunas seguia igual dos dois lados, tudo lia como uma lista contínua. Agora cada metade é
+  um painel delimitado (borda, fundo próprio e título com régua e contagem), com uma faixa
+  lateral que carrega o tipo: **azul** para a referência (colunas) e **verde** para o que
+  escreve (edições) — a mesma convenção de acento do bloco de convenções métricas.
+- Títulos mais diretos: "O que cada coluna mostra" e "O que cada edição faz", no lugar de
+  "As colunas" / "As edições".
+
 ## [1.24.0] - 2026-08-16
 
 ### Added
