@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.22.0] - 2026-08-16
+
+**As séries do BCB — câmbio PTAX e índices de inflação — agora aparecem em "Tabelas de
+referência".** São a calibração por trás de todo valor monetário exibido, mas só eram
+consultáveis dentro de "Estrutura de dados", na camada Silver de cada banco.
+
+### Added
+- **"Câmbio PTAX (BCB)"** (17.386 linhas, USD e EUR, desde 1984) e **"Índices de inflação
+  (BCB)"** (1.564 linhas, IPCA/IGP-M/IGP-DI desde 1980, com variação mensal e índice
+  encadeado) na perspectiva **Referências**, com a mesma grade read-only das demais
+  (paginação e ordenação no servidor, filtro por coluna, exportação, e o botão de reportar
+  valor suspeito). Elas respondem exatamente às perguntas "de onde veio essa cotação?" e
+  "qual índice foi aplicado nessa correção?" — o mesmo ato de consultar
+  `historical_currency_factors`, que já estava listado. A inconsistência era ter a metade
+  "moedas antigas → Real" visível e a metade "BRL ↔ USD/EUR" não.
+
+### Changed
+- **Novo catálogo `_REFERENCE_TABLE_CATALOG`, separado de `_SEED_CATALOG`.** As tabelas do
+  BCB são modelos dbt alimentados por ingestão, não seeds CSV — e um teste existente exige
+  uma **bijeção estrita** entre `_SEED_CATALOG` e `dbt/seeds/*.csv` (para que um seed novo
+  nunca passe despercebido sem ser exposto). Em vez de afrouxar essa invariante, os dois
+  catálogos ficam separados e se juntam só no ponto de leitura (`_CONSULTABLE_BY_ID`), que
+  é o allowlist de segurança do endpoint. Ambas as tabelas vivem no mesmo dataset `silver`,
+  então o caminho de leitura é idêntico.
+- **Novo teste espelhando o rigor do existente**: cada id de `_REFERENCE_TABLE_CATALOG`
+  precisa ter um modelo dbt `<id>.sql` correspondente, os dois catálogos precisam ser
+  disjuntos, e tudo que é listado precisa ser resolvível. Sem isso, um id renomeado só
+  falharia na leitura, como um 404 do BigQuery — a mesma classe de bug que o teste dos
+  seeds previne.
+- **Ordem do seletor por TEMA, não por catálogo de origem** (`_REFERENCE_DISPLAY_AFTER`):
+  as duas tabelas do BCB aparecem logo após "Fatores de reforma monetária", de modo que
+  reforma monetária → câmbio → inflação se leiam como uma história só, em vez de as do BCB
+  ficarem no fim, depois das dimensões de fonte. Um teste garante que o reordenamento é
+  *loss-free* (nada sumido nem duplicado) antes de checar a adjacência — reordenar lista é
+  justamente o tipo de código que perde um item silenciosamente.
+- Verificado ao vivo contra o BigQuery de produção: as duas tabelas carregam com dados
+  reais, ordenação e paginação funcionam até o fim das 17 mil linhas, e um id fora do
+  allowlist continua recebendo 400.
+
+---
+
 ## [1.21.0] - 2026-08-16
 
 **O título da página voltou a ser a primeira coisa da página.** Nas perspectivas, os blocos de

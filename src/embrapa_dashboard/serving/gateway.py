@@ -1674,7 +1674,7 @@ def fetch_table_count(banco_id: str, table_id: str, filters: tuple = ()) -> int:
     return int(df["n"].iloc[0]) if not df.empty else 0
 
 
-# ── Seed reference consultation (the "Referências" perspective) ────────────────
+# ── Reference-table consultation (the "Referências" perspective) ───────────────
 # Read-only catalog of the dbt SEEDS a researcher may CONSULT (never edit here) to
 # confirm the reference values the pipeline relies on, and report a wrong value via
 # the feedback channel. Seeds materialize into the SILVER dataset (dbt_project.yml
@@ -1685,6 +1685,9 @@ def fetch_table_count(banco_id: str, table_id: str, filters: tuple = ()) -> int:
 # *elsewhere* (the commodity catalog) vs engineer-only CALIBRATION: a wrong currency
 # factor silently rescales every historical value by 10^6–10^9, so those stay read-only.
 # Labels/descriptions are pt-BR (the end user reads them — project language rule).
+# NOTE: this list is SEEDS ONLY (a test asserts it matches dbt/seeds/*.csv one-to-one).
+# Non-seed reference tables live in _REFERENCE_TABLE_CATALOG below; the perspective shows
+# both, and _resolve_seed_table accepts both.
 _SEED_CATALOG: list[tuple[str, str, bool, str]] = [
     # NOTE: commodity_crosswalk is NOT here — it became the editable Curadoria catalog
     # (research_inputs.produto_catalog_log → dim_produto_catalog), edited via the
@@ -1777,28 +1780,87 @@ _SEED_CATALOG: list[tuple[str, str, bool, str]] = [
 ]
 _SEED_BY_ID: dict[str, tuple[str, str, bool, str]] = {s[0]: s for s in _SEED_CATALOG}
 
+# Consultable reference tables that are NOT dbt seeds: Silver dbt MODELS built from an
+# INGESTED source rather than a CSV. Kept in a SEPARATE list because a test asserts a strict
+# bijection between _SEED_CATALOG and dbt/seeds/*.csv (so a new seed can never ship
+# unexposed); these have no CSV and would break it. Same shape and same read path — they
+# live in the SAME silver dataset, so _resolve_seed_table resolves them identically.
+#
+# The BCB series belong here for the researcher, not just in "Estrutura de dados": they are
+# the CALIBRATION behind every displayed monetary figure — the FX table converts BRL↔USD/EUR
+# and the inflation table deflates to real values. Consulting them is the same act as
+# consulting historical_currency_factors (a seed, already listed): confirming the reference
+# values the pipeline applied. All read-only (source-owned: Banco Central).
+_REFERENCE_TABLE_CATALOG: list[tuple[str, str, bool, str]] = [
+    (
+        "silver_bcb_currency",
+        "Câmbio PTAX (BCB)",
+        False,
+        "Cotações diárias do Banco Central: quantos reais vale uma unidade de cada moeda "
+        "estrangeira (USD, EUR). É a base da conversão quando você troca a moeda nas "
+        "convenções métricas.",
+    ),
+    (
+        "silver_bcb_inflation",
+        "Índices de inflação (BCB)",
+        False,
+        "Séries mensais de IPCA, IGP-M e IGP-DI, com a variação do mês e o índice "
+        "encadeado. É a base da correção monetária que converte valores nominais em "
+        "valores reais, comparáveis entre anos.",
+    ),
+]
+_REFERENCE_BY_ID: dict[str, tuple[str, str, bool, str]] = {
+    s[0]: s for s in _REFERENCE_TABLE_CATALOG
+}
+# Everything /api/seed may read — the allowlist enforced by _resolve_seed_table.
+_CONSULTABLE_BY_ID: dict[str, tuple[str, str, bool, str]] = {
+    **_SEED_BY_ID,
+    **_REFERENCE_BY_ID,
+}
+
+
+# Display order of the picker, by THEME rather than by which catalog an entry came from:
+# the monetary trio (currency reform → FX → inflation) reads as one story, so the two BCB
+# tables sit next to historical_currency_factors instead of trailing the source dimensions.
+# Only ids that need to be pulled forward are listed; everything else keeps catalog order.
+_REFERENCE_DISPLAY_AFTER: dict[str, tuple[str, ...]] = {
+    "historical_currency_factors": ("silver_bcb_currency", "silver_bcb_inflation"),
+}
+
 
 def seed_tables() -> list[dict]:
-    """The read-only seed reference tables a researcher may consult ('Referências').
+    """The read-only reference tables a researcher may consult ('Referências').
 
-    Banco-agnostic (the seeds are shared reference data). Returns
-    ``[{id, label, editable, description}]`` straight from the static catalog — no
-    BigQuery round-trip (row counts arrive when a seed is opened, via its schema)."""
-    return [
-        {"id": sid, "label": label, "editable": editable, "description": desc}
-        for sid, label, editable, desc in _SEED_CATALOG
-    ]
+    Banco-agnostic (shared reference data): the dbt SEEDS (calibration + source dimensions)
+    plus the non-seed Silver reference models (the BCB FX / inflation series), ordered by
+    theme via _REFERENCE_DISPLAY_AFTER. Returns ``[{id, label, editable, description}]``
+    straight from the static catalogs — no BigQuery round-trip (row counts arrive when one
+    is opened, via its schema)."""
+
+    def _as_dict(item: tuple[str, str, bool, str]) -> dict:
+        sid, label, editable, desc = item
+        return {"id": sid, "label": label, "editable": editable, "description": desc}
+
+    pulled = {sid for ids in _REFERENCE_DISPLAY_AFTER.values() for sid in ids}
+    out: list[dict] = []
+    for item in (*_SEED_CATALOG, *_REFERENCE_TABLE_CATALOG):
+        if item[0] in pulled:
+            continue  # emitted right after its anchor instead
+        out.append(_as_dict(item))
+        for sid in _REFERENCE_DISPLAY_AFTER.get(item[0], ()):
+            out.append(_as_dict(_CONSULTABLE_BY_ID[sid]))
+    return out
 
 
 def _resolve_seed_table(seed_id: str) -> str:
-    """Resolve a consultable seed id to its fully-qualified ``project.silver.<seed>``.
+    """Resolve a consultable reference id to its fully-qualified ``project.silver.<table>``.
 
-    The SECURITY boundary of the seed endpoint: an id outside _SEED_CATALOG raises
-    ValueError (→ 400), so no caller can read an arbitrary BigQuery table."""
-    if seed_id not in _SEED_BY_ID:
+    The SECURITY boundary of the seed endpoint: an id outside the consultable catalogs
+    raises ValueError (→ 400), so no caller can read an arbitrary BigQuery table."""
+    if seed_id not in _CONSULTABLE_BY_ID:
         raise ValueError(
             f"seed {seed_id!r} is not a consultable reference table; "
-            f"choose one of {list(_SEED_BY_ID)}"
+            f"choose one of {list(_CONSULTABLE_BY_ID)}"
         )
     return sqlbuild.table_ref(get_settings(), "bq_silver_dataset", seed_id)
 
