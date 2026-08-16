@@ -1,7 +1,13 @@
 // MainScreen — thin router that picks the right view component
 // for the active perspective (topnav) or info page (sidebar).
 
-function MainScreen({ filters, view = 'overview', database = 'ibge_pevs', infoPage = null, basket = null, conventions = null, setDatabase = null, crossState = null, setCrossState = null }) {
+// `controls` = the filter + convenções-métricas bars, built by main.jsx and rendered HERE,
+// directly under each screen's page-hero. They used to render as siblings ABOVE MainScreen,
+// which placed two blocks of controls before the page's own <h1> (the only heading on the
+// page) — bad for heading navigation and tab order, and it pushed the hero far down. main.jsx
+// still owns their state/wiring and their render conditions; this component only places them.
+// Rendered in every branch that showed them before, so their visibility is unchanged.
+function MainScreen({ filters, view = 'overview', database = 'ibge_pevs', infoPage = null, basket = null, conventions = null, setDatabase = null, crossState = null, setCrossState = null, controls = null }) {
   const VIEW_LABEL = Object.fromEntries(
     (window.VIEW_GROUPS || []).flatMap(g => g.views.map(v => [v.id, v.label]))
   );
@@ -141,6 +147,7 @@ function MainScreen({ filters, view = 'overview', database = 'ibge_pevs', infoPa
               </p>
             </div>
           </div>
+          {controls}
         </div>
       );
     }
@@ -156,6 +163,7 @@ function MainScreen({ filters, view = 'overview', database = 'ibge_pevs', infoPa
             </p>
           </div>
         </div>
+        {controls}
         <window.Glossary scope={database} />
       </div>
     );
@@ -242,6 +250,7 @@ function MainScreen({ filters, view = 'overview', database = 'ibge_pevs', infoPa
             </div>
           </div>
         </div>
+        {controls}
         <window.ViewComingSoon banco={banco} />
       </div>
     );
@@ -282,6 +291,7 @@ function MainScreen({ filters, view = 'overview', database = 'ibge_pevs', infoPa
             </div>
           </div>
         </div>
+        {controls}
         <window.ViewNotApplicable
           viewMeta={_vm}
           banco={banco}
@@ -337,6 +347,7 @@ function MainScreen({ filters, view = 'overview', database = 'ibge_pevs', infoPa
             </div>
           </div>
         </div>
+        {controls}
         <window.ViewPerspectiveSoon viewMeta={viewMeta} />
       </div>
     );
@@ -472,6 +483,8 @@ function MainScreen({ filters, view = 'overview', database = 'ibge_pevs', infoPa
           </div>
         </div>
       </div>
+
+      {controls}
 
       <ViewComponent
         families={families}

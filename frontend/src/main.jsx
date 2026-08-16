@@ -515,6 +515,50 @@ function Dashboard() {
   const isDataView = !infoPage && !(vm && vm.crossBanco) && !!banco;
   const displaySummary = isDataView ? withChips(summary, database, conventions) : summary;
 
+  // The filter + conventions bars, passed DOWN to MainScreen as a slot instead of being
+  // rendered here as siblings ABOVE it. Rendered above, they put two blocks of controls
+  // ahead of the page's own <h1> — the ONLY heading on the page — so heading navigation
+  // (a primary screen-reader mode) and the tab order both reached the controls before any
+  // statement of which page you were on. MainScreen now places them directly under its
+  // page-hero. The wiring/state stays HERE; MainScreen only decides placement. The render
+  // conditions are unchanged, so the set of screens showing them is identical.
+  const viewControls = (
+    <>
+      {isDataView && window.FilterTriggerBar && (
+        <window.FilterTriggerBar
+          summary={displaySummary}
+          onOpen={() => setFilterOpen(true)}
+          onExport={() =>
+            window.exportActiveTableCSV &&
+            window.exportActiveTableCSV({ view, database, summary, conventions })
+          }
+          live={banco.status === 'live'}
+          banco={banco}
+          view={view}
+        />
+      )}
+      {/* Convenções métricas strip: the ONLY UI path to change currency ×
+          correction × display units. It was imported for its window.* helpers
+          but never rendered, so the scientific currency/correction column
+          selection was unreachable except by hand-editing the URL (which then
+          hit the F1.1 deadlock). onChange feeds setConventions → the useEffect
+          bridge → dataStore.setConventions (the single {currency, correction}
+          setter), which now re-triggers the snapshot load. Live data views only. */}
+      {isDataView && banco.status === 'live' && window.MetricConventions && (
+        <window.MetricConventions
+          banco={banco}
+          value={conventions || window.DEFAULT_CONVENTIONS}
+          onChange={setConventions}
+          families={window.familiesInBasket
+            ? window.familiesInBasket(summary.basket, database)
+            : undefined}
+          expanded={metricsExpanded}
+          onToggleExpanded={() => setMetricsExpanded((e) => !e)}
+        />
+      )}
+    </>
+  );
+
   return (
     <window.AppShell
       view={view}
@@ -530,38 +574,6 @@ function Dashboard() {
       setMode={changeMode}
     >
       <DataGate database={database} infoPage={infoPage} view={view}>
-        {isDataView && window.FilterTriggerBar && (
-          <window.FilterTriggerBar
-            summary={displaySummary}
-            onOpen={() => setFilterOpen(true)}
-            onExport={() =>
-              window.exportActiveTableCSV &&
-              window.exportActiveTableCSV({ view, database, summary, conventions })
-            }
-            live={banco.status === 'live'}
-            banco={banco}
-            view={view}
-          />
-        )}
-        {/* Convenções métricas strip: the ONLY UI path to change currency ×
-            correction × display units. It was imported for its window.* helpers
-            but never rendered, so the scientific currency/correction column
-            selection was unreachable except by hand-editing the URL (which then
-            hit the F1.1 deadlock). onChange feeds setConventions → the useEffect
-            bridge → dataStore.setConventions (the single {currency, correction}
-            setter), which now re-triggers the snapshot load. Live data views only. */}
-        {isDataView && banco.status === 'live' && window.MetricConventions && (
-          <window.MetricConventions
-            banco={banco}
-            value={conventions || window.DEFAULT_CONVENTIONS}
-            onChange={setConventions}
-            families={window.familiesInBasket
-              ? window.familiesInBasket(summary.basket, database)
-              : undefined}
-            expanded={metricsExpanded}
-            onToggleExpanded={() => setMetricsExpanded((e) => !e)}
-          />
-        )}
         <ViewErrorBoundary resetKey={`${view}|${database}|${infoPage}`}>
           <window.MainScreen
             filters={summary}
@@ -573,6 +585,7 @@ function Dashboard() {
             setDatabase={changeDatabase}
             crossState={crossState}
             setCrossState={setCrossState}
+            controls={viewControls}
           />
         </ViewErrorBoundary>
       </DataGate>
