@@ -525,7 +525,7 @@ function ViewCadastroProdutos() {
           <tr>
             <th>Banco</th><th>Código</th><th>Descrição (fonte)</th>
             <th className="num">Linhas</th><th>Período</th><th>Status</th>
-            <th>Agrupamento</th><th>Ciclo de vida</th><th aria-label="ações"></th>
+            <th>Agrupamento</th><th>Ingestão</th><th>Exibição</th><th aria-label="ações"></th>
           </tr>
         </thead>
         <tbody>
@@ -573,31 +573,24 @@ function ViewCadastroProdutos() {
                                  groups={groupsSorted} busy={locked}
                                  ariaLabel={`Agrupamento de ${e.codigo_produto}`} />
                 </td>
-                <td data-label="Ciclo de vida">
-                  {/* The two axes stacked in ONE cell, so splitting the control did not cost the
-                      table a 10th column (its widths were just aligned across agrupamentos).
-                      Each row is labelled, because two bare dropdowns side by side would not say
-                      which is which. */}
-                  <div className="cc-axes">
-                    <label className="cc-axis">
-                      <span className="cc-axis-k">Ingestão</span>
-                      <select disabled={locked} value={e.ingestao || 'ativa'}
-                              aria-label={`Ingestão de ${e.codigo_produto}`}
-                              title={(_CC_INGESTAO.find((o) => o.v === (e.ingestao || 'ativa')) || {}).hint}
-                              onChange={(ev) => changeIngestao(e, ev.target.value)}>
-                        {_CC_INGESTAO.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
-                      </select>
-                    </label>
-                    <label className="cc-axis">
-                      <span className="cc-axis-k">Exibição</span>
-                      <select disabled={locked} value={e.visibilidade || 'visivel'}
-                              aria-label={`Visibilidade de ${e.codigo_produto}`}
-                              title={(_CC_VISIBILIDADE.find((o) => o.v === (e.visibilidade || 'visivel')) || {}).hint}
-                              onChange={(ev) => changeVisibilidade(e, ev.target.value)}>
-                        {_CC_VISIBILIDADE.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
-                      </select>
-                    </label>
-                  </div>
+                {/* One column per axis: the two are independent decisions, so they read as
+                    siblings of Agrupamento rather than as two halves of a compound field. The
+                    <th> labels them, which is why the cells carry no inner label. */}
+                <td data-label="Ingestão">
+                  <select disabled={locked} value={e.ingestao || 'ativa'}
+                          aria-label={`Ingestão de ${e.codigo_produto}`}
+                          title={(_CC_INGESTAO.find((o) => o.v === (e.ingestao || 'ativa')) || {}).hint}
+                          onChange={(ev) => changeIngestao(e, ev.target.value)}>
+                    {_CC_INGESTAO.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+                  </select>
+                </td>
+                <td data-label="Exibição">
+                  <select disabled={locked} value={e.visibilidade || 'visivel'}
+                          aria-label={`Visibilidade de ${e.codigo_produto}`}
+                          title={(_CC_VISIBILIDADE.find((o) => o.v === (e.visibilidade || 'visivel')) || {}).hint}
+                          onChange={(ev) => changeVisibilidade(e, ev.target.value)}>
+                    {_CC_VISIBILIDADE.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+                  </select>
                 </td>
                 <td className="cc-cell-actions" data-label="Ações">
                   <button type="button" className="cc-remove" disabled={locked}
