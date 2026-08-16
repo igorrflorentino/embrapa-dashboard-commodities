@@ -642,28 +642,65 @@ def test_seed_catalog_from_env_coerces_null_agrupamento_id(monkeypatch):
     assert p["agrupamento_id"] is None  # NaN coerced to None
 
 
-# ── Cross-layer coupling: the Ciclo de Vida "hidden" literal (#1 audit) ──────────
-def test_ciclo_de_vida_oculto_literal_matches_across_layers():
-    """The 'hidden' Ciclo de Vida literal couples THREE layers: the Python validator
-    (curation.CICLO_DE_VIDA_OCULTO), the dbt visibility gate (dim_produto_visibility.sql
-    hides exactly this string), and the frontend dropdown (ViewCadastroProdutos _CC_CICLO).
-    A reword in one layer without the others SILENTLY fails the gate — a product marked
-    hidden passes Python validation but reappears on the dashboard because the dbt WHERE
-    no longer matches. Pin the coupling so the drift is a red test, not a silent leak."""
+# ── Cross-layer coupling: the visibility gate's vocabulary (#1 audit) ───────────
+def test_visibility_gate_vocabulary_matches_across_layers():
+    """The gate's vocabulary couples Python to dbt, and a drift fails it OPEN — a produto
+    the researcher marked hidden would pass validation and still show on every chart.
+
+    Since the two-axis split the coupling moved: the MODEL filters on the coded value, and
+    the LEGACY prose lives only in the catalog_lifecycle macro, which is the single place
+    that translates history (the log is append-only, so those old rows are read forever).
+    Pin all three so any of them drifting is a red test, not a silent leak."""
     import pathlib
 
     from embrapa_dashboard.serving import curation
 
     repo = pathlib.Path(__file__).resolve().parents[1]
-    dbt_sql = (repo / "dbt/models/core/dim_produto_visibility.sql").read_text(encoding="utf-8")
-    assert curation.CICLO_DE_VIDA_OCULTO in dbt_sql, (
-        "dbt visibility gate literal drifted from curation.CICLO_DE_VIDA_OCULTO — "
-        "hidden products would silently reappear on the dashboard."
+    macro = (repo / "dbt/macros/catalog_lifecycle.sql").read_text(encoding="utf-8")
+    model = (repo / "dbt/models/core/dim_produto_visibility.sql").read_text(encoding="utf-8")
+
+    # 1. The macro still knows how to translate BOTH legacy prose values. Losing either
+    #    would silently reclassify every pre-split row (the OCULTO one fails the gate open).
+    for legacy in (curation.CICLO_DE_VIDA_OCULTO, curation.CICLO_DE_VIDA_VISIVEL):
+        assert legacy in macro, (
+            f"catalog_lifecycle macro no longer translates the legacy value {legacy!r} — "
+            "pre-split rows would be misread (hidden produtos could reappear)."
+        )
+    # 2. The macro emits the SAME codes Python validates/writes.
+    for code in (curation.VISIBILIDADE_OCULTO, curation.VISIBILIDADE_VISIVEL):
+        assert f"'{code}'" in macro, f"macro lost the coded visibility value {code!r}."
+    assert f"'{curation.INGESTAO_ATIVA}'" in macro, "macro lost the ingestao default."
+
+    # 3. The gate filters on the CODE (not the retired prose).
+    assert f"= '{curation.VISIBILIDADE_OCULTO}'" in model, (
+        "dim_produto_visibility no longer filters on VISIBILIDADE_OCULTO — the gate would "
+        "stop hiding anything."
     )
-    jsx = (repo / "frontend/src/ui/ViewCadastroProdutos.jsx").read_text(encoding="utf-8")
-    assert curation.CICLO_DE_VIDA_OCULTO in jsx, (
-        "frontend _CC_CICLO literal drifted from curation.CICLO_DE_VIDA_OCULTO."
-    )
+
+
+def test_lifecycle_translation_matches_the_dbt_macro():
+    """visibilidade_efetiva/ingestao_efetiva are the Python twins of the dbt macro: one
+    drives the admin editor, the other the researcher-facing gate. If they disagree, the
+    editor shows a produto as visible while the gate hides it (or worse, the reverse).
+    Assert the exact truth table both must implement."""
+    from embrapa_dashboard.serving import curation as c
+
+    # Coded value wins.
+    assert c.visibilidade_efetiva("oculto", None) == "oculto"
+    assert c.visibilidade_efetiva("visivel", c.CICLO_DE_VIDA_OCULTO) == "visivel"
+    # Legacy prose translated when the code is absent.
+    assert c.visibilidade_efetiva(None, c.CICLO_DE_VIDA_OCULTO) == "oculto"
+    assert c.visibilidade_efetiva(None, c.CICLO_DE_VIDA_VISIVEL) == "visivel"
+    # Unknown / empty NEVER hides (fail-safe: the gate is a NOT EXISTS over hidden codes).
+    assert c.visibilidade_efetiva(None, None) == "visivel"
+    assert c.visibilidade_efetiva("ocluto", None) == "visivel"  # typo → not hidden
+    assert c.visibilidade_efetiva(None, "algo inesperado") == "visivel"
+
+    # Ingestion: NULL predates the axis and everything active was ingested → 'ativa'.
+    assert c.ingestao_efetiva(None) == "ativa"
+    assert c.ingestao_efetiva("pausada") == "pausada"
+    assert c.ingestao_efetiva("ativa") == "ativa"
+    assert c.ingestao_efetiva("lixo") == "ativa"
 
 
 def test_current_sidra_tabela_reads_stored_absent_and_pre_migration(monkeypatch):

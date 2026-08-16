@@ -416,6 +416,51 @@ def _current_sidra_tabela(
     return rows[0].sidra_tabela if rows else None
 
 
+def _current_lifecycle(
+    bq: bigquery.Client, table_fqn: str, codigo_produto: str, banco: str
+) -> tuple[str | None, str | None]:
+    """The active entry's EFFECTIVE (ingestao, visibilidade) — legacy prose already
+    translated — so an update that doesn't re-send them PRESERVES them.
+
+    The writer overwrites the whole row (append-only latest-wins), so an omitted axis would
+    otherwise be stored as NULL. For visibilidade that is a fail-OPEN: a produto the
+    researcher had hidden would silently come back into every chart on an unrelated edit
+    (e.g. renaming its agrupamento). The retired `ciclo_de_vida` had no such preservation
+    and relied on the UI always re-sending the whole entry — that coupling is what this
+    replaces, so any client (or a script) is now safe by default.
+
+    Returns (None, None) only when there is genuinely no prior row / the table predates the
+    columns; a transient BQ fault PROPAGATES rather than silently clearing the axes."""
+    sql = f"""
+        select ciclo_de_vida, ingestao, visibilidade from (
+          select ciclo_de_vida, ingestao, visibilidade, row_number() over (
+            partition by codigo_produto, banco order by edited_at desc, change_id desc
+          ) as _rn
+          from `{table_fqn}`
+          where codigo_produto = @codigo and banco = @banco
+        ) where _rn = 1
+    """
+    params = [
+        bigquery.ScalarQueryParameter("codigo", "STRING", codigo_produto),
+        bigquery.ScalarQueryParameter("banco", "STRING", banco),
+    ]
+    try:
+        rows = list(
+            bq.query(sql, job_config=bigquery.QueryJobConfig(query_parameters=params)).result()
+        )
+    except (NotFound, BadRequest):
+        # Same narrow contract as _current_sidra_tabela: only the pre-migration shapes
+        # (absent table / absent columns) are legitimately "nothing stored".
+        return None, None
+    if not rows:
+        return None, None
+    row = rows[0]
+    return (
+        ingestao_efetiva(row.ingestao),
+        visibilidade_efetiva(row.visibilidade, row.ciclo_de_vida),
+    )
+
+
 def _check_code_status(
     bq: bigquery.Client, table_fqn: str, codigo_produto: str, banco: str, *, is_active: bool
 ) -> None:
@@ -460,6 +505,8 @@ def record_produto_catalog(
     agrupamento: str | None = None,
     descricao_produto: str | None = None,
     ciclo_de_vida: str | None = None,
+    ingestao: str | None = None,
+    visibilidade: str | None = None,
     agrupamento_id: str | None = None,
     sidra_tabela: str | None = None,
     change_id: str | None = None,
@@ -473,13 +520,28 @@ def record_produto_catalog(
     (no prefixes); ``agrupamento_id`` defaults to the agrupamento slug. ``sidra_tabela``
     (PPM only: '3939' herd / '74' animal) routes catalog-driven ingestion. Validates the
     key (numeric code), the agrupamento, and the sidra_tabela rule; a NEW code need NOT yet
-    exist in Gold — it registers as *pendente de ingestão*. Raises ValueError on a bad key /
-    over-length / a bad sidra_tabela."""
+    exist in Gold — it registers as *pendente de ingestão*.
+
+    The lifecycle is TWO coded axes: ``ingestao`` (ativa|pausada — keep fetching?) and
+    ``visibilidade`` (visivel|oculto — researcher sees it?). Omitting one on an UPDATE
+    PRESERVES the stored value (see _current_lifecycle); a NEW entry defaults to
+    ativa/visivel. ``ciclo_de_vida`` is the RETIRED prose enum: still accepted so an old
+    client keeps working (it is translated into the axes), never written going forward.
+
+    Raises ValueError on a bad key / over-length / a bad sidra_tabela / an out-of-vocabulary
+    lifecycle code."""
     cfg = settings or get_settings()
     codigo_produto = (codigo_produto or "").strip()
     banco = (banco or "").strip()
     ciclo_de_vida = ciclo_de_vida.strip() if ciclo_de_vida else ciclo_de_vida
     _validate_catalog_edit(codigo_produto, banco, ciclo_de_vida)
+    ingestao = ingestao.strip() if ingestao else None
+    visibilidade = visibilidade.strip() if visibilidade else None
+    _validate_lifecycle(ingestao, visibilidade)
+    # Back-compat: a client still sending the retired prose enum gets it translated onto the
+    # visibility axis rather than rejected — the value it expressed is still meaningful.
+    if visibilidade is None and ciclo_de_vida:
+        visibilidade = _LEGACY_CICLO_TO_VISIBILIDADE.get(ciclo_de_vida)
     sidra_tabela = sidra_tabela.strip() if sidra_tabela else None
     # A non-ppm banco must never carry a sidra_tabela — reject early (no BQ). The PPM
     # requirement is enforced below, once we know whether this is a new entry or an update.
@@ -523,6 +585,21 @@ def record_produto_catalog(
             sidra_tabela = _current_sidra_tabela(bq, table_fqn, codigo_produto, banco)
         _validate_sidra_tabela(banco, sidra_tabela, cfg, require_for_ppm=not is_active)
 
+    # PRESERVE an axis the caller didn't send. On an UPDATE that means keeping what is
+    # stored (an unrelated edit must never un-hide a produto or resume a paused one); on a
+    # NEW entry it means the safe defaults — ingest it (that is why it was registered) and
+    # show it (hiding is an explicit act).
+    if ingestao is None or visibilidade is None:
+        stored_ingestao, stored_visibilidade = (
+            _current_lifecycle(bq, table_fqn, codigo_produto, banco)
+            if is_active
+            else (None, None)
+        )
+        if ingestao is None:
+            ingestao = stored_ingestao or INGESTAO_ATIVA
+        if visibilidade is None:
+            visibilidade = stored_visibilidade or VISIBILIDADE_VISIVEL
+
     if supplied and _change_id_seen(bq, table_fqn, change_id):
         logger.info(
             "Catalog: duplicate change_id %s ignored (%s:%s)", change_id, banco, codigo_produto
@@ -545,12 +622,14 @@ def record_produto_catalog(
             banco,
             agrupamento,
             descricao_produto,
-            ciclo_de_vida,
+            None,
             agrupamento_id,
             True,
             edited_by,
             change_id,
             sidra_tabela=sidra_tabela,
+            ingestao=ingestao,
+            visibilidade=visibilidade,
             deduped=True,
         )
     _insert_catalog_row(
@@ -560,14 +639,26 @@ def record_produto_catalog(
         banco,
         agrupamento,
         descricao_produto,
-        ciclo_de_vida,
+        # ciclo_de_vida is RETIRED: never written again. The axes carry the meaning, and
+        # leaving it NULL keeps the legacy translation unambiguous (a row with BOTH would
+        # invite the two to disagree).
+        None,
         agrupamento_id,
         True,
         edited_by,
         change_id,
         sidra_tabela=sidra_tabela,
+        ingestao=ingestao,
+        visibilidade=visibilidade,
     )
-    logger.info("Catalog: %s:%s -> active by %s", banco, codigo_produto, edited_by)
+    logger.info(
+        "Catalog: %s:%s -> active (ingestao=%s, visibilidade=%s) by %s",
+        banco,
+        codigo_produto,
+        ingestao,
+        visibilidade,
+        edited_by,
+    )
     if invalidate_cache:
         invalidate_produto_catalog_cache()
     return _catalog_row(
@@ -575,12 +666,14 @@ def record_produto_catalog(
         banco,
         agrupamento,
         descricao_produto,
-        ciclo_de_vida,
+        None,
         agrupamento_id,
         True,
         edited_by,
         change_id,
         sidra_tabela=sidra_tabela,
+        ingestao=ingestao,
+        visibilidade=visibilidade,
         deduped=False,
     )
 
@@ -733,14 +826,21 @@ def _catalog_row(
     *,
     deduped,
     sidra_tabela=None,
+    ingestao=None,
+    visibilidade=None,
 ) -> dict:
-    """The written/echoed catalog row dict (shared by the write + dedup paths)."""
+    """The written/echoed catalog row dict (shared by the write + dedup paths).
+
+    Echoes the EFFECTIVE axes so a client reading the response sees what the row now means,
+    whether the value came from the request, from preservation, or from a legacy row."""
     return {
         "codigo_produto": codigo_produto,
         "banco": banco,
         "agrupamento": agrupamento,
         "descricao_produto": descricao_produto,
         "ciclo_de_vida": ciclo_de_vida,
+        "ingestao": ingestao_efetiva(ingestao),
+        "visibilidade": visibilidade_efetiva(visibilidade, ciclo_de_vida),
         "agrupamento_id": agrupamento_id,
         "sidra_tabela": sidra_tabela,
         "active": active,
@@ -757,7 +857,7 @@ def _row_for_change_id(bq, table_fqn: str, change_id: str) -> dict | None:
     STORED, not the (possibly changed) new request body. None if not found."""
     sql = f"""
         select codigo_produto, banco, agrupamento, descricao_produto, ciclo_de_vida,
-               agrupamento_id, sidra_tabela, active, edited_by
+               ingestao, visibilidade, agrupamento_id, sidra_tabela, active, edited_by
         from `{table_fqn}`
         where change_id = @change_id
         order by edited_at desc
@@ -779,6 +879,8 @@ def _row_for_change_id(bq, table_fqn: str, change_id: str) -> dict | None:
         r["edited_by"],
         change_id,
         sidra_tabela=r["sidra_tabela"],
+        ingestao=r["ingestao"],
+        visibilidade=r["visibilidade"],
         deduped=True,
     )
 
