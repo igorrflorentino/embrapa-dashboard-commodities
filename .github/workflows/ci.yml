@@ -131,10 +131,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - name: Set up Node 22 (npm cache keyed on the lockfile)
+      # Node version comes from .nvmrc — the SINGLE source of truth shared with
+      # release.yml, deploy/webapi/Dockerfile and local dev, so CI can't silently
+      # drift from what developers and the production build actually run.
+      - name: Set up Node (version from .nvmrc; npm cache keyed on the lockfile)
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 

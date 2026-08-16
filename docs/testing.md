@@ -3,6 +3,8 @@
 Comprehensive testing for the development environment setup.
 
 > ℹ️ **Scope.** This guide covers the backend (ingest + dbt + CLI). The React SPA (`frontend/`) shipped in the 2026-06 Dash→React migration and brings its own test suite: Vitest, run by the `frontend` job in `.github/workflows/ci.yml` (`cd frontend && npm test`). The old Dash UI tests (Dash smoke test, Playwright visual check) were removed on 2026-05-29 alongside the Dash layer.
+>
+> ⚠️ **Run the frontend suite on the node version in `/.nvmrc` (22).** It is the single source of truth CI and `deploy/webapi/Dockerfile` also use. On a newer node the suite fails in ways that have nothing to do with your change — node 25, for example, fails all 36 `AppShell` tests with `localStorage.removeItem is not a function`, a jsdom interaction, while CI stays green. With `nvm`/`fnm`, `nvm use` in the repo root picks it up. Without a version manager on macOS: `brew install node@22` (keg-only — it does NOT touch your global node) and prefix the run with `export PATH="/opt/homebrew/opt/node@22/bin:$PATH"`.
 
 ## Quick Test
 

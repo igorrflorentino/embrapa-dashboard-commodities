@@ -15,6 +15,10 @@
 
 # ── Stage 1: build the React SPA (→ /fe/dist) ────────────────────────────────
 # node 22 (LTS): Vite 8 requires node ^20.19 || >=22.12; 22-slim is comfortably in range.
+# KEEP THIS MAJOR IN SYNC WITH /.nvmrc — that file is what CI and local dev read, and a
+# Dockerfile that drifts from it would build the production bundle on a runtime no test
+# ever exercises. (Dependabot is configured not to bump this major on its own; moving it
+# is a deliberate change to .nvmrc + this line together.)
 FROM node:22-slim AS frontend
 WORKDIR /fe
 # Lockfile-first for a cached install layer; npm ci needs package-lock.json.
