@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.23.0] - 2026-08-16
+
+**Ciclo de vida do produto virou DOIS EIXOS independentes, com códigos estáveis.** O enum
+único de duas frases era um antipadrão em três frentes: prometia uma escolha sobre ingestão
+que não existia, chamava-se "ciclo de vida" controlando só visibilidade, e a frase pt-BR de
+exibição *era* a chave no banco.
+
+### Added
+- **Eixo `ingestao` (ativa | pausada).** "Pausada" congela a série: para de buscar dados
+  novos e mantém todo o histórico no Gold — e o produto **continua visível**. Antes esse
+  estado era inexprimível: as duas opções começavam com "Fazer Ingestão" e o
+  `catalog_resolver` **nunca lia a coluna**, então a única forma de parar a ingestão era
+  *remover* o produto, virando órfão à espera de purga. Agora o resolver filtra de verdade.
+- **Coluna `Status` derivada (somente leitura)** — Ativo / Oculto / Pausado / Pendente de
+  ingestão. É consequência dos eixos, nunca um controle: era exatamente o que faltava, já
+  que o dropdown antigo se chamava "ciclo de vida" mas governava um eixo só. Absorveu a
+  coluna "Dados" (produto sem linhas na Gold = pendente de ingestão era o mesmo fato dito
+  duas vezes), então a tabela **manteve 9 colunas** e o alinhamento conquistado na v1.20.1.
+
+### Changed
+- **Eixo `visibilidade` (visivel | oculto) com código estável.** A frase
+  `'Fazer Ingestão mas deixar indisponível'` estava hardcoded em `dim_produto_visibility.sql`,
+  no Python e no dropdown — renomear o rótulo exigia migração de dados coordenada em três
+  lugares, e uma divergência silenciosa faria o gate **fail open**. Agora o banco guarda
+  `oculto` e o rótulo pt-BR existe só na UI.
+- **Migração sem reescrever histórico.** O log é append-only: as linhas antigas continuam
+  com a prosa e são **traduzidas na leitura** pelo macro `catalog_lifecycle` (SQL) e por
+  `visibilidade_efetiva`/`ingestao_efetiva` (Python) — gêmeos, com um teste fixando a tabela
+  verdade dos dois. Valor desconhecido **nunca** oculta: o gate falha para o lado seguro.
+- **Preservação de eixo no servidor.** Omitir um eixo num update preserva o valor guardado.
+  O writer sobrescreve a linha inteira, então antes uma edição não relacionada (renomear o
+  agrupamento) apagava o `ciclo_de_vida` — só não quebrava porque a UI reenviava tudo. Agora
+  qualquer cliente ou script está seguro por padrão.
+- Verificado contra a **produção**: a lógica antiga e a nova escondem exatamente os **mesmos
+  3 produtos** entre os 308 ativos; o teste unitário do gate cobre linha legada, linha nova,
+  a transição entre elas, independência dos eixos e o caso tudo-NULL. Colunas adicionadas à
+  tabela real antes do deploy (aditivas, nullable) — expandir o schema antes de subir o
+  código evita que o `dbt build` quebre ao selecionar coluna inexistente.
+
+---
+
 ## [1.22.0] - 2026-08-16
 
 **As séries do BCB — câmbio PTAX e índices de inflação — agora aparecem em "Tabelas de

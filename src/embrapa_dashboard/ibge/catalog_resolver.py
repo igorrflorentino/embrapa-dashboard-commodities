@@ -147,12 +147,17 @@ def _query_catalog_codes(
         bigquery.ScalarQueryParameter("banco", "STRING", banco)
     ]
     if sidra_tabela is not None:
-        inner_cols = "codigo_produto, active, sidra_tabela"
+        inner_cols = "codigo_produto, active, ingestao, sidra_tabela"
         extra_filter = "and sidra_tabela = @sidra_tabela"
         params.append(bigquery.ScalarQueryParameter("sidra_tabela", "STRING", sidra_tabela))
     else:
-        inner_cols = "codigo_produto, active"
+        inner_cols = "codigo_produto, active, ingestao"
         extra_filter = ""
+    # `ingestao = 'pausada'` FREEZES a produto: stop fetching new data, keep everything
+    # already in Gold (and keep showing it — visibility is a separate axis). Before the
+    # two-axis split the only way to stop ingesting was to REMOVE the produto, which turned
+    # it into an orphan awaiting purge. NULL predates the axis and must read as 'ativa' —
+    # anything else would silently stop ingesting every produto registered before the split.
     sql = f"""
         select codigo_produto from (
           select {inner_cols}, row_number() over (
@@ -161,7 +166,7 @@ def _query_catalog_codes(
           from `{table}`
           where banco = @banco
         )
-        where _rn = 1 and active {extra_filter}
+        where _rn = 1 and active and coalesce(ingestao, 'ativa') != 'pausada' {extra_filter}
         order by codigo_produto
     """
     job_config = bigquery.QueryJobConfig(query_parameters=params)

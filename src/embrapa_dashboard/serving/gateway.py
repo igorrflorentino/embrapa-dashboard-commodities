@@ -907,7 +907,7 @@ def fetch_produto_catalog(banco: str | None = None):
     where = "where banco = @banco" if banco else ""
     sql = f"""
         select codigo_produto, banco, agrupamento, descricao_produto,
-               ciclo_de_vida, agrupamento_id, sidra_tabela
+               ciclo_de_vida, ingestao, visibilidade, agrupamento_id, sidra_tabela
         from (
           select *, row_number() over (
             partition by codigo_produto, banco order by edited_at desc, change_id desc

@@ -19,13 +19,15 @@ let postUrl;
 const ENTRIES = {
   entries: [
     {
+      // The seam always returns the EFFECTIVE coded axes (a legacy row is translated
+      // server-side), so the fixture carries them like the real API does.
       codigo_produto: '4403', banco: 'comex', agrupamento: 'Madeira',
-      ciclo_de_vida: 'Fazer Ingestão e deixar disponível', agrupamento_id: 'madeira',
+      ingestao: 'ativa', visibilidade: 'visivel', agrupamento_id: 'madeira',
       descricao_fonte: 'Madeira em toras (NCM)', descricao_produto: 'Nota antiga',
     },
     {
       codigo_produto: '4407', banco: 'comtrade', agrupamento: 'Madeira',
-      ciclo_de_vida: 'Fazer Ingestão e deixar disponível', agrupamento_id: 'madeira',
+      ingestao: 'ativa', visibilidade: 'visivel', agrupamento_id: 'madeira',
       descricao_fonte: null,
     },
   ],
@@ -126,8 +128,10 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(container.textContent).toContain('Madeira em toras (NCM)');
     // Gold-state columns: linhas (pt-BR grouped), período span, and the tem-dados markers.
     expect(container.textContent).toContain('1997–2023');
-    expect(container.querySelector('.cc-has-data')).toBeTruthy(); // 4403 has data ✓
-    expect(container.querySelector('.cc-no-data')).toBeTruthy();  // 4407 is registered-but-empty
+    // The old "Dados" ✓/sem-dados column was absorbed into the derived Status badge:
+    // 4403 has data + is visible → Ativo; 4407 is registered-but-empty → Pendente.
+    expect(container.querySelector('.cc-status-ativo')).toBeTruthy();
+    expect(container.querySelector('.cc-status-pendente')).toBeTruthy();
     const codes = [...container.querySelectorAll('.dt-table tbody td')].map((e) => e.textContent);
     expect(codes).toContain('4403');
     expect(codes).toContain('4407');
@@ -227,6 +231,85 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     await waitFor(() => expect(container.querySelector('.cc-hint-ok')).toBeTruthy());
     expect(getByText('Salvar produto').disabled).toBe(true);
     expect(postBody).toBeNull();
+  });
+
+  it('pauses ingestion without a confirmation and without touching visibility', async () => {
+    // Pausing is reversible and destroys nothing (history stays, produto stays visible), so
+    // unlike hiding it must NOT gate behind the modal.
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    const sel = container.querySelector('select[aria-label="Ingestão de 4403"]');
+    fireEvent.change(sel, { target: { value: 'pausada' } });
+    await waitFor(() => expect(postBody).toBeTruthy());
+    expect(container.querySelector('.cite-modal')).toBeNull(); // no confirmation
+    expect(postUrl).toContain('/api/catalog/entry');
+    expect(postBody.ingestao).toBe('pausada');
+    expect(postBody.visibilidade).toBe('visivel'); // the OTHER axis is untouched
+  });
+
+  it('confirms before hiding, and hiding does not pause ingestion', async () => {
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    const sel = container.querySelector('select[aria-label="Visibilidade de 4403"]');
+    fireEvent.change(sel, { target: { value: 'oculto' } });
+    // Hiding pulls it from every chart → gated behind the accessible modal.
+    await waitFor(() => expect(container.querySelector('.cite-modal[role="dialog"]')).toBeTruthy());
+    expect(postBody).toBeNull();
+    fireEvent.click(container.querySelector('.cite-modal .btn-primary'));
+    await waitFor(() => expect(postBody).toBeTruthy());
+    expect(postBody.visibilidade).toBe('oculto');
+    expect(postBody.ingestao).toBe('ativa'); // still fetching — the axes are independent
+  });
+
+  it('derives the Status badge from the axes, with pausada outranking "sem dados"', async () => {
+    // A frozen produto that never arrived is Pausado, not Pendente: calling it pending would
+    // promise an ingestion that will never come.
+    mockFetch({
+      entries: {
+        entries: [
+          { codigo_produto: '1', banco: 'comex', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+            ingestao: 'ativa', visibilidade: 'visivel' },
+          { codigo_produto: '2', banco: 'comex', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+            ingestao: 'ativa', visibilidade: 'oculto' },
+          { codigo_produto: '3', banco: 'comex', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+            ingestao: 'pausada', visibilidade: 'visivel' },
+          { codigo_produto: '4', banco: 'comex', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+            ingestao: 'pausada', visibilidade: 'visivel' },
+        ],
+        total: 4,
+      },
+      status: {
+        status: {
+          'comex:1': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
+          'comex:2': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
+          'comex:3': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
+          'comex:4': { n_rows: 0, year_start: null, year_end: null, has_data: false },
+        },
+      },
+    });
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.cc-status')).toBeTruthy());
+    await waitFor(() => expect(container.querySelectorAll('.cc-status').length).toBe(4));
+    const badges = [...container.querySelectorAll('.cc-status')].map((b) => b.textContent);
+    expect(badges).toEqual(['Ativo', 'Oculto', 'Pausado', 'Pausado']);
+  });
+
+  it('reads a LEGACY row (no coded axes) as ativa/visivel rather than blank', async () => {
+    // Rows written before the two-axis split arrive without the coded fields; the UI must
+    // fall back to the safe defaults instead of rendering an empty dropdown.
+    mockFetch({
+      entries: {
+        entries: [{
+          codigo_produto: '4403', banco: 'comex', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          ciclo_de_vida: 'Fazer Ingestão e deixar disponível',
+        }],
+        total: 1,
+      },
+    });
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    expect(container.querySelector('select[aria-label="Ingestão de 4403"]').value).toBe('ativa');
+    expect(container.querySelector('select[aria-label="Visibilidade de 4403"]').value).toBe('visivel');
   });
 
   it('moves a commodity to another agrupamento via the row group dropdown', async () => {

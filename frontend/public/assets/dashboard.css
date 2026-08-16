@@ -3411,15 +3411,39 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
      never wrap their own displayed value — a native <select> just clips internally when
      narrow, ordinary/expected <select> behavior, not the truncation this fix avoids. */
   .cc-table thead th:nth-child(1), .cc-table tbody td:nth-child(1) { width: 10%; } /* Banco */
-  .cc-table thead th:nth-child(2), .cc-table tbody td:nth-child(2) { width: 10%; } /* Código */
-  .cc-table thead th:nth-child(3), .cc-table tbody td:nth-child(3) { width: 21%; } /* Descrição (fonte) */
-  .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { width: 9%; }  /* Linhas */
-  .cc-table thead th:nth-child(5), .cc-table tbody td:nth-child(5) { width: 10%; } /* Período */
-  .cc-table thead th:nth-child(6), .cc-table tbody td:nth-child(6) { width: 7%; }  /* Dados */
+  .cc-table thead th:nth-child(2), .cc-table tbody td:nth-child(2) { width: 9%; }  /* Código */
+  .cc-table thead th:nth-child(3), .cc-table tbody td:nth-child(3) { width: 18%; } /* Descrição (fonte) */
+  .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { width: 8%; }  /* Linhas */
+  .cc-table thead th:nth-child(5), .cc-table tbody td:nth-child(5) { width: 9%; }  /* Período */
+  .cc-table thead th:nth-child(6), .cc-table tbody td:nth-child(6) { width: 12%; } /* Status (derivado) */
   .cc-table thead th:nth-child(7), .cc-table tbody td:nth-child(7) { width: 13%; } /* Agrupamento */
-  .cc-table thead th:nth-child(8), .cc-table tbody td:nth-child(8) { width: 16%; } /* Ciclo de vida */
+  .cc-table thead th:nth-child(8), .cc-table tbody td:nth-child(8) { width: 17%; } /* Ciclo de vida (2 eixos) */
   .cc-table thead th:nth-child(9), .cc-table tbody td:nth-child(9) { width: 4%; }  /* Ações */
   .cc-table tbody td .cc-group-select, .cc-table tbody td select { width: 100%; max-width: 100%; }
+}
+/* Derived lifecycle STATE badge (read-only). Colour carries the meaning at a glance:
+   green = flowing and visible, amber = deliberately held back, grey = waiting on data. */
+.cc-status {
+  display: inline-block; white-space: normal;
+  font: 600 10px var(--font-body); letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: var(--radius-pill); line-height: 1.35;
+}
+.cc-status-ativo {
+  color: var(--ok, #1b7f3b);
+  background: color-mix(in srgb, var(--ok, #1b7f3b) 12%, transparent);
+}
+.cc-status-oculto, .cc-status-pausado {
+  color: var(--warn, #b8860b);
+  background: color-mix(in srgb, var(--warn, #b8860b) 14%, transparent);
+}
+.cc-status-pendente { color: var(--fg-3); background: var(--bg-surface-2); }
+/* The two lifecycle axes stacked in one cell — each labelled, since two bare dropdowns
+   side by side wouldn't say which is which. */
+.cc-axes { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cc-axis { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cc-axis-k {
+  font: 600 9px var(--font-body); letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--fg-4);
 }
 .cc-has-data { color: var(--ok, #1b7f3b); font-weight: 700; }
 .cc-no-data {

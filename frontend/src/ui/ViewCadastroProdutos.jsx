@@ -1,25 +1,35 @@
 // ViewCadastroProdutos — the Curadoria (catalog) editor: what ENTERS and EXITS the
 // dashboard. Each commodity is registered by its EXACT source code (código+banco; no
 // prefixes), points at one AGRUPAMENTO (first-class registry — create/rename/delete +
-// inline move) and carries a Ciclo de Vida (in/out). The add form autocompletes the code
-// from the source's product list and flags whether it already exists in Gold, but a code
+// inline move) and carries a Ciclo de Vida of TWO INDEPENDENT AXES: Ingestão
+// (ativa|pausada — keep fetching?) and Exibição (visivel|oculto — researcher sees it?).
+// A read-only Status column derives the resulting state (Ativo / Oculto / Pausado /
+// Pendente de ingestão) so the lifecycle is legible without decoding two dropdowns.
+// The add form autocompletes the code from the source's product list and flags whether it already exists in Gold, but a code
 // that is not (yet) listed is ACCEPTED as *pendente de ingestão* (the catalog now drives
 // ingestion), not rejected. The catalog table also shows each commodity's current STATE
 // in the dashboard (linhas na Gold, período coberto, se tem dados). Writes go through
 // /api/catalog/* (append-only, IAP-attributed; removal is a non-destructive tombstone).
 //
-// Authorization is enforced server-side (403); a 400 = bad key / invalid banco or ciclo /
+// Authorization is enforced server-side (403); a 400 = bad key / invalid banco or axis /
 // missing PPM tag / duplicate or non-empty group. We surface both honestly rather than hiding the failure.
 
 const { useState: useCcState, useEffect: useCcEffect, useMemo: useCcMemo, useRef: useCcRef } = React;
 
-const _CC_CICLO = [
-  { v: 'Fazer Ingestão e deixar disponível', label: 'Ingerir e exibir' },
-  { v: 'Fazer Ingestão mas deixar indisponível', label: 'Ingerir, mas ocultar' },
+// Ciclo de vida = TWO INDEPENDENT AXES. The stored values are stable machine CODES; these
+// pt-BR labels exist only here, in the UI — the retired design stored the display sentence
+// itself, so a reword meant a data migration plus a coordinated change in dbt and Python.
+const _CC_INGESTAO = [
+  { v: 'ativa', label: 'Ativa', hint: 'Buscar dados novos a cada atualização' },
+  { v: 'pausada', label: 'Pausada', hint: 'Parar de buscar dados novos; mantém o que já está no Gold' },
 ];
-// The "ocultar" (indisponível) Ciclo de Vida — hiding a product removes it from EVERY
-// researcher-facing chart/filter, so setting it is confirmed (see _ccConfirmHide).
-const _CC_CICLO_OCULTO = _CC_CICLO[1].v;
+const _CC_VISIBILIDADE = [
+  { v: 'visivel', label: 'Visível', hint: 'Aparece nos gráficos e filtros' },
+  { v: 'oculto', label: 'Oculto', hint: 'Some de TODOS os gráficos e filtros' },
+];
+// Hiding pulls a produto from EVERY researcher-facing chart/filter, so setting it is
+// confirmed. Pausing is NOT confirmed: it is reversible and destroys nothing.
+const _CC_OCULTO = 'oculto';
 // A fresh idempotency key (change_id). The backend dedupes a retried POST carrying the SAME
 // change_id (a network timeout that actually landed, or a fast re-submit), so a write is
 // never double-applied. Kept STABLE per logical operation until it commits, then rotated.
@@ -45,16 +55,32 @@ const _CC_PPM_TABELAS = [
 const _CC_PPM_LABEL = Object.fromEntries(_CC_PPM_TABELAS.map((t) => [t.v, t.label]));
 const _CC_EMPTY_DRAFT = {
   codigo_produto: '', banco: 'comex', agrupamento_id: '',
-  descricao_produto: '', ciclo_de_vida: _CC_CICLO[0].v, sidra_tabela: '',
+  descricao_produto: '', ingestao: 'ativa', visibilidade: 'visivel', sidra_tabela: '',
 };
 // A catalog write reaches the researcher-facing charts/filters only on the NEXT dbt build (+ the
 // serving marts' cache TTL) — never instantly. Appended to save/rename toasts so the researcher
 // isn't surprised the change doesn't show up in the dashboard right away (mirrors the hide notice).
 const _CC_LATENCIA = 'A mudança vale na próxima atualização (pode levar alguns minutos).';
 
-function _ccCicloShort(v) {
-  const hit = _CC_CICLO.find((c) => c.v === v);
-  return hit ? hit.label : (v || '—');
+// The produto's LIFECYCLE STATE, derived from the two axes + whether its data actually
+// landed in Gold. Read-only: it is a consequence of the controls, never a control itself —
+// which is the point, since the retired "Ciclo de vida" dropdown was named for the whole
+// lifecycle while only steering visibility. The remaining states (descontinuado, purgado)
+// belong to removed produtos and live in the Descontinuados section, not in this table.
+// PRECEDENCE matters: pausada wins over "sem dados" because a frozen produto that never
+// arrived is paused, not "waiting for the next run" — saying "pendente" would promise an
+// ingestion that will never come.
+function _ccStatus(entry, st) {
+  if ((entry.ingestao || 'ativa') === 'pausada') {
+    return { key: 'pausado', label: 'Pausado', title: 'Não busca dados novos; o histórico no Gold é mantido' };
+  }
+  if (st && !st.has_data) {
+    return { key: 'pendente', label: 'Pendente de ingestão', title: 'Cadastrado; será buscado na próxima ingestão' };
+  }
+  if ((entry.visibilidade || 'visivel') === _CC_OCULTO) {
+    return { key: 'oculto', label: 'Oculto', title: 'Ingerido, mas fora de todos os gráficos e filtros' };
+  }
+  return { key: 'ativo', label: 'Ativo', title: 'Ingerindo e visível no dashboard' };
 }
 const _ccInt = (n) => (n == null ? '—' : Number(n).toLocaleString('pt-BR'));
 
@@ -215,7 +241,7 @@ function ViewCadastroProdutos() {
   // the identical edit reuses one and dedupes.
   const _saveKey = (e) =>
     `save:${e.banco}:${e.codigo_produto}:` +
-    JSON.stringify([e.agrupamento_id ?? null, e.ciclo_de_vida ?? null, e.descricao_produto ?? null]);
+    JSON.stringify([e.agrupamento_id ?? null, e.ingestao ?? null, e.visibilidade ?? null, e.descricao_produto ?? null]);
 
   // Server-authoritative edit permission (from /api/catalog/entries' can_edit). The UI
   // merely REFLECTS it — the POST handlers still 403 on a stale true, so this only ever
@@ -318,21 +344,26 @@ function ViewCadastroProdutos() {
     );
   };
 
-  // Change a single product's Ciclo de Vida. HIDING (indisponível) pulls it from EVERY
-  // researcher chart/filter, so confirm + explain the consequence + the update latency first.
-  const changeCiclo = (e, ciclo) => {
-    if (ciclo === _CC_CICLO_OCULTO) {
+  // Visibilidade. HIDING pulls the produto from EVERY researcher chart/filter, so confirm +
+  // explain the consequence + the update latency first. Un-hiding needs no confirmation.
+  const changeVisibilidade = (e, visibilidade) => {
+    if (visibilidade === _CC_OCULTO) {
       setPendingConfirm({
         title: `Ocultar ${e.codigo_produto}?`,
         body: `Ele deixará de aparecer em TODOS os gráficos e filtros do dashboard para os ` +
-          `pesquisadores. A mudança vale na próxima atualização (pode levar alguns minutos).`,
+          `pesquisadores. Os dados continuam no Gold e a ingestão segue normalmente. ` +
+          `A mudança vale na próxima atualização (pode levar alguns minutos).`,
         confirmLabel: 'Ocultar', danger: true,
-        onConfirm: () => saveEntry({ ...e, ciclo_de_vida: ciclo }),
+        onConfirm: () => saveEntry({ ...e, visibilidade }),
       });
       return;
     }
-    saveEntry({ ...e, ciclo_de_vida: ciclo });
+    saveEntry({ ...e, visibilidade });
   };
+
+  // Ingestão. Pausing is REVERSIBLE and destroys nothing (the Gold history stays, and the
+  // produto keeps showing) — so unlike hiding and removing, it needs no confirmation.
+  const changeIngestao = (e, ingestao) => saveEntry({ ...e, ingestao });
 
   const removeEntry = (e) => {
     setPendingConfirm({
@@ -396,11 +427,13 @@ function ViewCadastroProdutos() {
     });
   };
 
-  // Per-Agrupamento lifecycle (the lead's edit grain): set Ciclo de Vida for every member.
-  const setCicloForGroup = (g, ciclo) => {
+  // Per-Agrupamento lifecycle (the lead's edit grain): set ONE axis for every member.
+  // `axis` is the field name ('ingestao' | 'visibilidade') so the bulk path can't drift from
+  // the per-row one — both write the same coded field through the same saveEntry contract.
+  const setAxisForGroup = (g, axis, value) => {
     const members = data.entries.filter((e) => e.agrupamento_id === g.group_id);
     const apply = () => {
-      const writes = members.map((m) => ({ ...m, ciclo_de_vida: ciclo }));
+      const writes = members.map((m) => ({ ...m, [axis]: value }));
       const keys = writes.map(_saveKey);
       run(async () => {
         let done = 0;
@@ -414,7 +447,7 @@ function ViewCadastroProdutos() {
         }
       }, `Ciclo de vida de "${g.group_name}" atualizado (${writes.length}).`, keys);
     };
-    if (ciclo === _CC_CICLO_OCULTO) {
+    if (axis === 'visibilidade' && value === _CC_OCULTO) {
       setPendingConfirm({
         title: `Ocultar TODOS os ${members.length} produto(s) de "${g.group_name}"?`,
         body: 'Eles deixarão de aparecer em qualquer gráfico ou filtro do dashboard para os ' +
@@ -491,7 +524,7 @@ function ViewCadastroProdutos() {
         <thead>
           <tr>
             <th>Banco</th><th>Código</th><th>Descrição (fonte)</th>
-            <th className="num">Linhas</th><th>Período</th><th>Dados</th>
+            <th className="num">Linhas</th><th>Período</th><th>Status</th>
             <th>Agrupamento</th><th>Ciclo de vida</th><th aria-label="ações"></th>
           </tr>
         </thead>
@@ -524,10 +557,16 @@ function ViewCadastroProdutos() {
                 </td>
                 <td className="num tnum" data-label="Linhas">{st ? _ccInt(st.n_rows) : (statusErr ? '—' : '…')}</td>
                 <td className="tnum" data-label="Período">{st && st.year_start != null ? `${st.year_start}–${st.year_end}` : '—'}</td>
-                <td data-label="Dados">
-                  {!st ? <span className="dt-null">{statusErr ? '—' : '…'}</span>
-                    : st.has_data ? <span className="cc-has-data" title="Tem dados na Gold">✓</span>
-                    : <span className="cc-no-data" title="Cadastrado, mas sem dados na Gold">sem dados</span>}
+                <td data-label="Status">
+                  {/* DERIVED, read-only: the produto's lifecycle state as a consequence of the
+                      two axes + whether its data reached Gold. Absorbs the old "Dados" column —
+                      "sem dados na Gold" and "pendente de ingestão" were the same fact stated
+                      twice. Until the Gold-state read resolves we show the loading/unknown mark
+                      rather than guessing a state from the axes alone. */}
+                  {!st ? <span className="dt-null">{statusErr ? '—' : '…'}</span> : (() => {
+                    const s = _ccStatus(e, st);
+                    return <span className={'cc-status cc-status-' + s.key} title={s.title}>{s.label}</span>;
+                  })()}
                 </td>
                 <td data-label="Agrupamento">
                   <CcGroupSelect value={e.agrupamento_id} onChange={(gid) => moveEntry(e, gid)}
@@ -535,14 +574,30 @@ function ViewCadastroProdutos() {
                                  ariaLabel={`Agrupamento de ${e.codigo_produto}`} />
                 </td>
                 <td data-label="Ciclo de vida">
-                  <select disabled={locked} value={e.ciclo_de_vida || ''}
-                          title={e.ciclo_de_vida || ''} aria-label={`Ciclo de vida de ${e.codigo_produto}`}
-                          onChange={(ev) => changeCiclo(e, ev.target.value)}>
-                    {!_CC_CICLO.some((c) => c.v === e.ciclo_de_vida) && (
-                      <option value={e.ciclo_de_vida || ''}>{_ccCicloShort(e.ciclo_de_vida)}</option>
-                    )}
-                    {_CC_CICLO.map((c) => <option key={c.v} value={c.v}>{c.label}</option>)}
-                  </select>
+                  {/* The two axes stacked in ONE cell, so splitting the control did not cost the
+                      table a 10th column (its widths were just aligned across agrupamentos).
+                      Each row is labelled, because two bare dropdowns side by side would not say
+                      which is which. */}
+                  <div className="cc-axes">
+                    <label className="cc-axis">
+                      <span className="cc-axis-k">Ingestão</span>
+                      <select disabled={locked} value={e.ingestao || 'ativa'}
+                              aria-label={`Ingestão de ${e.codigo_produto}`}
+                              title={(_CC_INGESTAO.find((o) => o.v === (e.ingestao || 'ativa')) || {}).hint}
+                              onChange={(ev) => changeIngestao(e, ev.target.value)}>
+                        {_CC_INGESTAO.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+                      </select>
+                    </label>
+                    <label className="cc-axis">
+                      <span className="cc-axis-k">Exibição</span>
+                      <select disabled={locked} value={e.visibilidade || 'visivel'}
+                              aria-label={`Visibilidade de ${e.codigo_produto}`}
+                              title={(_CC_VISIBILIDADE.find((o) => o.v === (e.visibilidade || 'visivel')) || {}).hint}
+                              onChange={(ev) => changeVisibilidade(e, ev.target.value)}>
+                        {_CC_VISIBILIDADE.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+                      </select>
+                    </label>
+                  </div>
                 </td>
                 <td className="cc-cell-actions" data-label="Ações">
                   <button type="button" className="cc-remove" disabled={locked}
@@ -745,9 +800,18 @@ function ViewCadastroProdutos() {
             </label>
 
             <label className="cc-field">
-              <span className="cc-field-label">Ciclo de vida</span>
-              <select value={draft.ciclo_de_vida} disabled={locked} onChange={(e) => setDraft((d) => ({ ...d, ciclo_de_vida: e.target.value }))}>
-                {_CC_CICLO.map((c) => <option key={c.v} value={c.v}>{c.label}</option>)}
+              <span className="cc-field-label">Ingestão</span>
+              <select value={draft.ingestao} disabled={locked}
+                      onChange={(e) => setDraft((d) => ({ ...d, ingestao: e.target.value }))}>
+                {_CC_INGESTAO.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+              </select>
+            </label>
+
+            <label className="cc-field">
+              <span className="cc-field-label">Exibição</span>
+              <select value={draft.visibilidade} disabled={locked}
+                      onChange={(e) => setDraft((d) => ({ ...d, visibilidade: e.target.value }))}>
+                {_CC_VISIBILIDADE.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
               </select>
             </label>
 
@@ -794,13 +858,31 @@ function ViewCadastroProdutos() {
                           title={g.n_members > 0 ? 'Reatribua ou remova os produtos antes de excluir' : 'Excluir agrupamento vazio'}>
                     🗑 Excluir
                   </button>
+                  {/* Bulk per-agrupamento, one option group per axis. The option VALUE carries
+                      the axis ('ingestao:pausada'), so the two can never be confused. */}
                   {g.n_members > 0 && (
                     <label className="caption" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      Ciclo de vida:
+                      Aplicar a todos:
                       <select disabled={locked} defaultValue=""
-                              onChange={(e) => { if (e.target.value) setCicloForGroup(g, e.target.value); e.target.value = ''; }}>
-                        <option value="">aplicar a todos…</option>
-                        {_CC_CICLO.map((c) => <option key={c.v} value={c.v}>{c.label}</option>)}
+                              aria-label={`Aplicar ciclo de vida a todos de ${g.group_name}`}
+                              onChange={(ev) => {
+                                const v = ev.target.value;
+                                ev.target.value = '';
+                                if (!v) return;
+                                const [axis, value] = v.split(':');
+                                setAxisForGroup(g, axis, value);
+                              }}>
+                        <option value="">escolha…</option>
+                        <optgroup label="Ingestão">
+                          {_CC_INGESTAO.map((o) => (
+                            <option key={o.v} value={`ingestao:${o.v}`}>{o.label}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Exibição">
+                          {_CC_VISIBILIDADE.map((o) => (
+                            <option key={o.v} value={`visibilidade:${o.v}`}>{o.label}</option>
+                          ))}
+                        </optgroup>
                       </select>
                     </label>
                   )}

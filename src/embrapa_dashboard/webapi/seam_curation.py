@@ -16,6 +16,7 @@ from __future__ import annotations
 from google.api_core.exceptions import NotFound
 
 from embrapa_dashboard.serving import gateway
+from embrapa_dashboard.serving.curation import ingestao_efetiva, visibilidade_efetiva
 
 PRODUTO_CATALOG_RESOURCE = "produto_catalog"
 
@@ -60,6 +61,12 @@ def catalog_worklist(banco: str | None = None) -> dict:
             "agrupamento": _clean(r.agrupamento),
             "descricao_produto": _clean(r.descricao_produto),
             "ciclo_de_vida": _clean(r.ciclo_de_vida),
+            # The two lifecycle axes, always EFFECTIVE: a legacy row (prose ciclo_de_vida,
+            # both columns NULL) is translated here exactly as the dbt gate translates it,
+            # so the editor and the researcher-facing gate can never disagree about whether
+            # a produto is hidden.
+            "ingestao": ingestao_efetiva(getattr(r, "ingestao", None)),
+            "visibilidade": visibilidade_efetiva(getattr(r, "visibilidade", None), r.ciclo_de_vida),
             "agrupamento_id": _clean(r.agrupamento_id),
             # PPM herd/animal SIDRA-table tag (NULL for single-table bancos) — echoed back
             # so an inline re-save carries the real value instead of relying solely on the
@@ -181,6 +188,10 @@ def record_catalog_entry(payload: dict) -> dict:
         agrupamento=payload.get("agrupamento"),
         descricao_produto=payload.get("descricao_produto"),
         ciclo_de_vida=payload.get("ciclo_de_vida"),
+        # The two lifecycle axes. Omitting one PRESERVES the stored value server-side,
+        # so a partial edit can never silently un-hide or un-pause a produto.
+        ingestao=payload.get("ingestao"),
+        visibilidade=payload.get("visibilidade"),
         agrupamento_id=payload.get("agrupamento_id"),
         # PPM (SIDRA tables 3939/74) routes catalog-driven ingestion by sidra_tabela;
         # the writer requires it for a new PPM entry — a dropped value 400s the save.

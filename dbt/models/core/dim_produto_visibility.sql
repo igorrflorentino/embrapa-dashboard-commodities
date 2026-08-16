@@ -4,9 +4,12 @@
 -- dim_produto_visibility — the HIDDEN-prefix registry for the Ciclo de Vida
 -- visibility gate (F7).
 --
--- A researcher can set a commodity's Ciclo de Vida to "Fazer Ingestão mas deixar
--- indisponível": ingest its data into Gold but HIDE the commodity from the
--- dashboard. This view emits ONLY the (source, code) of such hidden commodities
+-- A researcher can set a commodity's VISIBILIDADE to 'oculto': keep its data in Gold but
+-- HIDE the commodity from the dashboard. (Visibility is now its own axis, independent of
+-- INGESTAO — a paused produto stays visible unless it is also hidden. Rows written before
+-- the split carry the retired `ciclo_de_vida` prose and are translated by the
+-- catalog_visibilidade macro, the single place that knows that mapping.)
+-- This view emits ONLY the (source, code) of such hidden commodities
 -- (the exact codigo_produto; latest-wins, active). The gate is a NOT EXISTS predicate
 -- over this view (see macros/hidden_code_predicate.sql + serving/sql.visibility_clause):
 -- a Gold code with NO row here stays visible — so PPM (no catalog rows) and any
@@ -28,7 +31,7 @@ with current_catalog as (
     select
         banco           as source,
         codigo_produto,
-        ciclo_de_vida,
+        {{ catalog_visibilidade() }} as visibilidade_efetiva,
         active,
         -- Latest-wins per key; same tie-breaker note as dim_produto_catalog: a
         -- same-microsecond change_id tie is deterministic but not true write-order —
@@ -48,4 +51,4 @@ select
 from current_catalog
 where _rn = 1
   and active
-  and ciclo_de_vida = 'Fazer Ingestão mas deixar indisponível'
+  and visibilidade_efetiva = 'oculto'

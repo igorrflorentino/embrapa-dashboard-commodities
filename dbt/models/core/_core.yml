@@ -144,18 +144,39 @@ models:
       - name: agrupamento_nome
         description: "The agrupamento (cross-source commodity concept), pt-BR."
       - name: ciclo_de_vida
-        description: "F7 lifecycle stage (pt-BR); NULL until a researcher sets it."
+        description: >
+          RETIRED prose lifecycle enum (pt-BR), kept for history/audit only: rows written
+          before the two-axis split still carry it, and the append-only log is never
+          rewritten. New writes leave it NULL and set ingestao/visibilidade instead.
+          Readers must go through the catalog_lifecycle macros, never this column.
         tests:
-          # Pin the exact F7 vocabulary. The visibility gate hides a code by a literal
-          # string match (dim_produto_visibility.sql:
-          # ciclo_de_vida = 'Fazer Ingestão mas deixar indisponível'), so a silent drift
-          # in this value would fail the gate OPEN with no other test catching it. Keep in
-          # lockstep with serving/curation.py (CICLO_DE_VIDA_VISIVEL/_OCULTO) and the UI
-          # dropdown (ViewCadastroProdutos.jsx _CC_CICLO). NULL passes (accepted_values
-          # ignores nulls) — the column is NULLABLE and an unset stage is valid.
+          # Pin the LEGACY vocabulary: these exact strings are what the catalog_visibilidade
+          # macro translates, so an unexpected value here would silently read as 'visivel'
+          # (fail-open on the gate). NULL passes — every new row leaves it NULL.
           - accepted_values:
               arguments:
                 values: ["Fazer Ingestão e deixar disponível", "Fazer Ingestão mas deixar indisponível"]
+      - name: ingestao
+        description: >
+          Lifecycle axis 1 — should the pipeline keep FETCHING new data for this code?
+          'pausada' freezes the series (catalog_resolver skips it) while keeping everything
+          already in Gold. Effective value: NULL in the log reads as 'ativa'.
+        tests:
+          - not_null  # the macro coalesces, so the model must never emit NULL
+          - accepted_values:
+              arguments:
+                values: ["ativa", "pausada"]
+      - name: visibilidade
+        description: >
+          Lifecycle axis 2 — does the RESEARCHER see this code in the dashboard? 'oculto'
+          is what dim_produto_visibility emits and the F7 gate hides. Independent of
+          ingestao: a paused produto stays visible unless also hidden. Effective value:
+          NULL/unknown reads as 'visivel' (an unrecognized value must never hide a produto).
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["visivel", "oculto"]
 
   - name: dim_produto_visibility
     description: |
@@ -294,19 +315,39 @@ unit_tests:
     given:
       - input: source('research_inputs', 'produto_catalog_log')
         rows:
+          # ── LEGACY rows (pre two-axis split): prose `ciclo_de_vida`, both codes NULL.
+          # The append-only log never rewrites these, so the gate must keep reading them
+          # correctly FOREVER — via the catalog_visibilidade macro's translation.
           # disponível → NOT hidden
-          - {codigo_produto: '11', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c1'}
+          - {codigo_produto: '11', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c1'}
           # active + indisponível → hidden
-          - {codigo_produto: '22', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c2'}
+          - {codigo_produto: '22', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c2'}
           # tombstone (active=false) → NOT hidden (left the catalog; orphan path handles it)
-          - {codigo_produto: '33', banco: 'comex', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', active: false, edited_at: '2024-01-01 00:00:00', change_id: 'c3'}
-          # latest-wins: same key flips disponível → indisponível on a newer edit → hidden
-          - {codigo_produto: '44', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c4'}
-          - {codigo_produto: '44', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', active: true, edited_at: '2024-06-01 00:00:00', change_id: 'c5'}
+          - {codigo_produto: '33', banco: 'comex', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', ingestao: null, visibilidade: null, active: false, edited_at: '2024-01-01 00:00:00', change_id: 'c3'}
+          # latest-wins ACROSS the migration: a legacy 'disponível' row superseded by a
+          # NEW coded 'oculto' row → hidden. This is the exact path a produto takes the
+          # first time it is edited after the split.
+          - {codigo_produto: '44', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c4'}
+          - {codigo_produto: '44', banco: 'pevs', ciclo_de_vida: null, ingestao: 'ativa', visibilidade: 'oculto', active: true, edited_at: '2024-06-01 00:00:00', change_id: 'c5'}
+          # ── NEW coded rows.
+          # visivel → NOT hidden
+          - {codigo_produto: '55', banco: 'pevs', ciclo_de_vida: null, ingestao: 'ativa', visibilidade: 'visivel', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c6'}
+          # oculto → hidden
+          - {codigo_produto: '66', banco: 'comex', ciclo_de_vida: null, ingestao: 'ativa', visibilidade: 'oculto', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c7'}
+          # The AXES ARE INDEPENDENT: paused ingestion does NOT hide. A frozen series still
+          # shows its history — that is the whole point of splitting the axes.
+          - {codigo_produto: '77', banco: 'comex', ciclo_de_vida: null, ingestao: 'pausada', visibilidade: 'visivel', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c8'}
+          # …and paused + oculto still hides (visibility alone decides).
+          - {codigo_produto: '88', banco: 'comex', ciclo_de_vida: null, ingestao: 'pausada', visibilidade: 'oculto', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c9'}
+          # Everything NULL (a row that never had a stage set) → NOT hidden. The gate must
+          # fail CLOSED-on-hiding: unknown never removes a produto from the dashboard.
+          - {codigo_produto: '99', banco: 'pevs', ciclo_de_vida: null, ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c10'}
     expect:
       rows:
         - {source: 'pevs', code: '22'}
         - {source: 'pevs', code: '44'}
+        - {source: 'comex', code: '66'}
+        - {source: 'comex', code: '88'}
 
   # Curadoria SOT: dim_produto_catalog = the CURRENT catalog (latest-wins per
   # (codigo_produto, banco), active rows only). Locks (a) the max edited_at row's
