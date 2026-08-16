@@ -39,6 +39,8 @@ with log as (
         agrupamento,
         descricao_produto,
         ciclo_de_vida,
+        {{ catalog_ingestao() }} as ingestao,
+        {{ catalog_visibilidade() }} as visibilidade,
         agrupamento_id,
         active,
         edited_by,
@@ -74,7 +76,11 @@ select
     banco           as source,
     codigo_produto,
     descricao_produto,
+    -- The lifecycle, as the two EFFECTIVE coded axes (legacy prose already translated by
+    -- the catalog_lifecycle macros). ciclo_de_vida is kept for history/audit only.
     ciclo_de_vida,
+    ingestao,
+    visibilidade,
     edited_by,
     edited_at
 from current_catalog

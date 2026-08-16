@@ -414,6 +414,8 @@ def catalog_entry_upsert():
         "agrupamento_id",
         "descricao_produto",
         "ciclo_de_vida",
+        "ingestao",
+        "visibilidade",
         "sidra_tabela",
         "change_id",
     )

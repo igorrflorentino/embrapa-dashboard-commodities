@@ -144,18 +144,39 @@ models:
       - name: agrupamento_nome
         description: "The agrupamento (cross-source commodity concept), pt-BR."
       - name: ciclo_de_vida
-        description: "F7 lifecycle stage (pt-BR); NULL until a researcher sets it."
+        description: >
+          RETIRED prose lifecycle enum (pt-BR), kept for history/audit only: rows written
+          before the two-axis split still carry it, and the append-only log is never
+          rewritten. New writes leave it NULL and set ingestao/visibilidade instead.
+          Readers must go through the catalog_lifecycle macros, never this column.
         tests:
-          # Pin the exact F7 vocabulary. The visibility gate hides a code by a literal
-          # string match (dim_produto_visibility.sql:
-          # ciclo_de_vida = 'Fazer Ingestão mas deixar indisponível'), so a silent drift
-          # in this value would fail the gate OPEN with no other test catching it. Keep in
-          # lockstep with serving/curation.py (CICLO_DE_VIDA_VISIVEL/_OCULTO) and the UI
-          # dropdown (ViewCadastroProdutos.jsx _CC_CICLO). NULL passes (accepted_values
-          # ignores nulls) — the column is NULLABLE and an unset stage is valid.
+          # Pin the LEGACY vocabulary: these exact strings are what the catalog_visibilidade
+          # macro translates, so an unexpected value here would silently read as 'visivel'
+          # (fail-open on the gate). NULL passes — every new row leaves it NULL.
           - accepted_values:
               arguments:
                 values: ["Fazer Ingestão e deixar disponível", "Fazer Ingestão mas deixar indisponível"]
+      - name: ingestao
+        description: >
+          Lifecycle axis 1 — should the pipeline keep FETCHING new data for this code?
+          'pausada' freezes the series (catalog_resolver skips it) while keeping everything
+          already in Gold. Effective value: NULL in the log reads as 'ativa'.
+        tests:
+          - not_null  # the macro coalesces, so the model must never emit NULL
+          - accepted_values:
+              arguments:
+                values: ["ativa", "pausada"]
+      - name: visibilidade
+        description: >
+          Lifecycle axis 2 — does the RESEARCHER see this code in the dashboard? 'oculto'
+          is what dim_produto_visibility emits and the F7 gate hides. Independent of
+          ingestao: a paused produto stays visible unless also hidden. Effective value:
+          NULL/unknown reads as 'visivel' (an unrecognized value must never hide a produto).
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["visivel", "oculto"]
 
   - name: dim_produto_visibility
     description: |
