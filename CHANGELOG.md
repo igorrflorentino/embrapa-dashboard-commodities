@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.20.1] - 2026-08-15
+
+**Cadastro de produtos: a célula "Descrição" carregava três linhas sem rótulo — duas delas
+nem pertenciam ali.** Reorganização, sem coluna nova e sem truncar nada.
+
+### Changed
+- **A tag da tabela SIDRA saiu da Descrição e foi para junto do Banco.** "Rebanho (efetivo)" /
+  "Produção animal" identifica de QUAL das duas tabelas SIDRA a linha veio — o PPM é o único
+  banco que guarda duas tabelas (3939 rebanho / 74 produção animal) sob o mesmo token, então o
+  mesmo produto pode estar cadastrado duas vezes e a tag é o que as distingue. É metadado da
+  FONTE, irmão do banco e do código; renderizada logo abaixo da anotação do pesquisador, lia-se
+  como parte da anotação. Agora fica sob o nome do banco (`.cc-sidra-tag`), tingida como
+  metadado de fonte e quebrando linha em vez de truncar.
+- **A anotação vazia deixou de ocupar todas as ~300 linhas.** O placeholder aparecia em toda
+  linha do cadastro, mesmo sem anotação — a maior fonte de ruído visual da tela. Agora uma
+  anotação vazia fica transparente e só aparece ao passar o mouse na linha (como um "+ anotação"),
+  ou ao receber foco pelo teclado (`:focus-within`). Usa `opacity`, não `display`/`visibility`:
+  a caixa permanece, então a altura da linha não "pula" quando o ponteiro cruza a tabela, e o
+  campo continua na árvore de acessibilidade e alcançável por Tab. Uma anotação PREENCHIDA nunca
+  é afetada (segue sempre visível) e recuperou o marcador **✎** que a distingue da descrição da
+  fonte logo acima. Em telas de toque (≤768px), onde não há hover, a anotação vazia permanece
+  visível — senão ficaria invisível e sem como ser descoberta. Para quem está em **modo somente
+  leitura**, o "+ anotação" nem aparece no hover: não faz sentido oferecer uma ação indisponível.
+  Verificado ao vivo com os 308 produtos reais: 95 anotações vazias invisíveis, 213 preenchidas
+  visíveis, a linha sob o cursor revelada e as outras 94 intactas, sem overflow horizontal.
+
+---
+
 ## [1.20.0] - 2026-08-15
 
 **Curadoria: a descrição manual do produto (a anotação livre do pesquisador — não a
