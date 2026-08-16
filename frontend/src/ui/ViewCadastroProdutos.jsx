@@ -57,6 +57,41 @@ const _CC_EMPTY_DRAFT = {
   codigo_produto: '', banco: 'comex', agrupamento_id: '',
   descricao_produto: '', ingestao: 'ativa', visibilidade: 'visivel', sidra_tabela: '',
 };
+// Reference legend content (pt-BR — the researcher reads it). Kept as DATA next to the
+// vocabulary it documents, so a new column/action is added in one place and the counts in the
+// summary stay honest automatically. Order matches the table, left to right.
+const _CC_HELP_COLUNAS = [
+  { k: 'Banco', d: 'A fonte oficial do dado (IBGE PEVS/PAM/PPM, MDIC COMEX, UN Comtrade). No PPM aparece também de qual tabela SIDRA veio — rebanho ou produção animal — porque o mesmo produto pode estar cadastrado nas duas.' },
+  { k: 'Código', d: 'O código real da fonte (NCM, HS, código SIDRA). É ele, junto com o banco, que identifica o produto no cadastro — não o nome.' },
+  { k: 'Descrição (fonte)', d: 'O nome que a própria fonte dá a esse código; é somente leitura. Logo abaixo fica a sua anotação (✎), um texto livre seu que não altera nenhum dado.' },
+  { k: 'Linhas', d: 'Quantas linhas esse produto tem hoje na camada Gold. Zero significa que ainda não foi ingerido.' },
+  { k: 'Período', d: 'O intervalo de anos que os dados já ingeridos cobrem.' },
+  { k: 'Status', d: 'O estado do produto, derivado das duas colunas seguintes e da presença de dados: Ativo, Oculto, Pausado ou Pendente de ingestão. É um resumo, não um controle — para mudá-lo, use Ingestão ou Exibição.' },
+  { k: 'Agrupamento', d: 'O conceito que unifica o mesmo produto entre fontes diferentes (ex.: "Soja" reunindo os códigos do COMEX e do Comtrade). É o que permite comparar fontes no mesmo gráfico.' },
+  { k: 'Ingestão', d: 'Se o pipeline continua buscando dados novos desse produto a cada atualização.' },
+  { k: 'Exibição', d: 'Se o pesquisador vê esse produto nos gráficos e filtros do dashboard.' },
+  { k: 'Ações', d: 'Remover o produto do cadastro.' },
+];
+
+const _CC_HELP_ACOES = [
+  { k: 'Editar a anotação (✎)', tag: 'reversível', tone: 'ok',
+    d: 'Texto livre seu, para registrar o que quiser sobre o produto. Não altera nenhum número nem a descrição oficial da fonte.' },
+  { k: 'Trocar o Agrupamento', tag: 'reversível', tone: 'ok',
+    d: 'Move o produto para outro conceito. Muda como ele é somado nas visões que cruzam fontes — o dado em si continua o mesmo.' },
+  { k: 'Ingestão → Pausada', tag: 'reversível', tone: 'ok',
+    d: 'Para de buscar dados novos, mas mantém no Gold tudo que já foi baixado — e o produto continua aparecendo no dashboard. Use para congelar uma série sem perder o histórico.' },
+  { k: 'Exibição → Oculto', tag: 'pede confirmação', tone: 'warn',
+    d: 'Tira o produto de TODOS os gráficos e filtros para os pesquisadores. Os dados continuam no Gold e a ingestão segue normalmente; é só uma decisão de exibição.' },
+  { k: 'Remover (🗑)', tag: 'pede confirmação', tone: 'warn',
+    d: 'Marca o produto como descontinuado e o tira do cadastro. Os dados já baixados NÃO são apagados: ficam órfãos no Gold e aparecem na seção "Descontinuados". Só um operador os apaga, com backup antes.' },
+  { k: 'Aplicar a todos', tag: 'em lote', tone: 'warn',
+    d: 'Aplica Ingestão ou Exibição a todos os produtos do agrupamento de uma vez. Ocultar em lote também pede confirmação.' },
+  { k: 'Criar / renomear / excluir agrupamento', tag: null, tone: null,
+    d: 'Renomear mantém os produtos; só o rótulo muda. Excluir exige que o agrupamento esteja vazio — reatribua ou remova os produtos antes.' },
+  { k: 'Adicionar produto', tag: null, tone: null,
+    d: 'Cadastra um código da fonte. Um código ainda não ingerido é aceito: entra como "pendente de ingestão" e será buscado na próxima atualização.' },
+];
+
 // A catalog write reaches the researcher-facing charts/filters only on the NEXT dbt build (+ the
 // serving marts' cache TTL) — never instantly. Appended to save/rename toasts so the researcher
 // isn't surprised the change doesn't show up in the dashboard right away (mirrors the hide notice).
@@ -617,11 +652,54 @@ function ViewCadastroProdutos() {
           e sai do dashboard. Cada produto é identificado por <code>(código, banco)</code> — o
           <strong> código real da fonte</strong>, uma a uma — e pertence a um <strong>agrupamento</strong> (o
           conceito que a unifica entre fontes). Agrupamentos são criados, renomeados e excluídos aqui;
-          o <strong>Ciclo de Vida</strong> controla a exibição; <strong>remover</strong> um produto o marca
+          <strong>Ingestão</strong> e <strong>Exibição</strong> controlam, separadamente, se o pipeline
+          busca dados novos e se o pesquisador vê o produto; <strong>remover</strong> um produto o marca
           como descontinuado (os dados já baixados ficam órfãos, apagados só por um humano). Edições
           exigem autorização e ficam registradas com seu e-mail.
         </p>
       </div>
+
+      {/* Reference legend: what each column means and what each edit actually does. Collapsed
+          by default (same <details> card pattern as the Qualidade flag legend) so it never
+          pushes the table down — the page just spent two rounds getting more compact. */}
+      <details className="cc-help card">
+        <summary className="cc-help-summary">
+          <span>Como ler esta tabela e o que cada edição faz</span>
+          <span className="caption">{_CC_HELP_COLUNAS.length} colunas · {_CC_HELP_ACOES.length} ações</span>
+        </summary>
+        <div className="cc-help-body">
+          <div className="cc-help-block">
+            <h3 className="cc-help-h">As colunas</h3>
+            <dl className="cc-help-list">
+              {_CC_HELP_COLUNAS.map((c) => (
+                <div key={c.k} className="cc-help-item">
+                  <dt>{c.k}</dt>
+                  <dd className="caption">{c.d}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+          <div className="cc-help-block">
+            <h3 className="cc-help-h">As edições</h3>
+            <dl className="cc-help-list">
+              {_CC_HELP_ACOES.map((a) => (
+                <div key={a.k} className="cc-help-item">
+                  <dt>
+                    {a.k}
+                    {a.tag && <span className={'cc-help-tag cc-help-tag-' + a.tone}>{a.tag}</span>}
+                  </dt>
+                  <dd className="caption">{a.d}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+          <p className="caption cc-help-foot">
+            Nada aqui é destrutivo: o registro é <strong>somente-adição</strong> — cada edição vira
+            uma nova linha com seu e-mail e a data, e nenhuma anterior é apagada. As mudanças valem
+            na <strong>próxima atualização</strong> do dashboard, não na hora.
+          </p>
+        </div>
+      </details>
 
       {!canEdit && (
         <p className="caption" role="status"

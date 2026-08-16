@@ -233,6 +233,41 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(postBody).toBeNull();
   });
 
+  it('documents EVERY table column in the collapsible legend', async () => {
+    // The legend is the in-product reference for the table. If a column is added and not
+    // documented, the researcher meets an unexplained header — so pin the two lists together
+    // rather than trusting they stay in sync by hand.
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.cc-table')).toBeTruthy());
+    const headers = [...container.querySelectorAll('.cc-table thead th')]
+      .map((th) => th.textContent.trim())
+      .filter(Boolean); // the ações column header is intentionally empty (icon-only)
+    const documented = [...container.querySelectorAll('.cc-help-item dt')].map((dt) => dt.textContent.trim());
+    for (const h of headers) {
+      expect(documented.some((d) => d.startsWith(h))).toBe(true);
+    }
+  });
+
+  it('keeps the legend collapsed by default so it never pushes the table down', async () => {
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.cc-table')).toBeTruthy());
+    const details = container.querySelector('details.cc-help');
+    expect(details).toBeTruthy();
+    expect(details.open).toBe(false);
+    // The summary states what's inside, and the counts come from the data (not hardcoded).
+    expect(details.querySelector('summary').textContent).toContain('Como ler esta tabela');
+  });
+
+  it('explains that removal is non-destructive and that hiding keeps ingesting', async () => {
+    // These two are the actions most easily misread as data loss / as stopping the pipeline.
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.cc-table')).toBeTruthy());
+    const legend = container.querySelector('.cc-help').textContent;
+    expect(legend).toContain('NÃO são apagados');
+    expect(legend).toContain('a ingestão segue normalmente');
+    expect(legend).toContain('somente-adição');
+  });
+
   it('pauses ingestion without a confirmation and without touching visibility', async () => {
     // Pausing is reversible and destroys nothing (history stays, produto stays visible), so
     // unlike hiding it must NOT gate behind the modal.
