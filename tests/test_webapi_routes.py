@@ -1796,3 +1796,56 @@ def test_catalog_group_remove_400_on_missing_id(monkeypatch):
     monkeypatch.setattr(seam, "catalog_editor_emails", lambda resource=None: set())
     resp = client.post("/api/catalog/group/remove", json={})
     assert resp.status_code == 400
+
+
+def test_catalog_entry_blank_note_erases_it_instead_of_being_read_as_absent(monkeypatch):
+    """Emptying the ✎ field must ERASE the note, not silently keep the old one.
+
+    Two changes met and cancelled out: the writer began PRESERVING an omitted
+    descricao_produto (so an unrelated edit cannot wipe a researcher's note), while the
+    route collapsed '' to None for EVERY field. Together, None meant "keep" and '' became
+    None — so a cleared note came back on the next reload, with no error and no way for the
+    researcher to get rid of it. Found by clearing a note through the real UI."""
+    from embrapa_dashboard.webapi import seam
+
+    client = _client(monkeypatch, dev_author="researcher@embrapa.br")
+    monkeypatch.setattr(seam, "catalog_editor_emails", lambda resource=None: set())
+    captured = {}
+    monkeypatch.setattr(
+        seam, "record_catalog_entry", lambda body: captured.update(body) or {"ok": True}
+    )
+
+    resp = client.post(
+        "/api/catalog/entry",
+        json={
+            "codigo_produto": "14011000",
+            "banco": "comex",
+            "agrupamento": "Bambu",
+            "descricao_produto": "   ",  # whitespace-only == the ✎ field was emptied
+        },
+    )
+
+    assert resp.status_code == 200
+    # '' (erase), NOT None (which the writer reads as "leave the stored note alone").
+    assert captured["descricao_produto"] == ""
+
+
+def test_catalog_entry_absent_note_stays_none(monkeypatch):
+    """The other half of the contract: a payload that never mentions the note leaves it
+    None, so the writer preserves whatever is stored."""
+    from embrapa_dashboard.webapi import seam
+
+    client = _client(monkeypatch, dev_author="researcher@embrapa.br")
+    monkeypatch.setattr(seam, "catalog_editor_emails", lambda resource=None: set())
+    captured = {}
+    monkeypatch.setattr(
+        seam, "record_catalog_entry", lambda body: captured.update(body) or {"ok": True}
+    )
+
+    resp = client.post(
+        "/api/catalog/entry",
+        json={"codigo_produto": "14011000", "banco": "comex", "agrupamento": "Bambu"},
+    )
+
+    assert resp.status_code == 200
+    assert captured.get("descricao_produto") is None

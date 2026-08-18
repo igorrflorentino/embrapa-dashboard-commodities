@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.13] - 2026-08-18
+
+**Limpar uma anotação pela tela tinha parado de funcionar** — regressão introduzida hoje,
+encontrada testando as ações do Cadastro à mão.
+
+### Fixed
+- **`''` no campo ✎ voltou a apagar a anotação** (`webapi/routes.py`). Duas mudanças se
+  anularam: o writer passou a **preservar** um `descricao_produto` omitido (v1.24.8, para que
+  uma edição não relacionada não apague a nota do pesquisador), enquanto a rota já colapsava
+  `''` → `None` para **todos** os campos. Juntas: `None` virou "mantenha" e `''` virou `None`,
+  então a nota limpa **reaparecia** na recarga — sem erro, sem aviso e sem caminho para
+  removê-la.
+
+  `_coerce_str_fields` ganhou `keep_blank`, e `descricao_produto` entra nele: para os demais
+  campos em branco continua significando ausente (é o que faz o 400 de campo obrigatório
+  funcionar), mas para a anotação **ausente = manter, `''` = apagar**, e os dois sentidos
+  agora atravessam a pilha inteira sem se perder.
+
+  Vale o registro de como apareceu: os testes de unidade da preservação passavam (cobriam o
+  writer) e os da rota também (cobriam a coerção). O defeito só existia na **junção** dos
+  dois — e só apareceu ao limpar uma nota pela interface de verdade.
+
 ## [1.24.12] - 2026-08-18
 
 **A cota diária do UN Comtrade responde 403, não 429 — e por isso paginava um humano.**
