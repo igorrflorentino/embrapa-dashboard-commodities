@@ -456,3 +456,49 @@ def test_fetch_chunk_adaptive_raises_truncation_when_singleton_still_caps(monkey
     assert any(event == "truncated" for event, _ in emitted)
     # Not a transient error → the pipeline records it as a chunk failure, no retry.
     assert not issubclass(client.ComtradeTruncationError, client.ComtradeTransientError)
+
+
+@responses.activate
+def test_fetch_chunk_403_out_of_call_volume_is_quota_not_a_bug() -> None:
+    """UN Comtrade signals the DAILY volume quota with 403, not 429.
+
+    Observed in a real backfill (2026-08-18): 508 chunks landed, then every call returned
+    403 {"message": "Out of call volume quota. Quota will be replenished in 19:07:31."}.
+    Classified as a plain request error, the run exited 1 and paged a human for the
+    textbook expected, self-healing, already-resumable condition — the exact alert noise
+    ComtradeQuotaError exists to prevent."""
+    responses.add(
+        responses.GET,
+        re.compile(rf"{re.escape(BASE_URL)}/C/A/HS.*"),
+        status=403,
+        json={
+            "statusCode": 403,
+            "message": "Out of call volume quota. Quota will be replenished in 19:07:31.",
+        },
+    )
+    with pytest.raises(client.ComtradeQuotaError) as exc:
+        client.fetch_chunk.__wrapped__(  # type: ignore[attr-defined]
+            BASE_URL, API_KEY, reporters=["76"], years=[2022], cmd_codes=["0801"], flows=["X"]
+        )
+    assert not isinstance(exc.value, client.ComtradeTransientError)  # never retried
+    assert "re-run to resume" in str(exc.value)
+    assert "call volume quota" in str(exc.value).lower()
+
+
+@responses.activate
+def test_fetch_chunk_403_for_a_bad_key_still_pages() -> None:
+    """Matched on the MESSAGE, not the status: a 403 from a revoked/invalid subscription is
+    a real failure a human must see, and must NOT be laundered into 'quota — resume later',
+    which would silently stall ingestion forever."""
+    responses.add(
+        responses.GET,
+        re.compile(rf"{re.escape(BASE_URL)}/C/A/HS.*"),
+        status=403,
+        json={"statusCode": 403, "message": "Access denied due to invalid subscription key."},
+    )
+    with pytest.raises(client.ComtradeRequestError) as exc:
+        client.fetch_chunk.__wrapped__(  # type: ignore[attr-defined]
+            BASE_URL, API_KEY, reporters=["76"], years=[2022], cmd_codes=["0801"], flows=["X"]
+        )
+    assert not isinstance(exc.value, client.ComtradeQuotaError)
+    assert "invalid subscription key" in str(exc.value)

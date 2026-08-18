@@ -93,7 +93,8 @@ class ComtradeTransientError(ComtradeRequestError, SourceTransientError):
 
 
 class ComtradeQuotaError(ComtradeRequestError):
-    """The daily keyed-call quota is exhausted (HTTP 429 on a keyed data call).
+    """The daily keyed-call quota is exhausted (HTTP 403 "Out of call volume quota",
+    or a 429 whose Retry-After is long/absent — both on a keyed data call).
 
     Deliberately **not** a :class:`SourceTransientError`: the shared retry policy
     must not retry it. Retrying would only burn the (already spent) daily budget;
@@ -345,6 +346,27 @@ def fetch_chunk(
                 # Daily keyed-call quota (long or absent Retry-After) — stop, don't
                 # retry (see ComtradeQuotaError); the next run resumes, no data lost.
                 raise ComtradeQuotaError(f"quota exhausted ({msg}) — re-run to resume")
+            if response.status_code == 403:
+                # The DAILY call-volume quota answers 403, NOT 429 — observed in a real
+                # backfill (2026-08-18): 508 chunks landed, then every call returned
+                #   {"statusCode":403,"message":"Out of call volume quota. Quota will be
+                #    replenished in 19:07:31."}
+                # Without this the run died as an "unexpected" ComtradeRequestError and
+                # exited 1, paging a human for the textbook expected, self-healing,
+                # already-resumable condition ComtradeQuotaError exists to handle.
+                #
+                # Matched on the message, not the status: a 403 from a revoked/invalid key
+                # is a REAL failure and must keep paging, so it falls through below.
+                detail = ""
+                try:
+                    detail = str(response.json().get("message", ""))
+                except ValueError:
+                    detail = (response.text or "")[:200]
+                if "call volume quota" in detail.lower():
+                    raise ComtradeQuotaError(
+                        f"quota exhausted ({msg}: {detail}) — re-run to resume"
+                    )
+                raise ComtradeRequestError(f"{msg}: {detail}" if detail else msg)
             if response.status_code in core_http.RETRYABLE_STATUS_CODES:
                 raise ComtradeTransientError(msg)
             raise ComtradeRequestError(msg)
