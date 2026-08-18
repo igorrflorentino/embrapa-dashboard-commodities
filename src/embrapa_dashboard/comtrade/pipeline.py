@@ -182,11 +182,15 @@ def sync_raw(
                     len(added),
                     ",".join(sorted(added)),
                 )
-            logger.info(
-                "Comtrade %s: recent year — re-fetching (late reporters / revisions may have "
-                "arrived since it was landed).",
-                basename,
-            )
+            else:
+                # ELSE, not a fall-through: a settled year re-fetched for a WIDENED SCOPE
+                # would otherwise also log "recent year", which is simply false for, say,
+                # year 2000 — two reasons printed for one decision, one of them wrong.
+                logger.info(
+                    "Comtrade %s: recent year — re-fetching (late reporters / revisions may "
+                    "have arrived since it was landed).",
+                    basename,
+                )
 
     cmd_codes = resolve_cmd_codes(settings)
     # Adaptive: a single dense reporter can exceed the per-call cap at HS6, so the
