@@ -2352,3 +2352,19 @@ def test_catalog_driven_bancos_is_empty_when_the_flag_is_off(monkeypatch):
 
     monkeypatch.setattr("embrapa_dashboard.config.get_settings", lambda: _S())
     assert seam_curation.catalog_driven_bancos() == []
+
+
+def test_catalog_driven_bancos_promises_nothing_when_settings_cannot_be_built(monkeypatch):
+    """No .env / missing GCP_PROJECT_ID (CI, a fresh worktree) must not raise.
+
+    The value is a cosmetic affordance riding on the READ endpoint that renders the whole
+    editor — letting it propagate turned /api/catalog/entries into a 400 and blanked the
+    page (caught by CI, which has no .env). Failing CLOSED is also the honest direction:
+    unable to tell whether the catalog steers ingestion, we must not claim it does."""
+    from embrapa_dashboard.webapi import seam_curation
+
+    def _boom():
+        raise ValueError("1 validation error for Settings")
+
+    monkeypatch.setattr("embrapa_dashboard.config.get_settings", _boom)
+    assert seam_curation.catalog_driven_bancos() == []

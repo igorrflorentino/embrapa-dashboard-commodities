@@ -344,6 +344,15 @@ def catalog_driven_bancos() -> list[str]:
     from embrapa_dashboard.config import get_settings
     from embrapa_dashboard.ibge.catalog_resolver import CATALOG_DRIVEN_BANCOS
 
-    if not get_settings().catalog_authoritative_ingestion:
+    try:
+        authoritative = get_settings().catalog_authoritative_ingestion
+    except Exception:
+        # Settings unbuildable (no .env / missing GCP_PROJECT_ID — CI, a fresh worktree).
+        # Degrade to "promise nothing" rather than raise: this is a cosmetic affordance
+        # riding on a READ endpoint, and a 400 here would blank the whole editor. Failing
+        # CLOSED is also the honest direction — if we cannot tell whether the catalog
+        # steers ingestion, we must not claim that it does.
+        return []
+    if not authoritative:
         return []
     return list(CATALOG_DRIVEN_BANCOS)
