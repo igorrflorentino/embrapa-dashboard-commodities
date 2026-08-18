@@ -129,20 +129,27 @@ def _json_object() -> dict:
     return body
 
 
-def _coerce_str_fields(body: dict, *keys: str) -> None:
+def _coerce_str_fields(body: dict, *keys: str, keep_blank: tuple[str, ...] = ()) -> None:
     """Coerce the named body fields to stripped str in place (leaving None/absent as None).
 
     A non-string scalar (e.g. a numeric code sent as a JSON number — the codes ARE
     numeric) would AttributeError on ``.strip()`` deep in the serving writers → an opaque
     500. Coercing to str here keeps the writers' string contract; a truly absent field
     stays None so the route's own "is required" check still fires a clean 400. A blank
-    string collapses to None so a whitespace-only field reads as absent."""
+    string collapses to None so a whitespace-only field reads as absent.
+
+    ``keep_blank`` names the fields where blank is a REAL VALUE, not an absence. It exists
+    for ``descricao_produto``: since the writer began preserving an omitted note (so an
+    unrelated edit cannot erase it), ``None`` means "leave it alone" — and collapsing ``''``
+    to ``None`` therefore made the researcher's note IMPOSSIBLE TO CLEAR through the UI,
+    which sends exactly that when the ✎ field is emptied. The two meanings must stay
+    distinct end to end: absent = keep, ``''`` = erase."""
     for k in keys:
         v = body.get(k)
         if v is None:
             continue
         s = str(v).strip()
-        body[k] = s or None
+        body[k] = s if (s or k in keep_blank) else None
 
 
 @api.errorhandler(ValueError)
@@ -423,6 +430,8 @@ def catalog_entry_upsert():
         "visibilidade",
         "sidra_tabela",
         "change_id",
+        # '' on the note means "erase it", not "absent" — see keep_blank.
+        keep_blank=("descricao_produto",),
     )
     if not (body.get("codigo_produto") and body.get("banco")):
         return jsonify(error="codigo_produto e banco são obrigatórios (a chave do catálogo)."), 400
