@@ -2322,3 +2322,33 @@ def test_comtrade_countries_degrades_and_splits(monkeypatch):
     out = seam.comtrade_countries()
     assert list(out["reporters"]["iso"]) == ["BRA"]
     assert list(out["partners"]["iso"]) == ["CHN"]
+
+
+def test_catalog_driven_bancos_lists_only_what_a_registration_steers(monkeypatch):
+    """The editor promises "será buscado na próxima ingestão" off this list, so it must
+    contain ONLY bancos a catalog edit actually steers.
+
+    COMEX/COMTRADE resolve their scope from config, never from the catalog — registering a
+    code there leaves it pendente forever, so promising a fetch is a lie the researcher
+    cannot check. Found by registering bamboo end-to-end through the real UI."""
+    from embrapa_dashboard.webapi import seam_curation
+
+    class _S:
+        catalog_authoritative_ingestion = True
+
+    monkeypatch.setattr("embrapa_dashboard.config.get_settings", lambda: _S())
+    driven = seam_curation.catalog_driven_bancos()
+    assert driven == ["pevs", "pam", "ppm"]
+    assert "comex" not in driven and "comtrade" not in driven
+
+
+def test_catalog_driven_bancos_is_empty_when_the_flag_is_off(monkeypatch):
+    """With catalog_authoritative_ingestion off, even the IBGE pipelines fall back to the
+    env codes — so NO banco is steered and the UI must promise nothing at all."""
+    from embrapa_dashboard.webapi import seam_curation
+
+    class _S:
+        catalog_authoritative_ingestion = False
+
+    monkeypatch.setattr("embrapa_dashboard.config.get_settings", lambda: _S())
+    assert seam_curation.catalog_driven_bancos() == []

@@ -105,12 +105,24 @@ const _CC_LATENCIA = 'A mudança vale na próxima atualização (pode levar algu
 // PRECEDENCE matters: pausada wins over "sem dados" because a frozen produto that never
 // arrived is paused, not "waiting for the next run" — saying "pendente" would promise an
 // ingestion that will never come.
-function _ccStatus(entry, st) {
+//
+// The SAME reasoning applies per banco, and used not to: a produto with no data was called
+// "Pendente de ingestão · será buscado na próxima ingestão" for EVERY source. For COMEX and
+// COMTRADE that is false — their scope comes from config, not from this catalog — so a
+// registration there sits "pendente" forever while the label keeps promising a fetch.
+// `driven` (from /api/catalog/entries → catalog_driven_bancos) is the list of bancos a
+// registration actually steers; outside it we say what is true instead.
+function _ccStatus(entry, st, driven) {
   if ((entry.ingestao || 'ativa') === 'pausada') {
     return { key: 'pausado', label: 'Pausado', title: 'Não busca dados novos; o histórico no Gold é mantido' };
   }
   if (st && !st.has_data) {
-    return { key: 'pendente', label: 'Pendente de ingestão', title: 'Cadastrado; será buscado na próxima ingestão' };
+    return (driven || []).includes(entry.banco)
+      ? { key: 'pendente', label: 'Pendente de ingestão', title: 'Cadastrado; será buscado na próxima ingestão' }
+      : { key: 'sem-dados', label: 'Sem dados',
+          title: 'Cadastrado, mas a ingestão desta fonte não é dirigida pelo cadastro — '
+               + 'o escopo dela é definido na configuração do pipeline. Registrar aqui não '
+               + 'agenda uma busca; fale com a equipe técnica para incluir o código.' };
   }
   if ((entry.visibilidade || 'visivel') === _CC_OCULTO) {
     return { key: 'oculto', label: 'Oculto', title: 'Ingerido, mas fora de todos os gráficos e filtros' };
@@ -239,7 +251,11 @@ function CcConfirmModal({ spec, onClose }) {
 }
 
 function ViewCadastroProdutos() {
-  const [data, setData] = useCcState({ entries: [], groups: [], loading: true, error: null, canEdit: true });
+  const [data, setData] = useCcState({ entries: [], groups: [], loading: true, error: null, canEdit: true,
+    // Bancos cuja INGESTÃO um cadastro realmente dirige (/api/catalog/entries →
+    // catalog_driven_bancos). Vazio até resolver: preferimos NÃO prometer ingestão a
+    // prometer uma que talvez não venha.
+    catalogDriven: [] });
   const [statusMap, setStatusMap] = useCcState({}); // "banco:code" -> {n_rows, year_start, year_end, has_data}
   const [statusErr, setStatusErr] = useCcState(false); // the (cheap, lazy) Gold-state read FAILED — distinct from "sem dados"
   const [status, setStatus] = useCcState(null); // { kind: 'ok' | 'err', msg }
@@ -299,8 +315,8 @@ function ViewCadastroProdutos() {
       // rollup). The UI intentionally IGNORES it and derives grouping client-side from the
       // first-class /api/catalog/groups registry (groupsSorted/membersOf below). Kept server-side
       // (harmless, tested — serializers.serialize_catalog_worklist) rather than removed.
-      .then(([e, g]) => setData({ entries: e.entries || [], groups: g.groups || [], loading: false, error: null, canEdit: e.can_edit !== false }))
-      .catch((err) => setData({ entries: [], groups: [], loading: false, error: String(err.message || err), canEdit: true }));
+      .then(([e, g]) => setData({ entries: e.entries || [], groups: g.groups || [], loading: false, error: null, canEdit: e.can_edit !== false, catalogDriven: e.catalog_driven_bancos || [] }))
+      .catch((err) => setData({ entries: [], groups: [], loading: false, error: String(err.message || err), canEdit: true, catalogDriven: [] }));
     // Orphans (removed from the catalog, Gold data lingering) — shown as Descontinuados. A
     // failure is surfaced (orphansErr) rather than rendered as an empty list, which would
     // silently HIDE the whole Descontinuados section (gated on orphans.length > 0).
@@ -599,7 +615,7 @@ function ViewCadastroProdutos() {
                       twice. Until the Gold-state read resolves we show the loading/unknown mark
                       rather than guessing a state from the axes alone. */}
                   {!st ? <span className="dt-null">{statusErr ? '—' : '…'}</span> : (() => {
-                    const s = _ccStatus(e, st);
+                    const s = _ccStatus(e, st, data.catalogDriven);
                     return <span className={'cc-status cc-status-' + s.key} title={s.title}>{s.label}</span>;
                   })()}
                 </td>
@@ -855,10 +871,17 @@ function ViewCadastroProdutos() {
                 codeMatch === true ? (
                   <small className="cc-hint cc-hint-ok">✓ {codeIndex.get(draft.codigo_produto) || 'código válido'}</small>
                 ) : codeLoadedForBanco ? (
-                  // Not (yet) in the source list → allowed as *pendente de ingestão* (the catalog
-                  // now drives ingestion); a soft warning, no longer a block.
+                  // Not (yet) in the source list → accepted either way; a soft warning, not a
+                  // block. What the warning PROMISES depends on the banco: the catalog steers
+                  // ingestion only for the sources in `catalogDriven` (the IBGE pipelines, and
+                  // only while catalog_authoritative_ingestion is on). Saying "será buscado na
+                  // próxima ingestão" for COMEX/COMTRADE was simply untrue — their scope lives
+                  // in the pipeline config, so the entry would sit pendente forever.
                   <small className="cc-hint" style={{ color: 'var(--warn, #b8860b)' }}>
-                    ⚠ ainda não ingerido em {_CC_BANCO_LABEL[draft.banco]} — será buscado na próxima ingestão
+                    {(data.catalogDriven || []).includes(draft.banco)
+                      ? `⚠ ainda não ingerido em ${_CC_BANCO_LABEL[draft.banco]} — será buscado na próxima ingestão`
+                      : `⚠ ainda não ingerido em ${_CC_BANCO_LABEL[draft.banco]} — o cadastro não agenda a busca `
+                        + `nesta fonte (o escopo dela vem da configuração do pipeline); o produto entra como “sem dados”`}
                   </small>
                 ) : (
                   <small className="cc-hint">verificando…</small>

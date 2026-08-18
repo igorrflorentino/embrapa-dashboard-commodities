@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.9] - 2026-08-16
+
+**Bambu entra no dashboard — e o teste prático do cadastro revelou uma promessa falsa na
+tela.** Percorrido o fluxo real de ponta a ponta (criar agrupamento → cadastrar produtos
+pelo formulário → conferir status), como um pesquisador faria.
+
+### Added
+- **Bambu no escopo de ingestão** (`config.py`): `14011000` (bambus para cestaria) e
+  `20059100` (brotos de bambu) no COMEX; os SH6 equivalentes `140110` / `200591` no
+  COMTRADE. Códigos confirmados na **referência HS oficial do UN Comtrade** e na
+  **nomenclatura NCM do MDIC** — não deduzidos.
+
+  Ingerido por **NCM explícita, não por heading**: cada SH6 de bambu tem um único NCM (sem
+  desdobramento brasileiro), e as headings seriam largas demais — `1401` arrasta
+  ratan/vime/junco, `2005` traria todo o capítulo de conservas vegetais. Escopo =
+  matéria-prima agrícola; manufaturados de bambu (móveis, pisos, utensílios, celulose) ficam
+  **fora**, pela mesma razão que a madeira largou o capítulo inteiro.
+
+  Registro no catálogo de Curadoria feito **pela própria tela**, sob o agrupamento "Bambu".
+  Nota de campo: **bambu não existe em nenhuma fonte do IBGE** (confirmado nas tabelas SIDRA
+  289, 5457, 3939 e 74) — só vem do comércio exterior.
+
+### Fixed
+- **A tela de Cadastro prometia uma ingestão que nunca viria** (`ViewCadastroProdutos.jsx`,
+  `webapi/seam_curation.py`, `ibge/catalog_resolver.py`). Ao cadastrar um código ainda não
+  ingerido, o aviso dizia *"será buscado na próxima ingestão"* — e o status repetia
+  *"Pendente de ingestão"* — para **qualquer** banco.
+
+  É falso para COMEX e COMTRADE: o `catalog_resolver` é usado só pelos três pipelines do
+  IBGE, e o escopo do comércio exterior vem da configuração. Um produto cadastrado ali fica
+  "pendente" para sempre. E é falso para **todos** os bancos quando
+  `catalog_authoritative_ingestion` está desligado — flag que o frontend sequer conhecia.
+
+  Novo `catalog_driven_bancos()` reporta quais bancos um cadastro **de fato** dirige (o
+  conjunto do IBGE ∩ flag ligado), exposto em `/api/catalog/entries`. Fora dessa lista a tela
+  agora diz o que é verdade: status **"Sem dados"** e um aviso explicando que o escopo da
+  fonte vem da configuração do pipeline, com o tom de alerta em vez do neutro que sugeria
+  "aguarde". O código já raciocinava sobre isso no caso vizinho — havia um comentário
+  dizendo que chamar um produto pausado de "pendente" *"would promise an ingestion that will
+  never come"* —, mas o caso por banco tinha passado.
+
 ## [1.24.8] - 2026-08-16
 
 **Dois diagnósticos que mentiam em silêncio**, achados na verificação final da sessão.

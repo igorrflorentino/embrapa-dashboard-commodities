@@ -375,6 +375,11 @@ def catalog_entries():
     # UX affordance: tell the SPA whether to enable the edit controls. The write
     # endpoints stay authoritative (403 on a stale true), so this can never widen access.
     payload["can_edit"] = _catalog_can_edit(seam.PRODUTO_CATALOG_RESOURCE)
+    # Which bancos a catalog edit actually STEERS (see seam.catalog_driven_bancos). The
+    # editor used to promise "será buscado na próxima ingestão" for every banco, which is
+    # false for COMEX/COMTRADE (scope comes from config, not the catalog) and false for
+    # ALL of them when catalog_authoritative_ingestion is off.
+    payload["catalog_driven_bancos"] = seam.catalog_driven_bancos()
     return jsonify(payload)
 
 

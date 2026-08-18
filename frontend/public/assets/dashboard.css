@@ -3499,7 +3499,15 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
   color: var(--warn, #b8860b);
   background: color-mix(in srgb, var(--warn, #b8860b) 14%, transparent);
 }
+/* "Pendente de ingestão" = cadastrado E a busca virá; neutro, é só esperar.
+   "Sem dados" = cadastrado mas ESTA fonte não é dirigida pelo cadastro, então nada
+   está agendado — precisa de ação humana, e por isso usa o tom de aviso em vez do
+   neutro que sugeriria "aguarde". Ver _ccStatus em ViewCadastroProdutos.jsx. */
 .cc-status-pendente { color: var(--fg-3); background: var(--bg-surface-2); }
+.cc-status-sem-dados {
+  color: var(--warn, #b8860b);
+  background: color-mix(in srgb, var(--warn, #b8860b) 14%, transparent);
+}
 .cc-has-data { color: var(--ok, #1b7f3b); font-weight: 700; }
 .cc-no-data {
   font: 600 10px var(--font-body); letter-spacing: 0.04em; text-transform: uppercase;
