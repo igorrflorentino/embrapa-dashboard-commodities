@@ -143,7 +143,8 @@ def _emit_retry(retry_state):  # type: ignore[no-untyped-def]
 # A keyed 429 with ``Retry-After`` at or under this many seconds is APIM's
 # per-second/burst rate limiter (transient — back off and retry); above it (or
 # with no header at all) it is treated as the daily quota (stop the run). The
-# daily quota replenishes on a scale of hours, so the two regimes are far apart.
+# daily quota replenishes at 00:00 UTC (21:00 BRT) — MEASURED, see
+# docs/comtrade_world_backfill.md — so the two regimes are far apart.
 RATE_LIMIT_RETRY_AFTER_MAX_S: float = 120.0
 
 # Minimum spacing between consecutive keyed data calls (client-side throttle).

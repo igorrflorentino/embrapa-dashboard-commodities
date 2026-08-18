@@ -52,6 +52,32 @@ exist and serve as the measured "pilot" — no separate pilot run is needed.
 | Job has the key mounted | ✅ `COMTRADE_API_KEY` mounted via `secretKeyRef` → `comtrade-un-key`. |
 | Job has the all-reporters **scope** | ⚠ As of v1.13.0 the `config.py` **defaults are `reporters=all`, `customs=C00`, `flows=X,M`, `start_year=2000`**, so a job carrying NO `COMTRADE_*` scope env now runs the totals-only all-reporters pull by default. Still **redeploy the Job** so its baked defaults match the current image (and pin `COMTRADE_*` explicitly if you want to override). |
 
+## Daily call quota — when it resets, and how it announces itself
+
+**The quota replenishes at 00:00 UTC (21:00 BRT).** Measured twice on 2026-08-18 from the
+API's own countdown: at 04:52 UTC it reported `19:07:31` remaining, and at 20:32 UTC it
+reported `03:27:35` — both landing on midnight UTC. It is a fixed daily reset, **not** a
+rolling 24h window from the moment the budget ran out, so a run that dies at 06:00 UTC waits
+18 hours while one that dies at 23:00 UTC waits one.
+
+Two consequences worth planning around:
+
+* **A backfill gets the whole window if it starts just after 00:00 UTC.** Starting mid-window
+  simply means less budget before the wall — the run is resumable either way.
+* **The monthly Cloud Run trigger (04:00 BRT = 07:00 UTC) starts 7h into a fresh window**,
+  which is why it usually gets through its backlog.
+
+**The API signals exhaustion with HTTP 403, not 429:**
+
+```json
+{"statusCode": 403, "message": "Out of call volume quota. Quota will be replenished in 03:27:35."}
+```
+
+`fetch_chunk` maps that message to `ComtradeQuotaError`, so the run stops cleanly, exits 0
+and resumes next time (v1.24.12). Matched on the MESSAGE — a 403 from a revoked or invalid
+subscription key stays a real failure and still pages. To check the remaining time yourself,
+issue any keyed call and read the countdown in the body.
+
 ## Expected volume / time / cost (measured anchors)
 
 | Metric | Value |
