@@ -89,13 +89,23 @@ const _CC_HELP_ACOES = [
   { k: 'Criar / renomear / excluir agrupamento', tag: null, tone: null,
     d: 'Renomear mantém os produtos; só o rótulo muda. Excluir exige que o agrupamento esteja vazio — reatribua ou remova os produtos antes.' },
   { k: 'Adicionar produto', tag: null, tone: null,
-    d: 'Cadastra um código da fonte. Um código ainda não ingerido é aceito: entra como "pendente de ingestão" e será buscado na próxima atualização.' },
+    d: 'Cadastra um código da fonte. Um código ainda não ingerido é aceito. Nas fontes cuja ' +
+       'ingestão é dirigida por este cadastro ele entra como "pendente de ingestão" e é buscado ' +
+       'na próxima ingestão; nas demais (o escopo vem da configuração do pipeline) ele fica como ' +
+       '"sem dados" até que a equipe técnica inclua o código.' },
 ];
 
 // A catalog write reaches the researcher-facing charts/filters only on the NEXT dbt build (+ the
 // serving marts' cache TTL) — never instantly. Appended to save/rename toasts so the researcher
 // isn't surprised the change doesn't show up in the dashboard right away (mirrors the hide notice).
-const _CC_LATENCIA = 'A mudança vale na próxima atualização (pode levar alguns minutos).';
+//
+// It used to say "alguns minutos", which is wrong by up to a DAY: the serving marts apply the
+// visibility gate at BUILD time (hidden_code_predicate), and prod rebuilds on the daily
+// dbt-build-prod schedule — `cron: '30 11 * * *'` = 08:30 BRT. A researcher who hid a produto,
+// waited five minutes and still saw it in the charts would reasonably conclude the control was
+// broken. Name the real cadence instead.
+const _CC_LATENCIA =
+  'A mudança vale na próxima reconstrução diária dos dados (por volta das 08:30, horário de Brasília).';
 
 // The produto's LIFECYCLE STATE, derived from the two axes + whether its data actually
 // landed in Gold. Read-only: it is a consequence of the controls, never a control itself —
@@ -403,7 +413,8 @@ function ViewCadastroProdutos() {
         title: `Ocultar ${e.codigo_produto}?`,
         body: `Ele deixará de aparecer em TODOS os gráficos e filtros do dashboard para os ` +
           `pesquisadores. Os dados continuam no Gold e a ingestão segue normalmente. ` +
-          `A mudança vale na próxima atualização (pode levar alguns minutos).`,
+          `A mudança vale na próxima reconstrução diária dos dados (por volta das 08:30, ` +
+          `horário de Brasília) — não na hora.`,
         confirmLabel: 'Ocultar', danger: true,
         onConfirm: () => saveEntry({ ...e, visibilidade }),
       });
@@ -502,7 +513,7 @@ function ViewCadastroProdutos() {
       setPendingConfirm({
         title: `Ocultar TODOS os ${members.length} produto(s) de "${g.group_name}"?`,
         body: 'Eles deixarão de aparecer em qualquer gráfico ou filtro do dashboard para os ' +
-          'pesquisadores. Vale na próxima atualização.',
+          'pesquisadores. Vale na próxima reconstrução diária dos dados (por volta das 08:30).',
         confirmLabel: 'Ocultar', danger: true,
         onConfirm: apply,
       });
@@ -721,7 +732,8 @@ function ViewCadastroProdutos() {
           <p className="caption cc-help-foot">
             Nada aqui é destrutivo: o registro é <strong>somente-adição</strong> — cada edição vira
             uma nova linha com seu e-mail e a data, e nenhuma anterior é apagada. As mudanças valem
-            na <strong>próxima atualização</strong> do dashboard, não na hora.
+            na <strong>próxima reconstrução diária dos dados</strong> (por volta das 08:30, horário
+            de Brasília), não na hora.
           </p>
         </div>
       </details>
