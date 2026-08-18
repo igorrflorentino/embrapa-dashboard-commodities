@@ -828,11 +828,81 @@ BRONZE_TARGETS: list[tuple[str, str]] = [
     ("bq_bronze_comtrade_dataset", "bq_bronze_comtrade_flows_table"),
 ]
 
+
+def _check_catalog_data_arrival(settings: Settings) -> CheckResult:
+    """Cataloged produtos whose data never arrived in Gold — the generic net for the
+    "registered, but the pipeline never fetched it" failure, for ANY banco.
+
+    Each pipeline family solves scope growth its own way, because their economics differ:
+    IBGE re-queries SIDRA over the full window when a resolved product is absent from
+    Bronze; COMEX re-filters its archived raw when the product-filter fingerprint changes
+    (no source hit at all); COMTRADE re-fetches a settled year when the recorded
+    ``cmd_scope`` lacks a now-configured code. Three mechanisms, one promise — and COMTRADE
+    had NO mechanism at all until 2026-08, so bamboo registered against it would have sat
+    empty forever with nothing anywhere reporting the fact.
+
+    This check is the source-agnostic backstop for that class: it does not care HOW a banco
+    ingests, only whether what a researcher registered actually shows up. A future banco
+    gets the same safety net for free, including one whose scope mechanism is missing or
+    broken — which is exactly the case no per-pipeline test can cover.
+
+    Advisory (ok=True): a produto registered minutes ago is legitimately still empty, so
+    this reports rather than fails. Flask-free (direct BQ) so a bare ``embrapa doctor``
+    runs it; any fault degrades to 'skipped'."""
+    try:
+        from embrapa_dashboard.gcp.clients import resolve_bq_client
+        from embrapa_dashboard.serving import sql as sqlbuild
+
+        bq = resolve_bq_client(settings)
+        catalog_log = sqlbuild.table_ref(
+            settings, "bq_research_inputs_dataset", settings.bq_produto_catalog_log_table
+        )
+        gold_union = " union all ".join(
+            f"select '{src}' as src, {col} as code from "
+            f"`{sqlbuild.table_ref(settings, 'bq_gold_dataset', tbl)}`"
+            for src, (tbl, col) in sqlbuild.GOLD_CODE_SOURCES.items()
+        )
+        sql = f"""
+            with ativos as (
+              select codigo_produto, banco from (
+                select codigo_produto, banco, active, row_number() over (
+                  partition by codigo_produto, banco order by edited_at desc, change_id desc
+                ) as _rn from `{catalog_log}`
+              ) where _rn = 1 and active
+            ),
+            gold as (select distinct src, code from ({gold_union}))
+            select a.banco, a.codigo_produto
+            from ativos a
+            left join gold g on g.src = a.banco and g.code = a.codigo_produto
+            where g.code is null
+            order by a.banco, a.codigo_produto
+        """
+        rows = list(bq.query(sql).result())
+        if not rows:
+            return CheckResult(
+                "Catalog → Gold arrival", True, "every cataloged produto has data in Gold"
+            )
+        by_banco: dict[str, list[str]] = {}
+        for r in rows:
+            by_banco.setdefault(r.banco, []).append(r.codigo_produto)
+        detail = " · ".join(f"{b}: {','.join(c)}" for b, c in sorted(by_banco.items()))
+        return CheckResult(
+            "Catalog → Gold arrival",
+            True,
+            f"{len(rows)} cataloged produto(s) with NO Gold data — {detail}. Expected right "
+            "after a registration; if it persists past an ingest + dbt build, that banco's "
+            "pipeline is not picking the code up.",
+        )
+    except Exception as exc:  # never fail — advisory
+        return CheckResult("Catalog → Gold arrival", True, f"skipped: {str(exc)[:100]}")
+
+
 _POSTCHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
     ("bronze", _check_bronze_tables),
     ("serving", _check_serving_marts),
     ("catalog-parity", _check_catalog_resolver_parity),
     ("orphans", _check_orphan_lifecycle),
+    ("catalog-arrival", _check_catalog_data_arrival),
     ("backup", _check_backup_freshness),
 ]
 
