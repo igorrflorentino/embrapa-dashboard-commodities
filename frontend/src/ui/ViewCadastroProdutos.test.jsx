@@ -236,6 +236,19 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(container.querySelector('.cc-status-sem-dados')).toBeFalsy();
   });
 
+  it('never promises the hide takes effect in "minutos"', async () => {
+    // The serving marts apply the visibility gate at BUILD time, and prod rebuilds on the
+    // DAILY dbt-build-prod schedule (cron 30 11 * * * = 08:30 BRT). The copy used to say
+    // "pode levar alguns minutos", wrong by up to a day: a researcher who hid a produto,
+    // waited five minutes and still saw it charted would conclude the control was broken.
+    mockFetch();
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.cc-status')).toBeTruthy());
+    const texto = container.textContent;
+    expect(texto).not.toMatch(/alguns minutos/i);
+    expect(texto).toMatch(/reconstrução diária/i);
+  });
+
   it('read-only when can_edit is false: banner shown, edit controls disabled', async () => {
     mockFetch({ entries: { ...ENTRIES, can_edit: false } });
     const { container, getByText } = render(<ViewCadastroProdutos />);

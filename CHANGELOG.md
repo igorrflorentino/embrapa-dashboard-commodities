@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.14] - 2026-08-18
+
+### Fixed
+- **A tela prometia que uma edição valia "em alguns minutos" — erra por até um dia**
+  (`ViewCadastroProdutos.jsx`). Os marts de serving aplicam o gate de visibilidade no **build**
+  (`hidden_code_predicate`), e a prod se reconstrói no agendamento **diário** do
+  `dbt-build-prod` (`cron: '30 11 * * *'` = 08:30 BRT). Um pesquisador que ocultasse um produto,
+  esperasse cinco minutos e continuasse vendo-o nos gráficos concluiria — com razão — que o
+  controle está quebrado.
+
+  As cinco ocorrências passam a nomear a cadência real: confirmação de ocultar (individual e em
+  lote), o aviso anexado aos toasts de salvar/renomear, e a legenda de ajuda. Teste novo trava a
+  promessa, para "alguns minutos" não voltar.
+
+- **A ajuda de "Adicionar produto" prometia ingestão para qualquer fonte**, mesmo agora que a
+  tela já distingue por banco (v1.24.9). O texto passa a dizer que o produto entra como
+  *pendente de ingestão* nas fontes dirigidas pelo cadastro e como *sem dados* nas demais, cujo
+  escopo vem da configuração do pipeline.
+
 ## [1.24.13] - 2026-08-18
 
 **Limpar uma anotação pela tela tinha parado de funcionar** — regressão introduzida hoje,
