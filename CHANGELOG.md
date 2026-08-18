@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.10] - 2026-08-17
+
+**A última fonte sem defesa contra ampliação de escopo, e uma rede que cobre as futuras.**
+
+### Fixed
+- **COMTRADE agora retroage a história quando um produto é adicionado**
+  (`comtrade/pipeline.py`). Um ano "assentado" cujo raw já existia era pulado para sempre —
+  correto enquanto o escopo é estável, e **errado** no instante em que um produto entra: o
+  objeto arquivado só contém os códigos pedidos na época, então o produto novo apareceria
+  apenas a partir da janela de re-fetch recente. Truncamento silencioso de história, do tipo
+  que o pesquisador não tem como perceber.
+
+  O `cmd_scope` **já era gravado** na proveniência do raw (confirmado: 400/400 objetos
+  amostrados o carregam) — faltava consultá-lo. Agora um ano assentado é re-buscado quando o
+  escopo gravado não cobre os códigos configurados.
+
+  **Deliberadamente unidirecional:** só códigos *adicionados* disparam trabalho. Remover ou
+  reordenar deixa o superconjunto arquivado perfeitamente utilizável (o Silver filtra), e
+  re-buscar por isso queimaria a cota diária à toa. Objeto sem `cmd_scope` gravado não dispara
+  nada — não dá para saber o que ele cobria, e chutar "re-buscar" re-cobraria o acervo inteiro
+  por um palpite.
+
+  Com isso as três famílias de pipeline finalmente cumprem a mesma promessa, cada uma pela
+  economia da sua fonte: IBGE re-consulta o SIDRA em janela completa quando um produto está
+  ausente do Bronze; COMEX re-filtra o raw arquivado quando o fingerprint do filtro muda (sem
+  tocar na fonte); COMTRADE re-busca o ano assentado quando o `cmd_scope` ficou defasado.
+
+### Added
+- **Check `Catalog → Gold arrival` no `embrapa doctor`**: produtos cadastrados sem dado
+  nenhum na Gold, agrupados por banco. É a rede **agnóstica de fonte** para a classe inteira
+  — não importa *como* um banco ingere, só se o que o pesquisador cadastrou de fato apareceu.
+
+  É o que faltava para que a falha do COMTRADE fosse visível: ela existia desde sempre e
+  **nenhum** sinal a reportava. Um banco futuro, com mecanismo ausente ou quebrado, ganha a
+  mesma proteção de graça — que é justamente o caso que nenhum teste por pipeline cobre.
+
+  Consultivo (`ok=True`): um produto cadastrado há minutos está legitimamente vazio. Medido
+  antes de construir para não repetir o erro do check de órfãos: **2 de 308** hoje, e os dois
+  são exatamente os códigos de bambu do COMTRADE. Zero ruído.
+
 ## [1.24.9] - 2026-08-16
 
 **Bambu entra no dashboard — e o teste prático do cadastro revelou uma promessa falsa na

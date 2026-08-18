@@ -168,8 +168,20 @@ def sync_raw(
             # path that absorbs late reporters/revisions — it must not be defeated by partial data.
             recent = year >= settings.comtrade_end_year - settings.comtrade_recent_refetch_years
             if not recent:
-                logger.info("Comtrade %s: raw exists (settled year), skipping.", basename)
-                return False
+                # A settled year still re-fetches when the SCOPE widened: the archived object
+                # holds only the codes requested back then, so a newly-cataloged produto is
+                # absent from it and would otherwise never backfill its history.
+                added = _codes_added_since(stored, settings)
+                if not added:
+                    logger.info("Comtrade %s: raw exists (settled year), skipping.", basename)
+                    return False
+                logger.info(
+                    "Comtrade %s: settled year, but %d code(s) were added since it was "
+                    "fetched (%s) — re-fetching so their history is not truncated.",
+                    basename,
+                    len(added),
+                    ",".join(sorted(added)),
+                )
             logger.info(
                 "Comtrade %s: recent year — re-fetching (late reporters / revisions may have "
                 "arrived since it was landed).",
@@ -281,6 +293,32 @@ def has_raw(
         )
         is not None
     )
+
+
+def _codes_added_since(stored: dict | None, settings: Settings) -> set[str]:
+    """Codes configured NOW that the archived raw was not fetched under.
+
+    A settled-year raw resume-skips forever, which is right while the scope is stable and
+    WRONG the moment a produto is added: the archived object only ever contained the codes
+    requested at fetch time, so the new one would be missing from every past year and the
+    dashboard would show it starting from the recent-refetch window only — a silent history
+    truncation. COMEX solves the same problem by re-filtering its archived raw; here the raw
+    simply does not contain the rows, so the API must be asked again.
+
+    Deliberately ONE-DIRECTIONAL: only codes ADDED trigger work. Removing or reordering the
+    scope leaves the archived superset perfectly usable (Silver filters), and re-fetching for
+    that would burn the keyed daily quota for nothing.
+
+    An object with no ``cmd_scope`` recorded (pre-provenance) returns empty: we cannot tell
+    what it covered, and guessing "refetch" would re-bill the whole archive on a hunch. Every
+    raw in the live bucket carries it, so this is a safety valve, not the normal path.
+    """
+    if not stored:
+        return set()
+    prior = {c for c in (stored.get("cmd_scope") or "").split(",") if c}
+    if not prior:
+        return set()
+    return {c for c in settings.comtrade_cmd_map if c not in prior}
 
 
 def needs_bronze(

@@ -527,6 +527,7 @@ def test_run_all_executes_every_probe(settings: Settings) -> None:
         "Serving marts",
         "Catalog↔env product codes",
         "Catalog orphan lifecycle",
+        "Catalog → Gold arrival",
         "Gold backup freshness",
     ]
 
@@ -716,3 +717,58 @@ def test_check_orphan_lifecycle_error_degrades_to_skipped(monkeypatch, settings:
     r = doctor._check_orphan_lifecycle(settings)
 
     assert r.ok is True and "skipped" in r.detail
+
+
+class _Row:
+    def __init__(self, banco: str, codigo_produto: str) -> None:
+        self.banco = banco
+        self.codigo_produto = codigo_produto
+
+
+def test_check_catalog_data_arrival_clean(monkeypatch, settings: Settings) -> None:
+    """No cataloged produto missing from Gold → the clean state."""
+    client = MagicMock()
+    client.query.return_value.result.return_value = []
+    monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", lambda s: client)
+
+    r = doctor._check_catalog_data_arrival(settings)
+
+    assert r.ok is True and "every cataloged produto has data" in r.detail
+
+
+def test_check_catalog_data_arrival_reports_missing_grouped_by_banco(
+    monkeypatch, settings: Settings
+) -> None:
+    """The source-agnostic backstop for "registered, but the pipeline never fetched it".
+
+    Each banco family solves scope growth differently (IBGE full-window backfill, COMEX
+    filter fingerprint, COMTRADE cmd_scope re-fetch) — and COMTRADE had NO mechanism until
+    2026-08, so a produto registered against it sat empty with nothing reporting the fact.
+    This check does not care HOW a banco ingests, only whether what a researcher registered
+    actually shows up, so a FUTURE banco with a missing or broken mechanism is covered too.
+    """
+    client = MagicMock()
+    client.query.return_value.result.return_value = [
+        _Row("comtrade", "140110"),
+        _Row("comtrade", "200591"),
+    ]
+    monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", lambda s: client)
+
+    r = doctor._check_catalog_data_arrival(settings)
+
+    # Advisory, never a failure: a produto registered minutes ago is legitimately empty.
+    assert r.ok is True
+    assert "2 cataloged produto(s) with NO Gold data" in r.detail
+    assert "comtrade: 140110,200591" in r.detail
+
+
+def test_check_catalog_data_arrival_degrades_on_error(monkeypatch, settings: Settings) -> None:
+    """A missing table / permission fault degrades to 'skipped' — doctor must not blow up
+    over an advisory probe."""
+    client = MagicMock()
+    client.query.side_effect = RuntimeError("no such table")
+    monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", lambda s: client)
+
+    r = doctor._check_catalog_data_arrival(settings)
+
+    assert r.ok is True and r.detail.startswith("skipped:")

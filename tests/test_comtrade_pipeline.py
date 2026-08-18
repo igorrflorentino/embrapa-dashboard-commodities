@@ -497,3 +497,72 @@ def test_run_one_chunk_marks_truncation_failed_without_stopping(settings, caplog
     assert outcome.status == "failed"  # NOT re-raised (run continues), unlike quota
     assert "permanent truncation" in outcome.detail
     assert any("PERMANENTLY truncated" in r.getMessage() for r in caplog.records)
+
+
+# ── scope widening: a settled year must re-fetch when a produto was ADDED ──────
+
+
+def _settings_with_codes(codes: str):
+    from tests.test_serving import _isolated_settings
+
+    return _isolated_settings(gcp_project_id="p", comtrade_cmd_codes=codes)
+
+
+def test_codes_added_since_detects_only_additions():
+    """Only ADDED codes trigger a re-fetch. Removing or reordering leaves the archived
+    superset usable (Silver filters), so re-fetching for that would burn the keyed daily
+    quota for nothing."""
+    from embrapa_dashboard.comtrade import pipeline as p
+
+    s = _settings_with_codes("0803:banana,140110:bambu,200591:brotos")
+    # Archived under the OLD scope → the two bamboo codes are new.
+    assert p._codes_added_since({"cmd_scope": "0803"}, s) == {"140110", "200591"}
+    # Same set, different order → nothing added.
+    assert p._codes_added_since({"cmd_scope": "200591,0803,140110"}, s) == set()
+    # Archived under a WIDER scope (a code was removed) → nothing to fetch.
+    assert p._codes_added_since({"cmd_scope": "0803,140110,200591,4403"}, s) == set()
+
+
+def test_codes_added_since_is_silent_without_recorded_scope():
+    """No cmd_scope on the object (pre-provenance) → we cannot tell what it covered, and
+    guessing 'refetch' would re-bill the entire archive on a hunch."""
+    from embrapa_dashboard.comtrade import pipeline as p
+
+    s = _settings_with_codes("0803:banana,140110:bambu")
+    assert p._codes_added_since({}, s) == set()
+    assert p._codes_added_since({"cmd_scope": ""}, s) == set()
+    assert p._codes_added_since(None, s) == set()
+
+
+def test_sync_raw_still_skips_settled_year_when_scope_is_unchanged(settings) -> None:
+    """The steady state must stay cheap: same scope → the settled year still resume-skips,
+    so a routine monthly run does not re-bill the keyed quota for the whole archive."""
+    stored = {"source": "un-comtrade", "cmd_scope": "0801,44"}
+    with (
+        patch.object(pipeline, "raw_provenance", return_value=stored),
+        patch.object(client, "fetch_chunk_adaptive") as fetch,
+        patch.object(pipeline, "land_raw") as land,
+    ):
+        changed = pipeline.sync_raw(settings, 2020, ["76"], storage_client=MagicMock())
+    assert changed is False
+    fetch.assert_not_called()
+    land.assert_not_called()
+
+
+def test_sync_raw_refetches_settled_year_when_a_code_was_added(settings) -> None:
+    """A produto added AFTER the archive was built must backfill its history.
+
+    The archived object only holds the codes requested at fetch time, so without this the
+    new produto would appear only from the recent-refetch window on — a silent history
+    truncation the researcher cannot see. This is the COMTRADE counterpart of COMEX's
+    product-filter fingerprint (bamboo, 2026-08)."""
+    stored = {"source": "un-comtrade", "cmd_scope": "0801"}  # archived BEFORE '44' existed
+    with (
+        patch.object(pipeline, "raw_provenance", return_value=stored),
+        patch.object(client, "fetch_chunk_adaptive", return_value=_bronze_df()) as fetch,
+        patch.object(pipeline, "land_raw") as land,
+    ):
+        changed = pipeline.sync_raw(settings, 2020, ["76"], storage_client=MagicMock())
+    assert changed is True
+    fetch.assert_called_once()
+    land.assert_called_once()
