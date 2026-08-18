@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.12] - 2026-08-18
+
+**A cota diária do UN Comtrade responde 403, não 429 — e por isso paginava um humano.**
+Descoberto na primeira execução real do backfill de escopo.
+
+### Fixed
+- **403 "Out of call volume quota" agora vira `ComtradeQuotaError`**
+  (`comtrade/client.py`). O backfill rodou 1h39, arquivou **508 chunks** e então bateu a cota
+  diária. A API sinaliza isso com **403**:
+
+      {"statusCode":403,"message":"Out of call volume quota.
+       Quota will be replenished in 19:07:31."}
+
+  O cliente só mapeava **429** para cota, então o 403 caía em `ComtradeRequestError` — "not
+  transient" — e a execução saía **1**, disparando o alerta vermelho de "unexpected —
+  investigate" para a condição mais esperada e autocurável que existe nesse pipeline. Toda a
+  infraestrutura para tratá-la bem já existia (a classe, o "pare e re-execute" do CLI, o
+  código de saída limpo, o raw resumível); faltava só reconhecer o status certo.
+
+  **Casado pela mensagem, não pelo status:** um 403 de chave revogada ou inválida continua
+  sendo falha real e segue paginando — lavá-lo como "cota, tente depois" travaria a ingestão
+  em silêncio para sempre.
+
+  Nada se perdeu: os 508 chunks estão arquivados e a re-execução retoma exatamente os
+  restantes. E como os já processados foram regravados com o `cmd_scope` atual, eles pulam —
+  a retomada custa só o que falta.
+
 ## [1.24.11] - 2026-08-17
 
 ### Fixed
