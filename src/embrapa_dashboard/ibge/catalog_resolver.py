@@ -38,6 +38,15 @@ from embrapa_dashboard.gcp.clients import resolve_bq_client
 
 logger = logging.getLogger(__name__)
 
+# The banco tokens whose ingestion scope THIS module resolves — i.e. the only ones a
+# catalog edit can actually steer. COMEX/COMTRADE are absent on purpose: their scope
+# comes from ``settings.comex_*_codes`` / ``comtrade_cmd_codes``, so registering a code
+# for them adds it to the catalog (and the crosswalk) but NEVER causes a fetch.
+#
+# Exported so the editor UI can say so instead of promising "será buscado na próxima
+# ingestão" for every banco — a promise that, for a trade banco, never comes true.
+CATALOG_DRIVEN_BANCOS: tuple[str, ...] = ("pevs", "pam", "ppm")
+
 
 def resolve_product_codes(
     settings: Settings,

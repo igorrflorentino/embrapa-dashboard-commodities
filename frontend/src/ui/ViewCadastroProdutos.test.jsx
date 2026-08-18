@@ -129,9 +129,12 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     // Gold-state columns: linhas (pt-BR grouped), período span, and the tem-dados markers.
     expect(container.textContent).toContain('1997–2023');
     // The old "Dados" ✓/sem-dados column was absorbed into the derived Status badge:
-    // 4403 has data + is visible → Ativo; 4407 is registered-but-empty → Pendente.
+    // 4403 has data + is visible → Ativo. 4407 (comtrade) is registered-but-empty and the
+    // fixture declares NO catalog_driven_bancos, so it is "Sem dados" — NOT "Pendente de
+    // ingestão", which would promise a fetch the trade pipelines never make from the catalog.
     expect(container.querySelector('.cc-status-ativo')).toBeTruthy();
-    expect(container.querySelector('.cc-status-pendente')).toBeTruthy();
+    expect(container.querySelector('.cc-status-sem-dados')).toBeTruthy();
+    expect(container.querySelector('.cc-status-pendente')).toBeFalsy();
     const codes = [...container.querySelectorAll('.dt-table tbody td')].map((e) => e.textContent);
     expect(codes).toContain('4403');
     expect(codes).toContain('4407');
@@ -210,6 +213,27 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     await waitFor(() => expect(postBody).toBeTruthy());
     expect(postBody.banco).toBe('ppm');
     expect(postBody.sidra_tabela).toBe('3939');
+  });
+
+  it('says "Pendente de ingestão" ONLY for a banco the catalog actually steers', async () => {
+    // Same empty produto, two worlds. The catalog drives ingestion only for the IBGE
+    // pipelines, and only while catalog_authoritative_ingestion is on; the backend reports
+    // that as catalog_driven_bancos. Registering a COMEX/COMTRADE code never schedules a
+    // fetch, so promising one there is a lie the researcher cannot check.
+    const entries = {
+      entries: [{
+        codigo_produto: '3405', banco: 'pevs', agrupamento: 'Bambu',
+        ingestao: 'ativa', visibilidade: 'visivel', agrupamento_id: 'bambu',
+      }],
+      total: 1,
+      catalog_driven_bancos: ['pevs', 'pam', 'ppm'],
+    };
+    const status = { status: { 'pevs:3405': { n_rows: 0, year_start: null, year_end: null, has_data: false } } };
+    mockFetch({ entries, status, groups: { groups: [{ group_id: 'bambu', group_name: 'Bambu', n_members: 1 }] } });
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.cc-status')).toBeTruthy());
+    expect(container.querySelector('.cc-status-pendente')).toBeTruthy();
+    expect(container.querySelector('.cc-status-sem-dados')).toBeFalsy();
   });
 
   it('read-only when can_edit is false: banner shown, edit controls disabled', async () => {

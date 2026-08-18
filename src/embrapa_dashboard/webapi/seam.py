@@ -955,6 +955,7 @@ from .seam_cross import (  # noqa: E402, F401  (re-exported at module end, inten
 )
 from .seam_curation import (  # noqa: E402, F401  (catalog/Curadoria seam, re-exported)
     PRODUTO_CATALOG_RESOURCE,
+    catalog_driven_bancos,
     catalog_editor_emails,
     catalog_status,
     catalog_worklist,

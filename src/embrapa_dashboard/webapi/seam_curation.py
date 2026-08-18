@@ -327,3 +327,32 @@ def orphan_worklist() -> dict:
             }
         )
     return {"orphans": rows, "total": len(rows)}
+
+
+def catalog_driven_bancos() -> list[str]:
+    """Banco tokens whose INGESTION a catalog edit actually steers, right now.
+
+    Two conditions, both required: the banco must be one the IBGE pipelines resolve
+    through ``catalog_resolver`` (COMEX/COMTRADE read their scope from config, so a
+    catalog entry there never triggers a fetch), AND the
+    ``catalog_authoritative_ingestion`` flag must be ON (with it off, even the IBGE
+    pipelines fall back to the env codes).
+
+    The editor UI keys its "será buscado na próxima ingestão" wording off this list, so
+    it stops promising an ingestion that will never come. Empty list = the catalog is
+    documentation only, for every banco."""
+    from embrapa_dashboard.config import get_settings
+    from embrapa_dashboard.ibge.catalog_resolver import CATALOG_DRIVEN_BANCOS
+
+    try:
+        authoritative = get_settings().catalog_authoritative_ingestion
+    except Exception:
+        # Settings unbuildable (no .env / missing GCP_PROJECT_ID — CI, a fresh worktree).
+        # Degrade to "promise nothing" rather than raise: this is a cosmetic affordance
+        # riding on a READ endpoint, and a 400 here would blank the whole editor. Failing
+        # CLOSED is also the honest direction — if we cannot tell whether the catalog
+        # steers ingestion, we must not claim that it does.
+        return []
+    if not authoritative:
+        return []
+    return list(CATALOG_DRIVEN_BANCOS)

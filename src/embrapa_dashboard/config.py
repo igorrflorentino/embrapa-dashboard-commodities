@@ -286,13 +286,20 @@ class Settings(BaseSettings):
             "08012100:castanha_com_casca,08012200:castanha_sem_casca,"
             "20079921:acai_pure,20079926:cupuacu_pure,"
             "07141000:mandioca_raiz,11062000:mandioca_farinha,"
-            "11081400:mandioca_fecula,19030000:tapioca"
+            "11081400:mandioca_fecula,19030000:tapioca,"
+            "14011000:bambu_cestaria,20059100:bambu_brotos"
         )
     )
     # CODE:LABEL of 2-digit HS chapters to keep wholesale. Empty by default —
     # madeira moved to explicit 4-digit headings (see comex_heading_codes) to drop
     # manufactured-wood articles (móveis/marcenaria) that polluted the whole-chapter
     # scope and are not comparable to PEVS extractive output.
+    # Bambu (2026-08): registrado no catalogo de Curadoria e ingerido por NCM EXPLICITA,
+    # nao por heading. Cada SH6 de bambu tem um unico NCM (sem desdobramento brasileiro),
+    # e as headings seriam largas demais: 1401 arrasta ratan/vime/junco e 2005 traria todo
+    # o capitulo de conservas vegetais. Escopo = materia-prima agricola apenas (bambu para
+    # cestaria + brotos comestiveis); manufaturados de bambu (moveis, pisos, utensilios,
+    # celulose) ficam FORA, pela mesma razao que a madeira largou o capitulo inteiro.
     comex_chapter_codes: str = Field(default="")
     # CODE:LABEL of 4-digit HS headings (prefix match on NCM[:4]) — captures EVERY
     # 8-digit NCM under the heading across all NCM revisions (so a code retired by a
@@ -349,9 +356,12 @@ class Settings(BaseSettings):
             "1201:soja_grao,150710:soja_oleo_bruto,150790:soja_oleo_refinado,"
             "230400:soja_farelo,"
             "1005:milho,"
-            "1006:arroz"
+            "1006:arroz,"
+            "140110:bambu_cestaria,200591:bambu_brotos"
         )
     )
+    # Bambu: os SH6 equivalentes aos NCM em comex_ncm_codes (140110 cestaria / 200591
+    # brotos), para que o mesmo agrupamento "Bambu" cruze as duas fontes de comercio.
     # Flow codes (UN Comtrade flowCode). TOTALS-ONLY design (2026-07): only the two
     # direction TOTALS are ingested — X=export (grand total, INCLUDES its DX/RX
     # sub-flows) and M=import (grand total, INCLUDES FM/RM/MIP…). The sub-flows
