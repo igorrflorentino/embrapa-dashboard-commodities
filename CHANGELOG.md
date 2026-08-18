@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.11] - 2026-08-17
+
+### Fixed
+- **Um re-fetch por escopo ampliado logava DUAS razões, e uma era falsa**
+  (`comtrade/pipeline.py`). A checagem de escopo da v1.24.10 entrou como *fall-through*, então
+  um ano assentado re-buscado por escopo também imprimia *"recent year — re-fetching"* —
+  visivelmente errado para, digamos, o ano 2000. Pego observando a primeira execução real de
+  ponta a ponta. Agora é `else`: cada caminho imprime **uma** razão, e a correta. O
+  comportamento sempre esteve certo; o log é que desorientava quem fosse diagnosticar o gasto
+  de cota.
+
 ## [1.24.10] - 2026-08-17
 
 **A última fonte sem defesa contra ampliação de escopo, e uma rede que cobre as futuras.**

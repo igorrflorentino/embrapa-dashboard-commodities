@@ -566,3 +566,25 @@ def test_sync_raw_refetches_settled_year_when_a_code_was_added(settings) -> None
     assert changed is True
     fetch.assert_called_once()
     land.assert_called_once()
+
+
+def test_settled_year_scope_refetch_logs_only_the_true_reason(settings, caplog) -> None:
+    """One decision, ONE reason — and the right one.
+
+    The scope check first landed as a fall-through, so a settled year re-fetched for a
+    widened scope ALSO logged "recent year — re-fetching", which is plainly false for year
+    2000. An operator reading that log would misdiagnose why the quota was spent."""
+    import logging
+
+    stored = {"source": "un-comtrade", "cmd_scope": "0801"}
+    with (
+        patch.object(pipeline, "raw_provenance", return_value=stored),
+        patch.object(client, "fetch_chunk_adaptive", return_value=_bronze_df()),
+        patch.object(pipeline, "land_raw"),
+        caplog.at_level(logging.INFO, logger="embrapa_dashboard.comtrade.pipeline"),
+    ):
+        pipeline.sync_raw(settings, 2020, ["76"], storage_client=MagicMock())
+
+    text = caplog.text
+    assert "code(s) were added" in text
+    assert "recent year" not in text
