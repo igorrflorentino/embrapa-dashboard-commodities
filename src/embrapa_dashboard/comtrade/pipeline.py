@@ -49,10 +49,27 @@ logger = logging.getLogger(__name__)
 
 RAW_DATASET = "comtrade_flows"
 
-# Reporters per (year) chunk = one raw archive object. The keyed per-call cap is
-# enforced separately by client.fetch_chunk_adaptive (which splits/recurses within
-# a chunk), so this only controls raw-file / resume granularity, not call size.
-REPORTER_BATCH_SIZE = 8
+# Reporters per (year) chunk = one raw archive object AND, in practice, one keyed
+# API call. The adaptive splitter (client.fetch_chunk_adaptive) is only a safety net
+# for the 100k-row per-call cap — MEASURED over a full 2026-08 world run, real
+# responses averaged 9.5k rows and peaked at 35.8k, so the cap is never approached
+# and the splitter never fires. Every chunk is exactly one call.
+#
+# That makes this constant the real driver of QUOTA cost, which is billed per CALL:
+# 252 reporters / 8 = 32 batches × 27 years = 864 calls for a full re-fetch, against
+# a daily budget of roughly 500 — so any scope change needed TWO days.
+#
+# 16 halves that to ~432 while keeping a wide margin: the observed peak scales to
+# ~72k, still under the 100k cap, and a batch that ever does cap is split by the
+# adaptive path rather than lost. Raising it further (24+) would project past the
+# cap and start paying for splits, giving the gain back.
+#
+# ⚠ CHANGING THIS INVALIDATES EVERY ARCHIVED RAW. The basename is a hash of the
+# batch's reporter set (_basename), so a different grouping yields different names,
+# nothing resume-matches, and the next run re-fetches the whole history — leaving
+# the previous objects orphaned in GCS. Only change it alongside a re-fetch that is
+# already owed (a scope widening), never on its own.
+REPORTER_BATCH_SIZE = 16
 
 # Bronze layout: the curated API columns (all STRING) + the typed timestamp.
 BRONZE_STRING_COLUMNS: list[str] = list(client.BRONZE_COLUMNS)

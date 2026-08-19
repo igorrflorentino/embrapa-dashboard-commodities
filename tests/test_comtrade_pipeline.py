@@ -54,10 +54,16 @@ def _bronze_df() -> pd.DataFrame:
 
 # ─── _reporter_batches / _basename / plan_chunks ─────────────────────────────
 def test_reporter_batches_sorts_then_chunks_by_size() -> None:
-    reporters = [str(i) for i in range(60)]
+    # Derived from the constant, not hardcoded: REPORTER_BATCH_SIZE is a TUNED value
+    # (raised 8→16 in 2026-08 after measuring that every chunk is one keyed call, so it
+    # drives quota cost). A test that pins the number would just have to be rewritten on
+    # each tuning while proving nothing about the partitioning logic itself.
+    size = pipeline.REPORTER_BATCH_SIZE
+    total = size * 7 + size // 2  # a deliberate ragged tail
+    reporters = [str(i) for i in range(total)]
     batches = pipeline._reporter_batches(reporters)
-    assert len(batches) == 8  # 8×7 + 4 = 60 (REPORTER_BATCH_SIZE=8)
-    assert [len(b) for b in batches] == [8, 8, 8, 8, 8, 8, 8, 4]
+    assert len(batches) == 8
+    assert [len(b) for b in batches] == [size] * 7 + [size // 2]
     # Deterministic sorted partition — input order doesn't matter.
     flat = [r for b in batches for r in b]
     assert flat == sorted(reporters)
@@ -75,13 +81,14 @@ def test_basename_is_stable_content_hash_not_index() -> None:
 
 
 def test_plan_chunks_enumerates_year_then_batch(settings) -> None:
-    reporters = [str(i) for i in range(20)]  # 3 batches (8+8+4)
+    size = pipeline.REPORTER_BATCH_SIZE
+    reporters = [str(i) for i in range(size * 2 + size // 2)]  # 3 batches, ragged tail
     chunks = pipeline.plan_chunks(settings, reporters)
     # 2 years × 3 batches = 6 chunks, year-then-batch order.
     assert [y for y, _ in chunks] == [2022, 2022, 2022, 2023, 2023, 2023]
     batches = pipeline._reporter_batches(reporters)
     assert [b for _, b in chunks] == batches + batches
-    assert len(chunks[0][1]) == 8 and len(chunks[2][1]) == 4
+    assert len(chunks[0][1]) == size and len(chunks[2][1]) == size // 2
 
 
 # ─── resolve_cmd_codes ───────────────────────────────────────────────────────
@@ -354,8 +361,12 @@ def test_run_from_raw_skips_sync_uses_has_raw(settings) -> None:
         dest = pipeline.run(settings, from_raw=True)
     assert dest == "p.d.t"
     sync.assert_not_called()  # from-raw never touches the API
-    # 2 years × 4 batches (30 reporters / 8) = 8 chunks, all rebuilt.
-    assert bronze.call_count == 8
+    # 2 years × ceil(30 / REPORTER_BATCH_SIZE) chunks, all rebuilt. Derived, not pinned:
+    # the batch size is a tuned quota knob (see pipeline.REPORTER_BATCH_SIZE).
+    import math
+
+    lotes = math.ceil(30 / pipeline.REPORTER_BATCH_SIZE)
+    assert bronze.call_count == 2 * lotes
 
 
 def test_run_explicit_reporter_list_skips_enumeration(settings) -> None:
