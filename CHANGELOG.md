@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.17] - 2026-08-19
+
+**A cota do COMTRADE é cobrada por CHAMADA, e cada chunk era exatamente uma.** Medido antes
+de otimizar — e a medição descartou a otimização que eu vinha recomendando.
+
+### Changed
+- **`REPORTER_BATCH_SIZE` 8 → 16** (`comtrade/pipeline.py`): uma re-busca completa cai de
+  **864 para 432 chamadas**, passando a caber numa única janela diária (~500) em vez de exigir
+  duas.
+
+  A medição que orientou isso: sobre uma corrida mundial completa de 2026-08, as respostas
+  reais tiveram média de **9,5 mil linhas** e pico de **35,8 mil**, contra um cap de **100 mil**
+  por chamada. O splitter adaptativo, portanto, **nunca dispara** — cada chunk é uma chamada, e
+  é o tamanho do lote de reporters, não o splitter, que determina o custo de cota.
+
+  16 mantém margem larga (pico projetado ~72 mil, 72% do cap) e um lote que eventualmente
+  estourar continua protegido pelo splitter. **24 projetaria 107 mil, acima do cap**, passando
+  a pagar splits e devolvendo o ganho — por isso 16, não mais.
+
+  ⚠ Trocar esta constante **invalida todos os raws arquivados**: o basename é hash do conjunto
+  de reporters, então o agrupamento novo não casa com nada e a história inteira é re-buscada.
+  Feito agora justamente porque a ampliação de escopo de coco/caju **já obrigava** uma
+  re-busca completa — a migração sai junto, e pela metade do custo.
+
+### Nota — a otimização que NÃO foi feita
+Vinha recomendando um *re-fetch dirigido*: buscar só os códigos adicionados, em vez do chunk
+inteiro. A medição mostrou que ela **não reduziria a cota em nada** — 864 chunks continuariam
+sendo 864 chamadas, só com respostas menores. O gargalo era o número de chamadas, não o volume
+por chamada. Registrado para não ser reproposta sem novo dado.
+
+Os três testes que fixavam o lote em 8 passam a derivá-lo da constante: testam a lógica de
+particionar, não o valor, e não quebram na próxima calibragem.
+
 ## [1.24.16] - 2026-08-19
 
 ### Fixed
