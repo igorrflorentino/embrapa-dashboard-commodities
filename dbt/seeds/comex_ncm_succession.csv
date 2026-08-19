@@ -2,3 +2,5 @@ reported_code,current_code,note
 12010010,12011000,Soja semente NCM pré-2017 (1201.00.10) -> 1201.10.00
 12010090,12019000,Soja exceto semente NCM pré-2017 (1201.00.90) -> 1201.90.00
 08030000,08039000,Banana incluindo plátano NCM pré-2012 (0803.00.00) -> banana exceto plátano (plátano irrelevante para o Brasil)
+08011110,08011100,Cocos secos sem casca NCM pre-2015 (0801.11.10) -> consolidado em 0801.11.00
+08011190,08011100,Outros cocos secos NCM pre-2015 (0801.11.90) -> consolidado em 0801.11.00

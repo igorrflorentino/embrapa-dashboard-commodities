@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.16] - 2026-08-19
+
+### Fixed
+- **A série do coco dessecado terminava em 2014** (`config.py`, `comex_ncm_succession.csv`).
+  A v1.24.15 ingeriu `08011110` e `08011190` supondo que `08011100` fosse o código
+  pré-revisão sendo desdobrado — **é o contrário**. Os dados provam: os dois rodam de 1997 a
+  2014 e param; o `08011100` assume de 2014 em diante. Foi uma **consolidação**, não um
+  desdobramento.
+
+  Isso importava porque a incerteza que me fez excluí-lo não existia: um desdobramento exige
+  escolher um alvo entre vários (daí a hesitação), mas uma consolidação tem alvo **inequívoco**.
+  Os três agora são ingeridos e a seed mapeia o par aposentado em `08011100`, deixando a série
+  contínua **1997–2026** em vez de sumir em 2014.
+
+  O catálogo acompanha: `08011100` (atual) entra, `08011110`/`08011190` saem — seu dado é
+  normalizado para o atual, então nunca teriam linha própria na Gold e ficariam como lacuna
+  permanente no check `Catalog → Gold arrival`.
+
+### Nota
+`gold_produto_agrupamento` continua sem `pam`/`ppm` — é **deliberado e documentado** no próprio
+modelo ("RESERVED for when PAM cross-source linkage is wired in, not a bug"). Os produtos de PAM
+cadastrados aqui (castanha de caju, coco-da-baía) já têm dado na Gold e aparecem nas visões de
+banco único; entram no cruzamento quando essa fiação for feita.
+
 ## [1.24.15] - 2026-08-19
 
 **Coco e Castanha-de-caju eram agrupamentos vazios; a madeira manufaturada era escopo

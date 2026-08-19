@@ -300,12 +300,15 @@ class Settings(BaseSettings):
             "14011000:bambu_cestaria,20059100:bambu_brotos,"
             # Coco + castanha de caju (2026-08). Leaves, not the 0801 heading: that
             # heading also holds castanha-do-pará, already listed explicitly above.
-            # The pre-revision 08011100 is NOT ingested — its split into 08011110
-            # (sem casca/ralados) vs 08011190 (outros secos) has no obviously dominant
-            # side, and a succession row must state one (see comex_ncm_succession).
-            # Guessing it would fabricate history; coco starts at the revision until a
-            # researcher decides the mapping.
-            "08011110:coco_seco_sem_casca,08011190:coco_seco_outros,"
+            #
+            # The three SH6-080111 leaves are one produto across a revision, and the
+            # direction is CONSOLIDATION, not a split: 08011110 (secos sem casca) and
+            # 08011190 (outros secos) both run 1997-2014 and stop, while 08011100
+            # (cocos secos/dessecados) carries it from 2015 on. Ingesting only the two
+            # retired codes — as this first shipped — made coco dessecado end in 2014
+            # and silently vanish. All three are ingested and the seed maps the retired
+            # pair onto 08011100 (a merge has an unambiguous target, unlike a split).
+            "08011100:coco_seco,08011110:coco_seco_sem_casca,08011190:coco_seco_outros,"
             "08011200:coco_endocarpo,08011900:coco_fresco,"
             "08013100:caju_com_casca,08013200:caju_sem_casca"
         )
