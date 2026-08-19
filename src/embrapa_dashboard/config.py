@@ -126,7 +126,11 @@ class Settings(BaseSettings):
     #   3433 Carvão vegetal · 3450 Pinheiro brasileiro (Araucária, em tora) ·
     #   3403 Açaí (fruto, extractive). Cultivated crops (soja, milho, arroz,
     #   banana, mandioca, açaí cultivated) live in PAM, not here.
-    ibge_product_codes: str = Field(default="3405,3435,3434,3433,3450,3403")
+    # 3404 Castanha-de-caju (extractive) added 2026-08: the "Castanha-de-caju"
+    # agrupamento existed in the catalog with ONLY comtrade codes and NO data at all —
+    # an empty group in the dashboard. PEVS carries the extractive angle and PAM the
+    # cultivated one, so the produto is now comparable across both, which is the point.
+    ibge_product_codes: str = Field(default="3405,3435,3434,3433,3450,3403,3404")
     ibge_start_year: int | None = Field(
         default=None,
         description="None requires user to run `embrapa discover ibge-periods` first.",
@@ -155,7 +159,13 @@ class Settings(BaseSettings):
     #   40102 Arroz · 40136 Banana (cacho) · 40119 Mandioca · 45982 Açaí
     #   (cultivated — distinct from PEVS extractive açaí 3403). Café/cana are
     #   kept from the first cut though they're outside the core commodity list.
-    pam_product_codes: str = Field(default="40124,40122,40139,40106,40102,40136,40119,45982")
+    # 40143 Castanha de caju + 40145 Coco-da-baía added 2026-08 (see ibge_product_codes).
+    # 40330 "Caju" (the pseudofruit) is deliberately NOT included: it is a different produto
+    # from the nut, and folding it into the "Castanha-de-caju" agrupamento would conflate
+    # fruit with nut. It deserves its own agrupamento if a researcher wants it.
+    pam_product_codes: str = Field(
+        default="40124,40122,40139,40106,40102,40136,40119,45982,40143,40145"
+    )
     # Full PAM history (SIDRA 5457 runs to 1974). The monetary value is now
     # reform-correct via the historical_currency_factors join in silver_ibge_pam,
     # so pre-1994 years (Mil Cruzeiros/Cruzados/…) land in nominal R$ — no lean
@@ -287,7 +297,17 @@ class Settings(BaseSettings):
             "20079921:acai_pure,20079926:cupuacu_pure,"
             "07141000:mandioca_raiz,11062000:mandioca_farinha,"
             "11081400:mandioca_fecula,19030000:tapioca,"
-            "14011000:bambu_cestaria,20059100:bambu_brotos"
+            "14011000:bambu_cestaria,20059100:bambu_brotos,"
+            # Coco + castanha de caju (2026-08). Leaves, not the 0801 heading: that
+            # heading also holds castanha-do-pará, already listed explicitly above.
+            # The pre-revision 08011100 is NOT ingested — its split into 08011110
+            # (sem casca/ralados) vs 08011190 (outros secos) has no obviously dominant
+            # side, and a succession row must state one (see comex_ncm_succession).
+            # Guessing it would fabricate history; coco starts at the revision until a
+            # researcher decides the mapping.
+            "08011110:coco_seco_sem_casca,08011190:coco_seco_outros,"
+            "08011200:coco_endocarpo,08011900:coco_fresco,"
+            "08013100:caju_com_casca,08013200:caju_sem_casca"
         )
     )
     # CODE:LABEL of 2-digit HS chapters to keep wholesale. Empty by default —
@@ -357,7 +377,10 @@ class Settings(BaseSettings):
             "230400:soja_farelo,"
             "1005:milho,"
             "1006:arroz,"
-            "140110:bambu_cestaria,200591:bambu_brotos"
+            "140110:bambu_cestaria,200591:bambu_brotos,"
+            # Coco + castanha de caju — the HS6 twins of the NCMs in comex_ncm_codes.
+            "080111:coco_seco,080112:coco_endocarpo,080119:coco_fresco,"
+            "080131:caju_com_casca,080132:caju_sem_casca"
         )
     )
     # Bambu: os SH6 equivalentes aos NCM em comex_ncm_codes (140110 cestaria / 200591

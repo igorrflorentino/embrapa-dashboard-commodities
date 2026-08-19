@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.15] - 2026-08-19
+
+**Coco e Castanha-de-caju eram agrupamentos vazios; a madeira manufaturada era escopo
+excluído de propósito.** O check `Catalog → Gold arrival` apontou 95 produtos cadastrados sem
+dado — investigados um a um, deram dois diagnósticos opostos.
+
+### Added
+- **Coco e Castanha-de-caju agora existem de verdade.** Os dois apareciam na lista de
+  agrupamentos do dashboard com **zero dado de qualquer fonte** — um pesquisador que
+  escolhesse qualquer um via nada, sem explicação. Nada no `config.py` documentava exclusão,
+  diferente da madeira: era lacuna, não decisão.
+
+  Escopo ampliado nas quatro fontes: **PEVS** `3404` (castanha-de-caju extrativa), **PAM**
+  `40143` (castanha de caju) + `40145` (coco-da-baía), **COMEX** 6 NCMs e **COMTRADE** 5 HS6.
+  A castanha-de-caju passa a ter as duas óticas — extrativa e cultivada — que é exatamente o
+  cruzamento que o painel existe para permitir. Custo medido: ~1,7× no Gold do COMTRADE,
+  contra os 15,8× que a madeira manufaturada custaria.
+
+  Duas decisões de granularidade registradas no próprio `config.py`: **`40330` ("Caju", o
+  pseudofruto) fica de fora** — é produto diferente da castanha, e juntá-los no mesmo
+  agrupamento confundiria fruta com noz; e **`08011100` (NCM pré-revisão) não é ingerido** —
+  seu desdobramento em "sem casca/ralados" vs "outros secos" não tem lado dominante óbvio, e
+  uma linha de sucessão precisa afirmar um. Chutar seria fabricar história, então o coco começa
+  na revisão até um pesquisador decidir o mapeamento.
+
+### Changed
+- **90 códigos de madeira manufaturada removidos do catálogo do COMTRADE.** São exatamente os
+  que o `config.py` documenta como excluídos — *"manufactured-wood articles (móveis/marcenaria)
+  that polluted the whole-chapter scope and are not comparable to PEVS extractive output"*.
+  Mantê-los cadastrados fazia o dashboard prometer dado que o desenho decidiu não ter, e o
+  check os apontaria como lacuna para sempre.
+
+  Eles apareciam com dado até ontem por **resíduo**: o backfill de 2026-06 tinha escopo mais
+  largo, e os anos nunca re-buscados desde então ainda carregavam aquelas linhas. A retomada
+  do COMTRADE re-buscou todos os anos assentados e o dedupe por *latest batch* as substituiu —
+  terminando de aplicar a migração para totals-only que estava pela metade.
+
+  O catálogo do COMEX já estava alinhado (zero produtos sem dado), tendo passado pela migração
+  de granularidade em 02/07. O do COMTRADE era o pendente.
+
 ## [1.24.14] - 2026-08-18
 
 ### Fixed
