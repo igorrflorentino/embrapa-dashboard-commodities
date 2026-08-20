@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.23] - 2026-08-20
+
+### Fixed
+- **Coroplético "Distribuição por UF" nascia cinza.** Ao abrir a Geografia o mapa vinha todo
+  na cor de "sem dado"; trocar a métrica (Valor → Quantidade) fazia as cores aparecerem, e
+  voltar para Valor as mantinha. Não era a métrica: era a **ordem de carregamento**.
+
+  O `paint()` desistia em silêncio em duas condições **transitórias** — o estilo do maplibre
+  ainda assentando, e a camada `uf-fill` ainda não criada (ela nasce no `map.on('load')`,
+  assíncrono). Na prática a API responde ANTES do mapa terminar de carregar, então o efeito
+  de dados rodava exatamente nesse intervalo e saía sem pintar. Como só uma mudança de
+  `data`/`valueKey` re-disparava o efeito, aquele instante virava **permanente** — e mexer no
+  seletor de métrica era a única coisa que refazia a pintura com tudo já pronto.
+
+  O `map.on('load')` também pintava a partir do próprio closure, congelado no PRIMEIRO render,
+  quando `data` ainda estava vazio: pintava o cinza de "sem dado" e nada o corrigia depois.
+
+  Agora `paint()` **adia em vez de desistir** (`map.once('idle', paint)`, que se remove
+  sozinho — nunca empilha handlers), o `load` apenas sinaliza prontidão via `layerReady`, e
+  esse estado entra nas dependências do efeito, que repinta com o dado ATUAL. Verificado no
+  build de produção: `fill-color` deixa de ser o cinza plano `"#eef0ef"` e passa a ser uma
+  expressão `match` com as 27 UFs, no primeiro carregamento, sem tocar em nada.
+
+### Added
+- `frontend/src/charts/BrazilChoropleth.test.jsx` — dois testes de regressão que reproduzem a
+  ordem real (dado antes do `load`; estilo ainda assentando) com um mapa falso. Ambos **falham
+  no código antigo** e passam no corrigido. 791/791 no total.
+
+---
+
 ## [1.24.22] - 2026-08-20
 
 ### Changed
