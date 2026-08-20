@@ -1,6 +1,8 @@
 # Monthly nudge to consider a manual `reconcile`. We deliberately do NOT run
-# reconcile on a schedule: a reliable "is a reconcile needed?" pre-check is not
-# feasible for the sources that need it (IBGE/BCB) — detecting whether an OLD year
+# reconcile on a schedule — but the issue now points at `embrapa reconcile-check`,
+# which ANSWERS the question with a measurement instead of asking for a guess.
+# (The original reasoning was that no cheap pre-check was feasible for IBGE/BCB —
+# detecting whether an OLD year
 # was revised costs about the same as re-fetching it — and COMEX already re-detects
 # old-year revisions every night via its per-file ETag check. So reconcile is
 # operator-triggered (`make reconcile`); this workflow only opens a monthly
@@ -41,20 +43,33 @@ jobs:
           ETag check, so `reconcile` does nothing extra for it. Old-year revisions
           in IBGE/BCB are rare.
 
-          **If you have reason to think an old year changed** (e.g. IBGE announced a
-          PEVS revision), run it from your terminal:
+          **Don't guess — measure.** Run the check first:
+
+          ```bash
+          uv run embrapa reconcile-check
+          ```
+
+          It compares what the sources serve TODAY against what Bronze holds, for data
+          old enough that the delta window never touches it: IBGE PEVS cell by cell at
+          the grain we store (município × produto × variável), and every BCB point older
+          than the rewind window. Read-only — it never ingests or fixes anything. It
+          exits 1 if anything diverged, 0 if not, and prints how many points it compared.
+
+          **If it reports divergences**, re-ingest and rebuild:
 
           ```bash
           make reconcile          # full re-ingest of Bronze, then a prod dbt build
           ```
 
-          **If nothing changed:** just close this issue — no action needed.
+          **If it comes back clean:** paste the numbers here and close the issue.
 
           ---
-          _Why a reminder instead of a scheduled job: a cheap "is a reconcile needed?"
-          pre-check is not feasible for IBGE/BCB (checking an old year costs ~the same
-          as re-fetching it), so reconcile is operator-triggered. Re-enable the old
-          monthly scheduler any time with `make ingest-job-reconcile-schedule`._
+          _Why a reminder instead of a scheduled job: `reconcile` itself is expensive and
+          rarely warranted, so it stays operator-triggered. The old reasoning also held
+          that no cheap pre-check was possible — `reconcile-check` disproved that for a
+          well-chosen sample (~20k points in a couple of minutes), which is why this issue
+          now leads with it. Re-enable the old monthly scheduler any time with
+          `make ingest-job-reconcile-schedule`._
           EOF
           gh issue create \
             --repo "$REPO" \

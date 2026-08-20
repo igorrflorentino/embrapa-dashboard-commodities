@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.26] - 2026-08-20
+
+### Added
+- **`embrapa reconcile-check`** — responde com medição a pergunta que o lembrete mensal
+  fazia por palpite: *"algum ano antigo mudou na fonte?"*.
+
+  A ingestão de IBGE/BCB é **delta**: o nightly só re-consulta uma janela recente, então
+  uma correção publicada num ano **antigo** nunca é vista. O `reconcile` existe para isso,
+  mas é caro, e até agora a decisão de rodá-lo era um chute mensal.
+
+  O comando é **somente leitura** — não ingere, não corrige, não escreve. Compara o que as
+  fontes servem HOJE contra o que está no Bronze, restrito a dado velho o bastante para a
+  janela delta nunca tocar. Sai com **1** se algo divergiu (dá para um workflow gatilhar
+  em cima), **0** se não, e informa quantos pontos conferiu.
+
+  **IBGE PEVS: célula a célula, no grão que armazenamos** (município × produto × variável,
+  nível `n6`). Deliberadamente **não** compara totais nacionais: o IBGE suprime células
+  municipais pequenas por confidencialidade, e um agregado divergiria por motivo que não é
+  revisão. **BCB: exaustivo** — uma requisição ao SGS devolve a série inteira, então todo
+  ponto anterior à janela de rewind é conferido, não amostrado.
+
+  **COMEX fica fora de propósito:** o check de ETag por arquivo já re-detecta revisão de
+  qualquer ano toda noite, então `reconcile` não acrescenta nada para ele.
+
+  Primeira execução real: **19.658 pontos conferidos, zero divergências**.
+
+### Changed
+- **O lembrete mensal (`reconcile-reminder.yml`) agora lidera com o check.** Em vez de
+  descrever quando um `reconcile` *seria* justificado e pedir que o operador julgue, a
+  issue manda rodar `embrapa reconcile-check` e colar os números. A premissa original —
+  registrada no workflow e no `CLAUDE.md` — era que nenhum pré-check barato seria viável
+  para IBGE/BCB. Isso vale para o histórico **inteiro**, mas não para uma amostra bem
+  escolhida (~20k pontos em ~2 min), e para o BCB não vale de forma alguma. Texto corrigido
+  nos dois lugares.
+
+---
+
 ## [1.24.25] - 2026-08-20
 
 ### Changed
