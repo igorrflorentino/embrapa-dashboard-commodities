@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.28] - 2026-08-20
+
+### Changed
+- **Duas camadas de cobertura, em vez de um número só.** O portão rearmado em v1.24.27
+  ficou a 99% com **7 linhas de folga** — apertado a ponto de um único `except` defensivo
+  bloquear merge. E um portão que atrapalha toda hora acaba baixado às pressas, que foi
+  exatamente como ele virou decorativo antes.
+
+  **Camada 1 — piso absoluto, 99% → 98%** (`make test`). A função dele é impedir
+  **decaimento silencioso**, não policiar PR individual. O piso é **proporcional ao tamanho
+  do repo**: com ~6,8k statements, 98% ainda pega uma feature sem teste (~77 statements) e
+  deixa de tropeçar em ruído de uma linha. `precision = 2` continua sendo o que faz 98
+  significar 98.
+
+  **Camada 2 — cobertura do diff** (`make coverage-diff`, via `diff-cover`): **≥90% das
+  linhas que o branch mudou**. Esta é a que de fato exige *"escreveu código, escreveu
+  teste"*.
+
+  O piso pergunta "o repositório inteiro segue bem coberto?" — pergunta que **enfraquece
+  conforme o repo cresce**, já que a mesma feature sem teste mexe menos no total a cada mês.
+  A cobertura do diff pergunta "você testou o que acabou de escrever?", que não decai, e
+  **nunca cobra do PR um buraco que ele não criou** — como as ~20 linhas descobertas da
+  `serving/attribute_engineering.py`, que está **congelada**.
+
+  A lacuna entre as duas foi demonstrada, não suposta: **6 linhas novas sem teste levam o
+  total de 99,12% para 99,04% — o piso PASSA, e a cobertura do diff REPROVA com 16%.**
+
+  No CI a camada 2 roda **só em pull request** (num push para `main` o diff é o que acabou
+  de ser mergeado e já foi checado no PR). O checkout ganhou `fetch-depth: 0`, sem o qual
+  não há base para comparar. Sem Codecov, sem conta, sem token — `diff-cover` é dependência
+  de dev e roda dentro do próprio job.
+
+---
+
 ## [1.24.27] - 2026-08-20
 
 ### Fixed

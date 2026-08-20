@@ -40,6 +40,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Patch coverage diffs this branch against the PR's base, so the shallow
+          # default clone (depth 1) has nothing to compare with. Full history is a
+          # few seconds on a repo this size.
+          fetch-depth: 0
 
       # Pin to the exact interpreter required by pyproject.toml
       # (requires-python = "==3.12.*").
@@ -81,8 +86,24 @@ jobs:
             exit 1
           fi
 
-      - name: Test (pytest)
+      - name: Test (pytest + absolute coverage floor)
         run: make test
+
+      # SECOND coverage layer, and the one that actually enforces "you wrote code,
+      # you wrote tests". The floor in `make test` only asks whether the WHOLE repo is
+      # still well covered — a question that gets weaker as the repo grows, since the
+      # same untested feature moves the total less every month. This asks whether the
+      # lines THIS PR touched are tested, which does not decay, and it never charges a
+      # PR for pre-existing gaps it did not create.
+      # PRs only: on a push to main the "diff" is whatever was just merged and was
+      # already checked on the PR, so re-running it there would be noise.
+      - name: Patch coverage (diff-cover)
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --depth=0 origin "$BASE_REF"
+          make coverage-diff COMPARE_BRANCH="origin/$BASE_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
 
       # Non-gating dependency advisory for the Python deps: pip-audit checks the
       # synced environment against the PyPI advisory DB. Kept visible but

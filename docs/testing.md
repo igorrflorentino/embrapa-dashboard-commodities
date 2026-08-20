@@ -166,6 +166,45 @@ uv run pytest -k "config"                # tests matching a keyword
 GitHub Actions runs the same `make test` step on every PR (see
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)).
 
+### The two coverage layers, and why one number was not enough
+
+**Layer 1 — the absolute floor (`make test`, `--cov-fail-under=98`).** Its job is to stop
+*silent decay*, not to police individual PRs. It sits at 98, not 99, on purpose: the floor
+is **proportional to repo size**, so at ~6.8k statements a 99% threshold left only ~7 lines
+of headroom and a single defensive `except` could block a merge. A gate that blocks
+routinely gets lowered in a hurry — which is how it went decorative before (see below). 98
+still catches an untested feature of ~77 statements while ignoring one-line noise.
+
+> ⚠️ **`precision = 2` in `pyproject.toml` is load-bearing — do not remove it.** coverage
+> decides with `round(total, precision) < fail_under`, and precision **defaults to 0**. With
+> the default, `--cov-fail-under=98` silently accepts anything ≥97.5%, and the log prints a
+> `FAIL Required test coverage not reached` line that *never touches the exit code*. Measured
+> 2026-08-20: **0.38% coverage still exited 0** while CI stayed green (v1.24.27).
+
+**Layer 2 — patch coverage (`make coverage-diff`).** This is the one that actually enforces
+*"you wrote code, you wrote tests"*:
+
+```bash
+make test            # produces coverage.xml
+make coverage-diff   # ≥90% of the lines THIS branch changed must be covered
+```
+
+A floor asks "is the whole repo still well covered?" — a question that gets **weaker as the
+repo grows**, since the same untested feature moves the total less every month. Patch
+coverage asks "did you test what you just wrote?", which does not decay, and it never
+charges a PR for pre-existing gaps it did not create (e.g. the ~20 uncovered lines in the
+**frozen** `serving/attribute_engineering.py`).
+
+The two are complementary, and the gap is easy to demonstrate: adding 6 untested lines moves
+the total from 99.12% to 99.04% — the **floor passes**, and **patch coverage fails at 16%**.
+
+CI runs layer 2 on pull requests only (on a push to `main` the diff is what was just merged
+and already checked). Override the base for a stacked branch:
+
+```bash
+make coverage-diff COMPARE_BRANCH=origin/feat/my-base
+```
+
 ## Manual Testing
 
 Beyond automated tests, you can verify functionality manually:

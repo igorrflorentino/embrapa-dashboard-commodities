@@ -486,7 +486,7 @@ wheels = [
 
 [[package]]
 name = "embrapa-dashboard"
-version = "1.24.26"
+version = "1.24.28"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
@@ -519,6 +519,7 @@ webapi = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "diff-cover" },
     { name = "flask" },
     { name = "flask-caching" },
     { name = "pre-commit" },
@@ -558,6 +559,7 @@ provides-extras = ["serving", "webapi"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "diff-cover", specifier = ">=9" },
     { name = "flask", specifier = ">=3.0" },
     { name = "flask-caching", specifier = ">=2.3" },
     { name = "pre-commit", specifier = ">=3.7" },
