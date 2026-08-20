@@ -11,6 +11,19 @@
 
 const { useState: useCaState, useEffect: useCaEffect } = React;
 
+// Hoisted to module scope: it closes over nothing (series arrives via props). Defined
+// inside the render body it was a NEW component type on every render, so React threw the
+// legend away and rebuilt it instead of updating it (react-hooks/static-components).
+function Legend({ series }) {
+  return (
+    <div className="pc-legend">
+      {series.map(s => (
+        <span key={s.name} className="pc-legend-item"><span className="pc-legend-dot" style={{ background: s.color }}></span>{s.name}</span>
+      ))}
+    </div>
+  );
+}
+
 function useEnrichmentTick() {
   const [, force] = useCaState(0);
   useCaEffect(() => window.enrichment.subscribe(() => force(n => n + 1)), []);
@@ -39,13 +52,6 @@ function ViewValueAdded() {
   const predom = data.predominant;
   const predomLabel = predom ? levelMeta(predom.level).label : '—';
 
-  const Legend = ({ series }) => (
-    <div className="pc-legend">
-      {series.map(s => (
-        <span key={s.name} className="pc-legend-item"><span className="pc-legend-dot" style={{ background: s.color }}></span>{s.name}</span>
-      ))}
-    </div>
-  );
 
   return (
     <>

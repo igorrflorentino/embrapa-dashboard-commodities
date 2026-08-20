@@ -3,15 +3,19 @@
 // system). Faithful port of the prototype's Donut. Same name + props.
 //   data: [{ name, color, [valueKey] }]  (valueKey is a fraction 0-1)
 
-function Donut({ data = [], size = 160, valueKey = 'share' }) {
-  const r = size / 2;
-  const ir = r * 0.62;
-  let acc = 0;
-  // Coerce each datum's value (Number(…) || 0) so a missing/non-numeric valueKey
-  // can't produce NaN% slices or a blank ring.
-  const val = (d) => Number(d[valueKey]) || 0;
+// Slice geometry, pure and OUTSIDE any component. The running total it needs is a
+// mutable accumulator, which react-hooks/immutability rightly refuses inside a render
+// body; a module-scope helper is both allowed and independently testable.
+// Returns [{ full, d, fill }] in input order.
+// Coerce each datum's value (Number(…) || 0) so a missing/non-numeric valueKey can't
+// produce NaN% slices, a blank ring, or a "NaN%" legend row.
+const sliceValue = (d, valueKey) => Number(d[valueKey]) || 0;
+
+export function donutSlices(data, valueKey, r, ir) {
+  const val = (d) => sliceValue(d, valueKey);
   const total = data.reduce((s, d) => s + val(d), 0) || 1;
-  const slices = data.map((d) => {
+  let acc = 0;
+  return data.map((d) => {
     const start = acc / total;
     acc += val(d);
     const end = acc / total;
@@ -36,6 +40,12 @@ function Donut({ data = [], size = 160, valueKey = 'share' }) {
       fill: d.color || 'var(--viz-1)',
     };
   });
+}
+
+function Donut({ data = [], size = 160, valueKey = 'share' }) {
+  const r = size / 2;
+  const ir = r * 0.62;
+  const slices = donutSlices(data, valueKey, r, ir);
 
   return (
     <div className="donut-wrap">
@@ -52,7 +62,7 @@ function Donut({ data = [], size = 160, valueKey = 'share' }) {
           <li key={i}>
             <span className="ldot" style={{ background: d.color }}></span>
             <span className="lname">{d.name}</span>
-            <span className="lval tnum">{(val(d) * 100).toFixed(0)}%</span>
+            <span className="lval tnum">{(sliceValue(d, valueKey) * 100).toFixed(0)}%</span>
           </li>
         ))}
       </ul>
