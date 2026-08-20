@@ -1,4 +1,4 @@
-.PHONY: help setup sync auth ingest-all ingest-ibge ingest-bcb-inflation ingest-bcb-currency \
+.PHONY: coverage-diff help setup sync auth ingest-all ingest-ibge ingest-bcb-inflation ingest-bcb-currency \
         ingest-ibge-historical reconcile ingest-job-deploy ingest-job-schedule \
         ingest-job-reconcile-schedule ingest-job-comtrade-schedule ingest-job-pam-schedule \
         ingest-job-ppm-schedule ingest-job-alert iam-grant \
@@ -9,6 +9,10 @@
         precommit-install precommit-run
 
 PY := uv run
+
+# Base to diff against for patch coverage (`make coverage-diff`). Override on a
+# stacked branch: make coverage-diff COMPARE_BRANCH=origin/feat/x
+COMPARE_BRANCH ?= origin/main
 DBT_DIR := dbt
 # Every dbt invocation goes through this wrapper so the repo-root .env is exported
 # first — dbt_project.yml reads its datasets + BCB series codes via env_var(), which
@@ -133,8 +137,27 @@ lint:    ## Ruff lint + format check (no writes)
 	$(PY) ruff check .
 	$(PY) ruff format --check .
 
-test:    ## Run the unit test suite + coverage gate (credential-free, no live BQ required)
-	$(PY) pytest --cov=src/embrapa_dashboard --cov-report=term-missing --cov-fail-under=99
+test:    ## Run the unit test suite + the ABSOLUTE coverage floor (credential-free, no live BQ)
+# The floor's job is to stop SILENT DECAY, not to police individual PRs — that is what
+# `coverage-diff` below does, and it does it better. 98 (not 99) because the floor is
+# proportional to repo size: at ~6.8k statements, 99% left ~7 lines of headroom, so a
+# single defensive `except` blocked a merge. A gate that blocks routinely gets lowered in
+# a hurry, which is how it became decorative in the first place (see v1.24.27). 98 still
+# catches an untested feature (~77 statements) while ignoring one-line noise.
+# `precision = 2` in pyproject.toml is what makes 98 mean 98 — do not remove it.
+# The xml report feeds `coverage-diff`; it is gitignored.
+	$(PY) pytest --cov=src/embrapa_dashboard --cov-report=term-missing --cov-report=xml \
+		--cov-fail-under=98
+
+coverage-diff:    ## Patch coverage: are the lines THIS branch changed tested? (needs `make test` first)
+# The check an absolute floor cannot express. A floor asks "is the whole repo still well
+# covered?", which degrades as the repo grows — the same untested feature moves the needle
+# less every month. This asks "did you test what you just wrote?", which does not degrade,
+# and it never punishes you for PRE-EXISTING gaps (e.g. the 20 uncovered lines in the
+# FROZEN serving/attribute_engineering.py, which no PR should have to pay for).
+# COMPARE_BRANCH is overridable for a stacked branch: make coverage-diff COMPARE_BRANCH=origin/feat/x
+	@test -f coverage.xml || { echo "coverage.xml missing — run 'make test' first." >&2; exit 1; }
+	$(PY) diff-cover coverage.xml --compare-branch=$(COMPARE_BRANCH) --fail-under=90
 
 precommit-install:    ## Install git hooks defined in .pre-commit-config.yaml
 	$(PY) pre-commit install
