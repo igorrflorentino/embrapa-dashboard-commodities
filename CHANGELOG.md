@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.25] - 2026-08-20
+
+### Changed
+- **`eslint-plugin-react-hooks` 5 → 7 e `globals` 15 → 17** (PRs #261 e #266 do Dependabot,
+  incorporados aqui porque o bump do plugin **não passa sozinho**: as regras novas reprovam
+  código existente, e mergear o bump sem as correções deixaria o CI vermelho).
+
+  O react-hooks 7 traz o conjunto de regras da era React Compiler e apontou **9 erros reais**
+  em 4 regras. Nenhum foi silenciado por conveniência — cada um foi julgado individualmente.
+
+### Fixed
+- **`react-hooks/static-components` — componentes criados durante o render (2 casos reais).**
+  `Group` (em `MetricConventions.jsx`) e `Legend` (em `ViewCuratedAnalyses.jsx`) eram definidos
+  dentro do corpo do componente pai. Como o tipo do componente é **novo a cada render**, o React
+  não atualizava: descartava e remontava a subárvore inteira toda vez. Os dois não capturam nada
+  do escopo pai (recebem tudo por props), então foram içados para o escopo de módulo — correção
+  real, comportamento preservado.
+- **`react-hooks/immutability` — `Donut.jsx`.** A geometria das fatias usava um acumulador
+  mutável (`acc += …`) dentro do render. Extraída para `donutSlices()`, função pura de escopo de
+  módulo — some a mutação em render e a geometria fica testável isoladamente. No caminho, uma
+  regressão que eu mesmo introduzi e que o **lint não pegou**: a legenda usava `val(d)`, que
+  passou a existir só dentro do helper (`no-undef` está desligado no projeto por causa dos
+  globais `window.*`). Virou `sliceValue(d, valueKey)`, compartilhado pelos dois — sem isso a
+  legenda mostraria `NaN%`.
+- **`react-hooks/refs` — `_base.jsx`.** `onClickRef.current = onClick` era escrito **durante o
+  render**. Movido para um efeito sem array de dependências (roda depois de todo render). Nada
+  se perde: o ref só é lido a partir de um clique do usuário, que nunca acontece antes do React
+  ter aplicado o efeito. Coberto pelo teste de regressão que já existia em `_base.test.jsx`.
+
+### Nota — 3 dos 9 NÃO eram defeitos, e foram anotados em vez de "corrigidos"
+- **`static-components` × 2 em `MainScreen.jsx`:** `Comp` e `ViewComponent` são **buscados no
+  registry de visões** (`window.viewComponent(id)`), não criados no render — a regra não
+  distingue as duas coisas. A identidade só muda quando o pesquisador troca de visão, e remontar
+  nessa troca é o comportamento pretendido: cada visão tem seus próprios fetches e estado local,
+  e não deve herdar os da anterior.
+- **`set-state-in-effect` × 1 em `_base.jsx`:** o `if (failed) setFailed(false)` é guardado, então
+  dispara no máximo uma vez por recuperação e o passe seguinte já não faz nada — não é a cascata
+  que a regra combate. Também não é estado derivado: registra o resultado de uma chamada
+  imperativa a um sistema externo (Plotly), que é exatamente o papel de um efeito.
+
+  Os três levaram `eslint-disable-next-line` **com a justificativa escrita ao lado**. Reescrever
+  o código para agradar a regra deixaria os dois piores.
+
+### Verificação
+Lint 0 erros com o plugin novo, 792/792, build limpo — e conferido **no build servido**, porque
+esta versão mexe em ciclo de vida do Plotly e em dois componentes de UI: strip de convenções com
+os 4 grupos e 14 botões, troca de moeda propagando até os gráficos (`US$ 1.210.169.184`), e o
+donut com 8 formas e legenda `54% / 18% / 15% / 10% / 3% / 0%` — sem `NaN`.
+
+`ViewCuratedAnalyses.jsx` não tem teste dedicado (é a Engenharia de Atributos, congelada e
+oculta da UI); ali o hoist é mecânico e a verificação é lint + build.
+
+---
+
 ## [1.24.24] - 2026-08-20
 
 ### Changed

@@ -22,25 +22,12 @@
 
 import { magnitudeParts } from '../charts/magnitude.js';
 
-function MetricConventions({ value, onChange, families, banco, expanded, onToggleExpanded }) {
-  const set = (patch) => onChange({ ...value, ...patch });
-
-  // Currency + monetary-correction only apply to a banco that carries a monetary
-  // value (window.isMonetaryBanco — derived from its metrics/baseCurrency). All
-  // current bancos are monetary, so this is forward-looking: a future physical-only
-  // source (e.g. a pure energy-volume series) would show the unit groups only,
-  // never an inapplicable moeda/correção the user can't meaningfully change.
-  const monetary = window.isMonetaryBanco ? window.isMonetaryBanco(banco) : true;
-
-  // Physical-unit groups are REGISTRY-DRIVEN: one group per family present
-  // in the data (familiesInBasket). Mass/volume keep their dedicated conv
-  // fields for back-compat; any other family stores its unit in value.units.
-  const physFams = ((families && families.length ? families : ['mass', 'volume']))
-    .filter(f => window.UNIT_FAMILIES[f]);
-  const unitFor = (fid) => (value.units && value.units[fid]) || window.defaultUnitOf(fid);
-  const setUnitFor = (fid, id) => set({ units: { ...(value.units || {}), [fid]: id } });
-
-  const Group = ({ label, options, active, onPick, mono }) => (
+// Hoisted to module scope: it closes over nothing (everything arrives via props).
+// Defined inside the render body it was a NEW component type on every render, so
+// React unmounted and remounted the whole segmented control each time instead of
+// updating it (react-hooks/static-components).
+function Group({ label, options, active, onPick, mono }) {
+  return (
     <div className="mc-group">
       <span className="mc-label">{label}</span>
       {/* A 4-option group lays out as a balanced 2×2 grid (e.g. Massa kg/t/@/sc) instead of
@@ -60,6 +47,26 @@ function MetricConventions({ value, onChange, families, banco, expanded, onToggl
       </div>
     </div>
   );
+}
+
+function MetricConventions({ value, onChange, families, banco, expanded, onToggleExpanded }) {
+  const set = (patch) => onChange({ ...value, ...patch });
+
+  // Currency + monetary-correction only apply to a banco that carries a monetary
+  // value (window.isMonetaryBanco — derived from its metrics/baseCurrency). All
+  // current bancos are monetary, so this is forward-looking: a future physical-only
+  // source (e.g. a pure energy-volume series) would show the unit groups only,
+  // never an inapplicable moeda/correção the user can't meaningfully change.
+  const monetary = window.isMonetaryBanco ? window.isMonetaryBanco(banco) : true;
+
+  // Physical-unit groups are REGISTRY-DRIVEN: one group per family present
+  // in the data (familiesInBasket). Mass/volume keep their dedicated conv
+  // fields for back-compat; any other family stores its unit in value.units.
+  const physFams = ((families && families.length ? families : ['mass', 'volume']))
+    .filter(f => window.UNIT_FAMILIES[f]);
+  const unitFor = (fid) => (value.units && value.units[fid]) || window.defaultUnitOf(fid);
+  const setUnitFor = (fid, id) => set({ units: { ...(value.units || {}), [fid]: id } });
+
 
   // The Gold/serving marts carry the full currency × correction matrix EXCEPT the
   // IGP-M/IGP-DI × USD combos (no val_real_{igpm,igpdi}_usd is reachable through the

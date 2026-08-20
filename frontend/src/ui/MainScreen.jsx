@@ -215,6 +215,11 @@ function MainScreen({ filters, view = 'overview', database = 'ibge_pevs', infoPa
         </div>
         {isPicker
           ? <window.ViewCrossSource value={crossState || window.DEFAULT_CROSS_STATE} onChange={setCrossState} />
+          // `Comp` is LOOKED UP in the view registry, not created here — the rule cannot
+          // tell the two apart. Its identity changes only when the researcher switches
+          // views, and remounting on that switch is the intended behaviour: each view owns
+          // its own data fetches and local state, and must not inherit the previous one's.
+          // eslint-disable-next-line react-hooks/static-components
           : (Comp ? <Comp view={_cvm.id} /> : null)}
       </div>
     );
@@ -486,6 +491,10 @@ function MainScreen({ filters, view = 'overview', database = 'ibge_pevs', infoPa
 
       {controls}
 
+      {/* Registry lookup, not a component created during render — see the note on the
+          cross-source branch above. Identity changes only when `view` changes, and that
+          remount is intended. */}
+      {/* eslint-disable-next-line react-hooks/static-components */}
       <ViewComponent
         families={families}
         summary={filters}

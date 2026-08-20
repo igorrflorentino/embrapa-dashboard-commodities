@@ -196,10 +196,16 @@ export function Plot({ traces, layout, config, height = 240, style, className, o
 
   // Keep the latest onClick in a ref so the once-bound plotly_click listener
   // always calls the CURRENT handler (which closes over the current data),
-  // never the stale first-render one. Updated on every render — cheap, and
-  // avoids re-attaching the Plotly listener when onClick/data change.
+  // never the stale first-render one — and we avoid re-attaching the Plotly
+  // listener whenever onClick/data change.
+  // The write lives in an effect (no dep array ⇒ after EVERY render) rather than
+  // in the render body, which mutates a ref mid-render (react-hooks/refs). Nothing
+  // is lost: the ref is only ever read from a user click, which cannot happen
+  // before React has flushed this effect.
   const onClickRef = useRef(onClick);
-  onClickRef.current = onClick;
+  useEffect(() => {
+    onClickRef.current = onClick;
+  });
 
   // No dep array ON PURPOSE: this effect redraws on every render so Plotly.react
   // diffs against the latest traces/layout/config (see the doc comment above).
@@ -210,7 +216,15 @@ export function Plot({ traces, layout, config, height = 240, style, className, o
     if (!el) return;
     try {
       Plotly.react(el, traces || [], layout || baseLayout(), { ...baseConfig, ...config });
-      if (failed) setFailed(false); // a good render recovers from a prior failure
+      // A good render recovers from a prior failure. This is a setState inside an
+      // effect, but NOT the cascading kind the rule targets: it is guarded by
+      // `failed`, so it fires at most once per recovery and the very next pass sees
+      // `failed === false` and does nothing. It also isn't derived state — it records
+      // the outcome of an imperative call into an external system (Plotly), which is
+      // exactly what an effect is for. Restructuring to satisfy the rule would mean
+      // toggling the overlay outside React, which is worse.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (failed) setFailed(false);
     } catch (err) {
       // A malformed trace/layout must NOT crash the whole view (it would bubble to
       // ViewErrorBoundary and blank the screen). Degrade THIS chart to an inline
