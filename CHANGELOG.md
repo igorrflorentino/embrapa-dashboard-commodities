@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.24] - 2026-08-20
+
+### Changed
+- **maplibre-gl 4.7.1 → 6.4.1** — o bump reprovado em v1.24.22 agora entra, com a causa raiz
+  entendida. Eram **duas** falhas independentes, e a nota do v1.24.22 acertou o sintoma e
+  **errou o diagnóstico** (ver a correção abaixo).
+
+  **(1) O `TypeError`.** O maplibre 5+ é ESM puro com ~85 exports **nomeados** e **sem
+  `default`**. O componente fazia `(await import('maplibre-gl')).default` → `undefined` →
+  `undefined.Map`, exatamente o `Cannot read properties of undefined (reading 'Map')`
+  observado. E como a única coisa referenciada era um export inexistente, o Rollup removia a
+  biblioteca inteira por tree-shaking — daí o chunk cair de 786 kB para 514 bytes. Corrigido
+  usando o **namespace** do módulo.
+
+  **(2) O worker, que só apareceu depois.** Resolvido o import, o mapa **continuava cinza**:
+  `isStyleLoaded()` e `loaded()` ficavam `false` para sempre e **nenhum evento `idle`**
+  chegava. O maplibre 5+ roda o geojson-vt num **module worker** publicado como arquivo
+  separado, e resolve a URL dele em runtime como irmão do próprio `import.meta.url` — uma URL
+  que o bundler não enxerga, então o Vite nunca emitia o arquivo. A requisição caía no
+  fallback de SPA (index.html), morria no MIME check, e o worker nunca subia. Corrigido com
+  `?worker&url` + `maplibregl.setWorkerUrl()`, mais `worker: { format: 'es' }` no
+  `vite.config.js`.
+
+  Precisa ser `?worker&url` e **não** `?url`: o worker importa um irmão
+  (`./maplibre-gl-shared.mjs`, 482 kB). O `?url` copia um arquivo só, verbatim, e o import
+  relativo aponta para um asset inexistente.
+
+  Verificado no **build servido** e no **dev server**: worker sem erro, `isStyleLoaded()`
+  true, **31 UFs renderizadas**, `fill-color` como `match` de 57 entradas no primeiro
+  carregamento, popup de hover ("PA · Pará · 2,9 bi R$") e controles de zoom intactos.
+  Bundle: chunk maplibre 786 → 980 kB, mais um worker de 470 kB (no 4.x esse código vinha
+  inline como blob dentro do bundle único).
+
+### Fixed
+- **Correção da nota do v1.24.22.** Aquela entrada atribuiu a falha ao `manualChunks` do
+  `vite.config.js` "não acompanhar" o maplibre 5+. Está **errado**: o `manualChunks` só trata
+  `plotly` e `react` e nunca menciona maplibre — o chunk vem do code-splitting automático do
+  `import()` dinâmico. As causas reais são as duas acima. A nota original ficou preservada
+  como registro histórico, mas mandaria o próximo leitor para o caminho errado.
+
+### Added
+- Terceiro teste em `BrazilChoropleth.test.jsx`: trava a **ordem** `setWorkerUrl` → `new Map()`.
+  O maplibre sobe o pool de workers no primeiro `new Map()`, então um `setWorkerUrl` que chegue
+  depois é ignorado e a biblioteca volta a adivinhar a URL — de novo com o mapa em branco. O
+  mock também deixou de expor `default`, espelhando o ESM real: um mock com `default` deixaria
+  passar um componente que quebra contra a biblioteca de verdade. 792/792.
+
+---
+
 ## [1.24.23] - 2026-08-20
 
 ### Fixed
