@@ -41,16 +41,27 @@ with xwalk as (
 
 source_codes as (
 
-    -- NOTE: gold_pam_production is intentionally NOT unioned here yet, so the
-    -- `source='pam'` rows in the commodity_crosswalk seed currently resolve to
-    -- nothing (they are RESERVED for when PAM cross-source linkage is wired in,
-    -- not a bug). Enabling it is a coordinated change: union gold_pam_production
-    -- below, add 'pam' to the accepted_values test in _gold.yml, AND add a 'pam'
-    -- bucket to produto_catalog in webapi/seam_base.py (which would KeyError on
-    -- an unexpected source). Until then PAM does not participate in the
-    -- market-share / export-coefficient / price-spread cross-source views.
+    -- PAM and PPM joined the bridge in 2026-08 (the coordinated change this note
+    -- used to reserve: union below + accepted_values in _gold.yml + the buckets in
+    -- webapi/seam_base.produto_catalog, which would KeyError on an unknown source).
+    --
+    -- It changes NO existing computation: every cross-source view asks for its
+    -- sources BY NAME (seam_base._codes(agrupamento_id, 'pevs') for the export
+    -- coefficient, 'comex'/'comtrade' for market share), so nothing sums across
+    -- production sources behind the researcher's back. What it adds is CHOICE —
+    -- the multi-fonte picker is series-oriented, so PAM/PPM simply become series a
+    -- researcher can place on the axis next to PEVS, and decide for themselves
+    -- whether extractive and cultivated output belong side by side or added up.
+    -- An aggregate "extractive + cultivated" metric, if ever wanted, must be its
+    -- own NAMED metric — never a silent change to an existing denominator.
     select distinct 'pevs' as source, product_code as code
     from {{ ref('gold_pevs_production') }}
+    union all
+    select distinct 'pam' as source, product_code as code
+    from {{ ref('gold_pam_production') }}
+    union all
+    select distinct 'ppm' as source, product_code as code
+    from {{ ref('gold_ppm_production') }}
     union all
     select distinct 'comex' as source, ncm_code as code
     from {{ ref('gold_comex_flows') }}

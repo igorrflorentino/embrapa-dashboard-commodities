@@ -68,17 +68,18 @@ def produto_catalog() -> dict:
         if pd.isna(r.agrupamento_id):
             skipped.append(f"{r.source}:{r.code}")
             continue
+        # Buckets are derived from sqlbuild.GOLD_CODE_SOURCES, never hand-listed: this
+        # line used to be `c[r.source].append(...)` over a literal pevs/comex/comtrade
+        # dict, so the day a new source entered the crosswalk it would KeyError and take
+        # down every cross-source view. Deriving them means adding a banco to the bridge
+        # can no longer break this, and every agrupamento carries an (empty) list for
+        # every source, so callers can index without guarding.
         c = cat.setdefault(
             r.agrupamento_id,
-            {
-                "id": r.agrupamento_id,
-                "name": r.agrupamento_nome,
-                "pevs": [],
-                "comex": [],
-                "comtrade": [],
-            },
+            {"id": r.agrupamento_id, "name": r.agrupamento_nome}
+            | {src: [] for src in sqlbuild.GOLD_CODE_SOURCES},
         )
-        c[r.source].append(str(r.code))
+        c.setdefault(r.source, []).append(str(r.code))
     if skipped:
         logger.warning(
             "produto_catalog: skipped %d crosswalk row(s) with NULL agrupamento_id "
@@ -90,8 +91,13 @@ def produto_catalog() -> dict:
 
 
 def _codes(agrupamento_id: str | None, source: str) -> tuple:
+    """The agrupamento's codes for ONE source — the reason adding a banco to the bridge
+    is safe: every cross-source view names the source it wants (the export coefficient
+    asks 'pevs', market share asks 'comex'/'comtrade'), so nothing ever sums across
+    production sources implicitly. ``.get`` rather than ``[]``: an unknown source
+    returns "no codes" instead of 500-ing the view."""
     c = produto_catalog().get(agrupamento_id) if agrupamento_id else None
-    return tuple(c[source]) if c else ()
+    return tuple(c.get(source, ())) if c else ()
 
 
 def _xyear(metric: str, codes: tuple, uf_codes: tuple = ()) -> dict:

@@ -2368,3 +2368,73 @@ def test_catalog_driven_bancos_promises_nothing_when_settings_cannot_be_built(mo
 
     monkeypatch.setattr("embrapa_dashboard.config.get_settings", _boom)
     assert seam_curation.catalog_driven_bancos() == []
+
+
+# ── crosswalk buckets: adding a banco to the bridge must not break anything ────
+
+
+def _crosswalk_rows():
+    import pandas as pd
+
+    return pd.DataFrame(
+        [
+            {
+                "agrupamento_id": "castanha_de_caju",
+                "agrupamento_nome": "Castanha-de-caju",
+                "source": "pevs",
+                "code": "3404",
+            },
+            {
+                "agrupamento_id": "castanha_de_caju",
+                "agrupamento_nome": "Castanha-de-caju",
+                "source": "pam",
+                "code": "40143",
+            },
+            {
+                "agrupamento_id": "castanha_de_caju",
+                "agrupamento_nome": "Castanha-de-caju",
+                "source": "comex",
+                "code": "08013200",
+            },
+        ]
+    )
+
+
+def test_produto_catalog_carries_every_source_without_keyerror(monkeypatch):
+    """PAM/PPM joined the bridge in 2026-08. The bucket dict used to be a hand-written
+    pevs/comex/comtrade literal indexed as c[r.source], so the first row of a new source
+    raised KeyError and took down EVERY cross-source view. Buckets now derive from
+    sqlbuild.GOLD_CODE_SOURCES, so adding a banco cannot break this again."""
+    from embrapa_dashboard.serving import sql as sqlbuild
+    from embrapa_dashboard.webapi import seam_base
+    from tests.test_serving import _bind_simplecache
+
+    app, _ = _bind_simplecache()
+    monkeypatch.setattr(seam_base, "_crosswalk_df", lambda: _crosswalk_rows())
+    with app.app_context():
+        cat = seam_base.produto_catalog()
+
+    grupo = cat["castanha_de_caju"]
+    assert grupo["pam"] == ["40143"]  # the new source landed
+    assert grupo["pevs"] == ["3404"]
+    # Every known source has a bucket, so callers can index without guarding.
+    assert set(sqlbuild.GOLD_CODE_SOURCES) <= set(grupo)
+    assert grupo["comtrade"] == []  # present and empty, not missing
+
+
+def test_codes_stays_source_scoped_so_nothing_sums_across_sources(monkeypatch):
+    """The reason adding PAM changed no existing computation: each view asks for its
+    source BY NAME. The export coefficient reads 'pevs' and must keep seeing ONLY the
+    PEVS code even though the same agrupamento now also carries a PAM one — otherwise
+    extractive and cultivated output would silently merge into one denominator."""
+    from embrapa_dashboard.webapi import seam_base
+    from tests.test_serving import _bind_simplecache
+
+    app, _ = _bind_simplecache()
+    monkeypatch.setattr(seam_base, "_crosswalk_df", lambda: _crosswalk_rows())
+
+    with app.app_context():
+        assert seam_base._codes("castanha_de_caju", "pevs") == ("3404",)
+        assert seam_base._codes("castanha_de_caju", "pam") == ("40143",)
+        # An unknown source degrades to "no codes" instead of 500-ing the view.
+        assert seam_base._codes("castanha_de_caju", "sefaz") == ()

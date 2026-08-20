@@ -459,7 +459,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ["pevs", "comex", "comtrade"]
+                values: ["pevs", "pam", "ppm", "comex", "comtrade"]
       - name: code
         description: "Exact product code in that source (PEVS code / NCM8 / HS6)."
         tests: [not_null]

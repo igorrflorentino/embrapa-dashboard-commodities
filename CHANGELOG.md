@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.18] - 2026-08-20
+
+**PAM e PPM entram na ponte entre fontes.** A castanha-de-caju passa a cruzar quatro fontes,
+com produção **extrativa (PEVS)** e **cultivada (PAM)** disponíveis no mesmo eixo.
+
+### Added
+- **`gold_pam_production` e `gold_ppm_production` unidos ao `gold_produto_agrupamento`** — a
+  "coordinated change" que o próprio modelo reservava: união no crosswalk, `pam`/`ppm` no
+  `accepted_values`, e os buckets no `seam_base.produto_catalog`.
+
+  **Não altera cálculo nenhum existente.** Toda view multi-fonte pede suas fontes **pelo nome**
+  (`_codes(agrupamento_id, 'pevs')` no coeficiente de exportação; `'comex'`/`'comtrade'` no
+  market share), então nada soma entre fontes de produção pelas costas do pesquisador. O que
+  muda é a **escolha**: a camada multi-fonte é orientada a séries, então PAM e PPM viram séries
+  que o pesquisador coloca no eixo ao lado do PEVS e decide, olhando as curvas, se extrativo e
+  cultivado se comparam lado a lado ou se somam.
+
+  Uma métrica agregada "extrativo + cultivado", se algum dia for desejada, terá de ser uma
+  métrica **nomeada e opcional** — nunca uma mudança silenciosa num denominador existente.
+
+### Fixed
+- **Adicionar um banco à ponte não pode mais derrubar as views multi-fonte.** Os buckets do
+  `produto_catalog` eram um literal `pevs/comex/comtrade` indexado por `c[r.source]`, então a
+  primeira linha de uma fonte nova levantaria `KeyError` e derrubaria **todas** as views de
+  cruzamento. Agora derivam de `sqlbuild.GOLD_CODE_SOURCES` (a mesma fonte única que o gate de
+  visibilidade e o check de órfãos já usam), e cada agrupamento carrega uma lista — vazia
+  quando for o caso — para toda fonte conhecida. O `_codes` também passou a usar `.get`: uma
+  fonte desconhecida devolve "sem códigos" em vez de 500.
+
 ## [1.24.17] - 2026-08-19
 
 **A cota do COMTRADE é cobrada por CHAMADA, e cada chunk era exatamente uma.** Medido antes
