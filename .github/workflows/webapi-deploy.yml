@@ -1,0 +1,222 @@
+# Build + deploy the webapi Cloud Run SERVICE (`embrapa-dashboard`) after merges to
+# main that touch what its image contains.
+#
+# WHY THIS EXISTS — the window it closes (a real outage, 2026-08-20):
+#   dbt changes reach production the moment a build runs; Service changes only on a
+#   manual deploy. When one PR touches both, there is a window where Gold has already
+#   changed and the code that reads it has not. v1.24.18 added `pam`/`ppm` rows to
+#   gold_produto_agrupamento AND taught seam_base.produto_catalog to handle them —
+#   but only the dbt half reached prod. The deployed Service, still on v1.24.14,
+#   indexed a hardcoded pevs/comex/comtrade bucket dict as `c[r.source]`, so the
+#   first `pam` row raised KeyError and EVERY cross-source view 500'd until someone
+#   noticed. The fix for that KeyError was sitting in the very PR that broke it.
+#
+#   The ingestion Job already closed its half of this gap (ingestion-job-deploy.yml,
+#   which itself exists because that image silently drifted a month behind). This is
+#   the Service's half, and the same reasoning applies: an artifact nobody is forced
+#   to redeploy will eventually be out of step with the data it reads.
+#
+# WHY AUTO-DEPLOY IS ACCEPTABLE HERE:
+#   Cloud Run swaps revisions without dropping traffic, and a rollback is one
+#   `gcloud run services update --image <previous>`. The alternative — leaving it
+#   manual — is what produced the outage above. dbt-build-prod.yml set the precedent
+#   for auto-applying to prod on merge; this is more conservative than that, since it
+#   only replaces a stateless image.
+#
+# WHY THE SURGICAL `--image` SWAP INSTEAD OF deploy/webapi/deploy.sh:
+#   deploy.sh rebuilds the runtime env from an allowlist over `.env` +
+#   `deploy/webapi/.env.prod`, and `--env-vars-file` REPLACES the whole env block. CI
+#   has neither file, so running it here would strip IAP_AUDIENCE (disarming the
+#   in-app IAP JWT check), FEEDBACK_GITHUB_REPO and the FEEDBACK_GITHUB_TOKEN secret
+#   ref. `gcloud run services update --image` changes ONLY the image; env, secrets,
+#   the runtime SA, scaling and the IAP annotations all persist. deploy.sh stays the
+#   right tool when the ENV itself must change — an operator action, from a machine
+#   that has .env.prod.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ONE-TIME GCP SETUP (reuses the WIF pool dbt-build-prod.yml created; adds a
+# dedicated least-privilege identity, per this repo's one-SA-per-purpose convention:
+# sa-dbt-build-ci / sa-release-ci / sa-dashboard-smoke-ci / sa-ingest-deploy-ci):
+#
+#   PROJECT_ID=embrapa-dashboard-commodities
+#   REGION=us-central1
+#   RUNTIME_SA=sa-web-dashboard-prod@${PROJECT_ID}.iam.gserviceaccount.com
+#
+#   gcloud iam service-accounts create sa-webapi-deploy-ci \
+#     --project="${PROJECT_ID}" --display-name="GitHub CI — build+deploy the webapi Service"
+#
+#   gcloud artifacts repositories add-iam-policy-binding embrapa-services \
+#     --project="${PROJECT_ID}" --location="${REGION}" \
+#     --member="serviceAccount:sa-webapi-deploy-ci@${PROJECT_ID}.iam.gserviceaccount.com" \
+#     --role="roles/artifactregistry.writer"
+#
+#   # run.developer is the narrowest predefined role allowing `services update`.
+#   gcloud run services add-iam-policy-binding embrapa-dashboard \
+#     --project="${PROJECT_ID}" --region="${REGION}" \
+#     --member="serviceAccount:sa-webapi-deploy-ci@${PROJECT_ID}.iam.gserviceaccount.com" \
+#     --role="roles/run.developer"
+#
+#   # Deploying a Service that RUNS AS another SA requires actAs on that SA — scoped
+#   # to the one runtime identity, never project-wide.
+#   gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
+#     --project="${PROJECT_ID}" \
+#     --member="serviceAccount:sa-webapi-deploy-ci@${PROJECT_ID}.iam.gserviceaccount.com" \
+#     --role="roles/iam.serviceAccountUser"
+#
+#   PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')
+#   gcloud iam service-accounts add-iam-policy-binding \
+#     "sa-webapi-deploy-ci@${PROJECT_ID}.iam.gserviceaccount.com" --project="${PROJECT_ID}" \
+#     --role="roles/iam.workloadIdentityUser" \
+#     --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/igorrflorentino/embrapa-dashboard-produtos-agricolas"
+#
+#   gh variable set GCP_WEBAPI_DEPLOY_SERVICE_ACCOUNT \
+#     --body "sa-webapi-deploy-ci@${PROJECT_ID}.iam.gserviceaccount.com"
+#
+#   ⚠ WIF bindings take ~2min to propagate; an immediate first run 403s on
+#   iam.serviceAccounts.getAccessToken. Re-run it, no config change needed.
+#
+#   UNTIL the variable is set this workflow SKIPS (see the job guard), so it is safe
+#   to merge first and wire up GCP afterwards.
+
+name: Deploy webapi service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/embrapa_dashboard/**'
+      - 'frontend/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'deploy/webapi/**'
+      - '.github/workflows/webapi-deploy.yml'
+  workflow_dispatch:
+
+# Never race two deploys onto the same Service, and never cancel one mid-flight: a
+# cancelled run could leave the Service pointing at a half-pushed image.
+concurrency:
+  group: webapi-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Build + deploy webapi service
+    # Forks can't reach the WIF provider. The SERVICE-ACCOUNT guard makes this safe to
+    # merge before the one-time GCP setup: unset ⇒ the job SKIPS (green) instead of
+    # failing auth and painting main red on every push. It activates on its own once
+    # the variable exists.
+    if: >-
+      github.event.repository.fork == false
+      && vars.GCP_WEBAPI_DEPLOY_SERVICE_ACCOUNT != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Resolve image ref
+        id: vars
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.WEBAPI_REGION || 'us-central1' }}
+          AR_REPO: ${{ vars.WEBAPI_AR_REPO || 'embrapa-services' }}
+          SERVICE_NAME: ${{ vars.WEBAPI_SERVICE_NAME || 'embrapa-dashboard' }}
+        run: |
+          set -euo pipefail
+          # Tag = the merged commit's short SHA: immutable, and it makes "which commit
+          # is prod serving?" answerable from the console alone.
+          SHA="$(git rev-parse --short HEAD)"
+          HOST="${REGION}-docker.pkg.dev"
+          {
+            echo "host=${HOST}"
+            echo "region=${REGION}"
+            echo "service=${SERVICE_NAME}"
+            echo "project_id=${PROJECT_ID}"
+            echo "image=${HOST}/${PROJECT_ID}/${AR_REPO}/${SERVICE_NAME}:${SHA}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Auth to GCP via Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_WEBAPI_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: 'access_token'
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3
+
+      - name: Docker login to Artifact Registry
+        run: |
+          echo '${{ steps.auth.outputs.access_token }}' \
+            | docker login -u oauth2accesstoken --password-stdin "${{ steps.vars.outputs.host }}"
+
+      # Same image as deploy/webapi/deploy.sh and release.yml: the 3-stage
+      # deploy/webapi/Dockerfile with the repo root as context.
+      - name: Build + push image
+        run: |
+          set -euo pipefail
+          IMAGE='${{ steps.vars.outputs.image }}'
+          docker build -f deploy/webapi/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      # ONLY the image changes. Env, the FEEDBACK_GITHUB_TOKEN secret ref, the runtime
+      # SA, scaling and the IAP annotations all persist on the Service.
+      - name: Point the Service at the new image
+        run: |
+          set -euo pipefail
+          gcloud run services update '${{ steps.vars.outputs.service }}' \
+            --project '${{ steps.vars.outputs.project_id }}' \
+            --region '${{ steps.vars.outputs.region }}' \
+            --image '${{ steps.vars.outputs.image }}'
+
+      # Read the Service back and assert BOTH that the swap took AND that the security
+      # posture survived it. A silently emptied env would not fail the update — it
+      # would disarm the in-app IAP check and surface much later, if at all.
+      - name: Verify the deployed image, env and IAP posture
+        run: |
+          set -euo pipefail
+          SVC='${{ steps.vars.outputs.service }}'
+          COMMON=(--project '${{ steps.vars.outputs.project_id }}'
+                  --region '${{ steps.vars.outputs.region }}')
+
+          DEPLOYED="$(gcloud run services describe "$SVC" "${COMMON[@]}" \
+            --format='value(spec.template.spec.containers[0].image)')"
+          if [ "$DEPLOYED" != '${{ steps.vars.outputs.image }}' ]; then
+            echo "ERROR: service is running '$DEPLOYED', expected '${{ steps.vars.outputs.image }}'" >&2
+            exit 1
+          fi
+
+          ENV_NAMES="$(gcloud run services describe "$SVC" "${COMMON[@]}" \
+            --format='value(spec.template.spec.containers[0].env[].name)')"
+          for key in GCP_PROJECT_ID IAP_AUDIENCE FEEDBACK_GITHUB_REPO FEEDBACK_GITHUB_TOKEN; do
+            case ";${ENV_NAMES};" in
+              *";${key};"*) ;;
+              *) echo "ERROR: env var '$key' missing after the image swap." >&2; exit 1 ;;
+            esac
+          done
+
+          IAP="$(gcloud run services describe "$SVC" "${COMMON[@]}" \
+            --format='value(metadata.annotations."run.googleapis.com/iap-enabled")')"
+          [ "$IAP" = "true" ] || { echo "ERROR: IAP is no longer enabled ('$IAP')." >&2; exit 1; }
+          echo "Image, env and IAP verified."
+
+      - name: Job summary
+        run: |
+          {
+            echo "### webapi Service redeployed"
+            echo ""
+            echo "- Service: \`${{ steps.vars.outputs.service }}\` (\`${{ steps.vars.outputs.region }}\`)"
+            echo "- Image: \`${{ steps.vars.outputs.image }}\`"
+            echo ""
+            echo "Only the image changed — env, secrets, runtime SA and IAP persist."
+            echo ""
+            echo "Roll back with:"
+            echo '```bash'
+            echo "gcloud run services update ${{ steps.vars.outputs.service }} --region ${{ steps.vars.outputs.region }} --image <previous-image>"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

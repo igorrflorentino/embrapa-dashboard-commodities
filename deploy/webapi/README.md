@@ -56,6 +56,35 @@ bound to the existing WIF pool) is documented in the header of `release.yml`.
 It reuses the `GCP_PROJECT_ID` / `GCP_WIF_PROVIDER` repo vars from
 `dbt-build-prod.yml` and adds `GCP_RELEASE_SERVICE_ACCOUNT`.
 
+## Keeping the deployed image current (CI auto-deploy)
+
+`make webapi-deploy` is the **operator** path — run it when the Service's **env**
+must change. Nothing about it is automatic, and that asymmetry caused a real outage
+on 2026-08-20: dbt changes reach production the moment a build runs, Service changes
+only on a manual deploy. A single PR touched both — it added `pam`/`ppm` rows to
+`gold_produto_agrupamento` *and* taught `seam_base.produto_catalog` to handle them —
+but only the dbt half landed. The Service, still on the previous image, indexed a
+hardcoded `pevs/comex/comtrade` bucket dict as `c[r.source]`, so the first `pam` row
+raised `KeyError` and every cross-source view 500'd. The fix was in the same PR that
+broke it.
+
+`.github/workflows/webapi-deploy.yml` closes that window: on every merge to `main`
+touching `src/embrapa_dashboard/**`, `frontend/**`, `pyproject.toml`, `uv.lock` or
+`deploy/webapi/**`, CI rebuilds the image and points the Service at it with a
+**surgical `gcloud run services update --image`** — only the image changes, so env,
+the `FEEDBACK_GITHUB_TOKEN` secret ref, the runtime SA, scaling and the IAP
+annotations all persist. It then reads the Service back and fails if the image, any
+critical env var, or `iap-enabled` did not survive.
+
+The image is tagged with the commit's short SHA, so "which commit is prod serving?"
+is answerable from the console — the drift above was invisible precisely because it
+was not.
+
+Requires the one-time GCP setup in that workflow's header (a dedicated
+`sa-webapi-deploy-ci` identity + the `GCP_WEBAPI_DEPLOY_SERVICE_ACCOUNT` repo
+variable). **Until that variable is set the workflow skips**, so merging it changes
+nothing; it activates by itself once the variable exists.
+
 ## Notes
 
 - **No dash/plotly** in the image: the `webapi` extra is flask + flask-caching +
