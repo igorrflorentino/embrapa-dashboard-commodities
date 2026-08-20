@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.21] - 2026-08-20
+
+### Changed
+- **React 18 → 19** (`react`, `react-dom`, `@testing-library/react` 16.1 → 16.3). **Nenhuma
+  linha de código da aplicação precisou mudar** — a suíte passou 789/789 e o `vite build`
+  saiu limpo já na primeira tentativa.
+
+  Verificado **no navegador**, não só nos testes, porque teste unitário não vê renderização:
+  a Visão geral do PEVS carregou com dado real (KPIs, sparklines, série histórica 1986-2024 no
+  Plotly, rosca de composição, mapa de UF, painel de qualidade), sem um único erro no console.
+  É o primeiro dos quatro majors que a política do #256 passou a entregar individualmente.
+
+### Nota — o major que NÃO foi feito
+**eslint 9 → 10 está bloqueado a montante.** O `eslint-plugin-react@latest` continua em 7.37.5,
+com peer `^3 || … || ^9.7` — sem suporte a eslint 10. Fazer o bump exigiria `--legacy-peer-deps`,
+que mascara uma incompatibilidade real em vez de resolvê-la. Fica esperando o upstream; foi
+exatamente este conflito que quebrava o `npm ci` no PR agrupado que motivou a mudança de política.
+
 ## [1.24.20] - 2026-08-20
 
 ### Changed
