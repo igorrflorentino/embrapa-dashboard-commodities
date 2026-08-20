@@ -100,7 +100,10 @@ jobs:
       - name: Patch coverage (diff-cover)
         if: github.event_name == 'pull_request'
         run: |
-          git fetch --no-tags --depth=0 origin "$BASE_REF"
+          # `fetch-depth: 0` above gives full history for the PR ref, but the BASE branch
+          # has no remote-tracking ref yet. Fetch it into one explicitly — no --depth
+          # (0 is not a valid depth; history is already complete).
+          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
           make coverage-diff COMPARE_BRANCH="origin/$BASE_REF"
         env:
           BASE_REF: ${{ github.base_ref }}
