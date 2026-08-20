@@ -23,6 +23,12 @@ export default defineConfig({
     port: 4173,
     proxy: { '/api': 'http://127.0.0.1:8000' },
   },
+  // maplibre runs geojson-vt in a MODULE worker: it calls `new Worker(url, {type:'module'})`
+  // unless the URL ends in `.cjs`. Vite's default worker format is `iife`, which would hand
+  // that constructor a classic script. Emitting ES keeps the two halves in agreement.
+  // BrazilChoropleth imports the worker with `?worker&url` and passes it to
+  // `maplibregl.setWorkerUrl()`; see the comment there for why the plain `?url` form fails.
+  worker: { format: 'es' },
   build: {
     outDir: 'dist',
     sourcemap: false,

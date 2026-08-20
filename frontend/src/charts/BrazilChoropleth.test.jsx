@@ -15,6 +15,8 @@ const DATA = [
 
 let fakeMap;
 let BrazilChoropleth;
+let calls;      // ordered record of maplibre entry points the component touched
+let workerUrl;
 
 // Stand-in for maplibre's Map. 'load' is fired MANUALLY by each test so the ordering
 // against the data effect is explicit; 'idle' fires on a later tick, as maplibre's does
@@ -78,17 +80,29 @@ const stubPopup = () => ({
 
 beforeEach(async () => {
   vi.resetModules();
+  calls = [];
+  workerUrl = undefined;
+  // The real worker is a 470 kB bundle; under jsdom we only need the URL string.
+  vi.doMock('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url', () => ({
+    default: '/assets/maplibre-gl-worker.js',
+  }));
+  // NAMED exports, no `default` — this mirrors maplibre 5+, which is pure ESM with no
+  // default export. Mocking a `default` here would let a component that reads
+  // `(await import(…)).default` pass the suite while breaking against the real library.
   vi.doMock('maplibre-gl', () => ({
-    default: {
-      // Plain functions so `new maplibregl.Map(...)` constructs; returning an object
-      // from a constructor hands back that object.
-      Map: function Map() {
-        return fakeMap;
-      },
-      Popup: function Popup() {
-        return stubPopup();
-      },
-      NavigationControl: function NavigationControl() {},
+    // Plain functions so `new maplibregl.Map(...)` constructs; returning an object from a
+    // constructor hands back that object.
+    Map: function Map() {
+      calls.push('Map');
+      return fakeMap;
+    },
+    Popup: function Popup() {
+      return stubPopup();
+    },
+    NavigationControl: function NavigationControl() {},
+    setWorkerUrl: (url) => {
+      calls.push('setWorkerUrl');
+      workerUrl = url;
     },
   }));
   ({ BrazilChoropleth } = await import('./BrazilChoropleth.jsx'));
@@ -97,6 +111,7 @@ beforeEach(async () => {
 afterEach(() => {
   cleanup();
   vi.doUnmock('maplibre-gl');
+  vi.doUnmock('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url');
 });
 
 // maplibre is imported dynamically, so the map only exists a few microtasks in.
@@ -140,5 +155,20 @@ describe('BrazilChoropleth — first paint', () => {
 
     await waitFor(() => expect(Array.isArray(fakeMap.fill)).toBe(true));
     expect(fakeMap.idleHandlers).toBeGreaterThan(0); // it really did defer, not luck out
+  });
+});
+
+describe('BrazilChoropleth — maplibre worker wiring', () => {
+  it('points maplibre at the bundled worker BEFORE constructing the map', async () => {
+    // maplibre spins up its worker pool on the first `new Map()`, so a setWorkerUrl that
+    // lands afterwards is ignored and the library falls back to guessing the URL from its
+    // own import.meta.url — the guess that resolves to an asset Vite never emitted, leaving
+    // the worker dead, every source unloaded, and the map permanently blank.
+    fakeMap = new FakeMap();
+    render(<BrazilChoropleth data={DATA} valueKey="value" label="R$" />);
+    await waitForMapInit();
+
+    expect(calls).toEqual(['setWorkerUrl', 'Map']);
+    expect(workerUrl).toBeTruthy();
   });
 });
