@@ -33,13 +33,36 @@ dedicated identity **per purpose**. There is one SA per workflow rather than a s
 | `sa-release-ci` | `release.yml` | push the release image |
 | `sa-ingest-deploy-ci` | `ingestion-job-deploy.yml` | push + update the ingestion **Job** |
 | `sa-webapi-deploy-ci` | `webapi-deploy.yml` | push + update the webapi **Service** image |
-| `sa-dashboard-smoke-ci` | ⚠️ **nothing, currently** | invoke the Service |
 
-> ⚠️ `sa-dashboard-smoke-ci` is a **leftover**: it still exists, still has its
-> `GCP_SMOKE_SERVICE_ACCOUNT` repo variable and its WIF binding, but **no workflow
-> references it** — verified 2026-08-20. It belonged to the smoke test that was removed
-> along with the Dash UI. Standing keyless access that nothing uses is access worth
-> removing; delete the SA and the variable, or wire up the smoke check it was meant for.
+> ⚠️ **`sa-dashboard-smoke-ci` — retired 2026-08-20; the GCP half is still PENDING.**
+> It belonged to the smoke test removed along with the Dash UI, and no workflow had
+> referenced it since. It was not harmless: it held **`bigquery.dataViewer` + `jobUser` +
+> `readSessionUser` on the whole project**, assumable by any workflow in this repo via its
+> `workloadIdentityUser` binding — standing read access to every dataset, for nothing.
+>
+> **Done:** the `GCP_SMOKE_SERVICE_ACCOUNT` repo variable is deleted. Its value was
+> `sa-dashboard-smoke-ci@embrapa-dashboard-commodities.iam.gserviceaccount.com`, recorded
+> here in case the smoke check is ever revived.
+>
+> **Still to do (operator, from a shell):** first strip its three project bindings —
+>
+> ```bash
+> PROJECT_ID=embrapa-dashboard-commodities
+> SA="sa-dashboard-smoke-ci@${PROJECT_ID}.iam.gserviceaccount.com"
+> for R in roles/bigquery.dataViewer roles/bigquery.jobUser roles/bigquery.readSessionUser; do
+>   gcloud projects remove-iam-policy-binding "$PROJECT_ID" \
+>     --member="serviceAccount:${SA}" --role="$R" --quiet
+> done
+> ```
+>
+> — then remove the account itself with the `gcloud iam service-accounts` **delete**
+> subcommand for that same `$SA`. Strip the project bindings **first**, or the policy is
+> left carrying `deleted:serviceAccount:…` tombstones. A removed account can be restored
+> for 30 days.
+>
+> ℹ️ That last step is intentionally **not** runnable by automation here: this repo's
+> destructive-command safety hooks block service-account deletion (see
+> [`operations_runbook.md`](operations_runbook.md)). It is an operator action, on purpose.
 
 **The exact `gcloud` commands for each live in the header comment of the workflow that
 uses it** — deliberately, so the grant and the thing it enables never drift apart. This
