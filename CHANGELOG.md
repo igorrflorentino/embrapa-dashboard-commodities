@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.30] - 2026-08-20
+
+### Removed
+- **Identidade órfã de CI aposentada.** `sa-dashboard-smoke-ci` sobrou do smoke test
+  removido junto com a UI Dash e **nenhum workflow a referenciava** — confirmado por grep
+  em todos os `.github/workflows/*.yml`: só aparecia em comentário, citada como exemplo da
+  convenção de nomes.
+
+  Não era inofensiva: carregava **`bigquery.dataViewer` + `jobUser` + `readSessionUser` no
+  projeto inteiro**, assumível por qualquer workflow deste repo via seu binding
+  `workloadIdentityUser`. Leitura permanente de todos os datasets, para nada.
+
+  A variável de repo `GCP_SMOKE_SERVICE_ACCOUNT` foi **removida**. A exclusão da service
+  account em si **fica para o operador** — os hooks de segurança do projeto bloqueiam
+  remoção de SA por automação, de propósito. Passos e valor de restauro em
+  `docs/iam_setup.md`.
+
+- **1,1 GB de worktrees abandonados** em `.claude/worktrees/` (dois diretórios de 15/jun,
+  ~550 MB cada). Não eram worktrees registrados — `git worktree list` não os conhecia e o
+  link `.git` deles estava quebrado. Antes de apagar, verifiquei que **todo arquivo único
+  ali é recuperável do histórico**: eram da era pré-rename (pacote `embrapa_commodities`,
+  `frontend/src/proto/`, `TODO.md`/`ROADMAP.md` aposentados) mais artefatos `dbt/target/`.
+  Eram locais e fora do versionamento, então o repositório não muda.
+
+### Nota — o que a varredura confirmou que NÃO está morto
+Vale registrar o que foi investigado e **descartado**, para ninguém refazer o trabalho:
+
+- **Frontend: zero órfãos.** Montei o grafo real de imports a partir do entry point (não
+  um grep de nome de arquivo, que dá falso positivo em comentário): **86 módulos, 86
+  alcançáveis**.
+- **Python: zero código morto** a 80% de confiança (`vulture`). A 60% só aparecem os
+  comandos Typer, registrados por decorator — falso positivo conhecido.
+- **`python-dotenv`** parecia sem uso porque nada o importa direto: é exigência do
+  `pydantic-settings`, que o usa para o `env_file=".env"` do `config.py`. Fica.
+- **`radon`** parecia sem uso porque meu grep não varria `.claude/skills/`: a skill
+  `code-audit` o invoca. Fica.
+- **Nenhuma dependência npm sem import**, nenhum branch remoto além do `main`, nenhum
+  resto de diretório da era Dash.
+
+### Nota — encontrado, deliberadamente NÃO removido
+A service account padrão do Compute Engine (`1085662235842-compute`) tem **`roles/editor`
+no projeto** e nenhuma referência no repositório. É identidade gerenciada pelo GCP e usada
+implicitamente por alguns serviços; removê-la sem mapear quem depende dela é o tipo de
+limpeza que derruba produção. Fica registrada aqui como dívida de privilégio, não como
+lixo.
+
+---
+
 ## [1.24.29] - 2026-08-20
 
 ### Fixed
