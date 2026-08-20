@@ -120,6 +120,7 @@ embrapa ingest ibge-ppm [--full]                   # IBGE PPM (SIDRA tables 3939
 embrapa ingest comex [--full]                      # COMEX re-downloads only when the ETag changes; --full ignores the check
 embrapa ingest comtrade [--full]                   # UN Comtrade (keyed); resumable by daily quota. Outside `ingest all` (key/quota-gated)
 embrapa ingest reconcile                            # operator-triggered deep-refresh: full re-ingest of every nightly source (catches OLD-year revisions; a monthly reminder issue nudges)
+embrapa reconcile-check                             # read-only: did any OLD year actually change? compares live sources vs Bronze; exit 1 if yes (run this BEFORE reconcile)
 embrapa discover ibge-periods   [--table-id 289]
 embrapa discover ibge-products  --keywords castanha,madeira
 embrapa discover bcb-series     <code>            # e.g.: 433

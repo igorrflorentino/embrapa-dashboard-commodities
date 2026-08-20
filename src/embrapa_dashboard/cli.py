@@ -11,14 +11,23 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from types import ModuleType
 
 import typer
+from google.cloud import bigquery
 from rich.console import Console
 from rich.table import Table
 
-from embrapa_dashboard import backup, discover, doctor, monitor, observability
+from embrapa_dashboard import (
+    backup,
+    discover,
+    doctor,
+    monitor,
+    observability,
+    reconcile_check,
+)
 from embrapa_dashboard.bcb import currency as bcb_currency
 from embrapa_dashboard.bcb import inflation as bcb_inflation
 from embrapa_dashboard.comex import pipeline as comex_pipeline
@@ -1078,6 +1087,80 @@ def backup_gold() -> None:
     console.print(f"[green]✓[/green] Gold backup complete  [dim]run_id={run_id}[/dim]")
     for uri in uris:
         console.print(f"  → {uri}")
+
+
+@app.command("reconcile-check")
+def reconcile_check_cmd(
+    years: str = typer.Option(
+        "2015,2019,2022", help="Comma-separated OLD years to sample for IBGE PEVS"
+    ),
+    uf: str = typer.Option("15", help="2-digit UF code for the IBGE sample (default: Pará)"),
+    cutoff: str = typer.Option(
+        "", help="ISO date; BCB points older than this are checked (default: Jan 1 last year)"
+    ),
+) -> None:
+    """Answer the monthly "do we need a `reconcile`?" question with evidence.
+
+    IBGE/BCB ingestion is DELTA, so a correction the source publishes to an OLD year is
+    never re-queried by the nightly run. This compares what the sources serve TODAY
+    against what Bronze holds, for data old enough that the delta window never touches it.
+
+    Reads only — it never writes, ingests or fixes anything. A non-zero divergence count
+    is the cue to run `embrapa ingest reconcile`.
+
+    Exits 1 when anything diverged, so a workflow can gate on it.
+    """
+    settings = get_settings()
+    client = bigquery.Client(project=settings.gcp_project_id)
+    sample_years = tuple(int(y) for y in years.split(",") if y.strip())
+    # Default cutoff: Jan 1 of LAST year — BCB rewinds a year-granular overlap, so
+    # anything before that is outside what the nightly ever re-fetches.
+    horizon = cutoff or f"{date.today().year - 1}-01-01"
+
+    console.print(
+        f"[bold]Reconcile check[/bold] [dim]— IBGE anos {years} (UF {uf}) · "
+        f"BCB anterior a {horizon}[/dim]\n"
+    )
+    checks = [reconcile_check.check_ibge_pevs(client, settings, sample_years, uf)]
+    for code, label, table in (
+        (settings.bcb_inflation_series_ipca_code, "BCB IPCA", "inflation_series_raw"),
+        ("1", "BCB PTAX USD", "currency_series_raw"),
+    ):
+        checks.append(
+            reconcile_check.check_bcb_series(client, settings, code, label, table, horizon)
+        )
+
+    table_out = Table(show_header=True, header_style="bold")
+    for col in ("", "Fonte", "Escopo", "Comparados", "Divergentes", "Só-fonte", "Só-bronze"):
+        table_out.add_column(col)
+    for c in checks:
+        table_out.add_row(
+            "[green]✓[/green]" if c.clean else "[red]✗[/red]",
+            c.source,
+            c.detail,
+            f"{c.compared:,}".replace(",", "."),
+            str(c.diverged),
+            str(c.only_source),
+            str(c.only_bronze),
+        )
+    console.print(table_out)
+
+    for c in checks:
+        for sample in c.samples:
+            console.print(f"  [yellow]·[/yellow] {c.source} {sample}")
+
+    total = sum(c.compared for c in checks)
+    dirty = [c for c in checks if not c.clean]
+    if dirty:
+        console.print(
+            f"\n[red]Revisão detectada[/red] em {len(dirty)} fonte(s) — "
+            f"rode [bold]embrapa ingest reconcile[/bold], depois um dbt build."
+        )
+        raise typer.Exit(code=1)
+    console.print(
+        f"\n[green]✓[/green] {total:,}".replace(",", ".")
+        + " pontos conferidos, nenhuma revisão — reconcile não é necessário."
+    )
 
 
 # ─── dbt passthrough ──────────────────────────────────────────────────────────
