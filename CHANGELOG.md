@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.22] - 2026-08-20
+
+### Changed
+- **Plotly 2 → 3.** Sem mudança de código: 789/789, lint e build limpos. Verificado **no build
+  de produção**, não só no dev server — série histórica 1986-2024, rosca de composição, mapa de
+  calor e os três gráficos da Geografia, com dado real e zero erros no console.
+
+### Nota — maplibre 4 → 6 REPROVADO, e por quê
+O bump **quebra o coroplético em produção**, e passa despercebido por tudo que normalmente
+usamos para aprovar:
+
+    [choropleth] maplibre init failed:
+      TypeError: Cannot read properties of undefined (reading 'Map')
+
+Testes (789/789), lint e `vite build` passam. **No dev server o mapa renderiza normalmente** —
+o Vite serve os módulos direto. Só o `dist` servido de verdade expõe a falha: a biblioteca não
+entra no pacote. O sinal estava no tamanho — o chunk do maplibre cai de **786 kB para 514
+bytes** e o `index` não cresce; os 786 kB simplesmente desaparecem. O maplibre 5+ mudou de
+arquitetura e o `manualChunks` do `vite.config.js` não acompanha.
+
+Revertido para 4.7.1. Reabrir exige ajustar o bundling primeiro, e **validar no build**, nunca
+no dev server.
+
+Registro de método: cheguei a suspeitar que o maplibre 6 apagava as cores do coroplético.
+Comparei com o 4 antes de acusar — a aparência é idêntica, então **não era regressão**. O
+coroplético renderiza sem preenchimento por cor nas DUAS versões, o que confirma em navegador
+o item que a auditoria de 2026-06 deixou em aberto. É um defeito pré-existente, separado deste
+PR.
+
 ## [1.24.21] - 2026-08-20
 
 ### Changed
