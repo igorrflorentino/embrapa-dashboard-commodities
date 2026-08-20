@@ -68,7 +68,7 @@ updates:
           - "patch"
 
   # Cloud Run image base layers (deploy/*/Dockerfile). Both pin python:3.12-slim /
-  # node:22-slim by floating tag; the docker updater bumps the pinned base (and,
+  # node:24-slim by floating tag; the docker updater bumps the pinned base (and,
   # once digest-pinned, the @sha256 digest) so a base-image CVE surfaces as a PR
   # instead of going stale — the container analogue of the pip/npm updaters above.
   # One updater per Dockerfile directory.
@@ -87,8 +87,8 @@ updates:
         update-types:
           - "version-update:semver-major"
           - "version-update:semver-minor"
-      # Same reasoning, for the frontend build stage. `ci.yml` and `release.yml`
-      # both run the SPA build+tests on node 22, so a major bump HERE alone would
+      # Same reasoning, for the frontend build stage. CI and local dev read the node
+      # major from /.nvmrc (24 since 2026-08), so a major bump HERE alone would
       # ship a production bundle compiled by a runtime no CI job ever exercises —
       # the divergence, not the build succeeding, is the risk (a node-26 PR sat
       # open for ~2 months on exactly this). Moving node majors is a deliberate

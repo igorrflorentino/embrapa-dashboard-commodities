@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.20] - 2026-08-20
+
+### Changed
+- **Node 22 → 24 (LTS)** em `.nvmrc`, `deploy/webapi/Dockerfile` e `docs/testing.md`, juntos —
+  que é a única forma segura de mover essa versão. Como o `.nvmrc` virou fonte única na
+  v1.24.7, o CI (`ci.yml` e `release.yml`, via `node-version-file`) acompanha sozinho.
+
+  **Verificado antes de mudar, não depois:** suíte do frontend **789/789** e `vite build`
+  limpo no node 24, com o `npm ci` refeito do zero. Manutenção deliberada, não resgate — o
+  node 22 tem suporte até abril/2027; a motivação é não repetir a defasagem em que o
+  Dockerfile constrói o bundle de produção num runtime que nenhum teste exercita.
+
 ## [1.24.19] - 2026-08-20
 
 **O Service ficou defasado do Gold que ele lê, e derrubou as views de cruzamento.**
