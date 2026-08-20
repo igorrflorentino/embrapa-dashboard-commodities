@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.29] - 2026-08-20
+
+### Fixed
+- **Varredura de documentação, fechando o que a sessão de hoje deixou desatualizado.** Seis
+  versões (v1.24.23→28) mudaram deploy, CI e a CLI; a documentação não acompanhou.
+
+  - **`CONTRIBUTING.md` — o checklist de PR não citava `make coverage-diff`.** Era a lacuna
+    mais cara: quem seguisse o checklist à risca abriria PR e seria reprovado por um check
+    que o checklist nunca mencionou. E "todos os **três** status checks" virou **cinco**
+    (faltavam `dbt unit tests` e `gitleaks`).
+  - **A história do deploy estava obsoleta em 5 lugares** (`CLAUDE.md`, `README.md`,
+    `ARCHITECTURE.md` ×3): todos apresentavam `make webapi-deploy` como o caminho, sem dizer
+    que mudança de **código** agora sobe sozinha no merge. Perigoso e não só desatualizado —
+    a partir de uma máquina sem `.env.prod`, rodar `deploy.sh` para publicar código
+    **derruba o `IAP_AUDIENCE`** e desarma a verificação de IAP no app. Agora está explícito
+    que `deploy.sh` é o caminho de **mudança de env**, e só.
+  - **`docs/operations_runbook.md`** ganhou a mesma distinção, para que a seção de
+    `IAP_AUDIENCE` não seja lida como "todo deploy precisa de `.env.prod`".
+  - **`ARCHITECTURE.md`** — a árvore de módulos não listava `reconcile_check.py` nem
+    `release.py`, ambos criados nesta sessão.
+
+### Added
+- **`docs/iam_setup.md` ganhou a seção das service accounts de CI.** As cinco identidades
+  keyless (WIF) existiam **apenas** nos cabeçalhos dos workflows — uma lacuna pré-existente
+  que hoje ficou maior, quando adicionei a quinta. A tabela é índice; o cabeçalho do
+  workflow segue sendo a fonte de verdade dos comandos, de propósito, para que concessão e
+  uso não se separem.
+
+### Nota — uma service account órfã, encontrada na varredura
+`sa-dashboard-smoke-ci` **existe**, tem a variável `GCP_SMOKE_SERVICE_ACCOUNT` configurada
+e binding WIF ativo — mas **nenhum workflow a referencia** (verificado 2026-08-20). É
+remanescente do smoke test removido junto com a UI Dash. Acesso keyless permanente que nada
+usa é acesso que vale remover. **Não removi** — apagar identidade em produção é decisão do
+operador; está registrado no `docs/iam_setup.md` com o aviso.
+
+---
+
 ## [1.24.28] - 2026-08-20
 
 ### Changed

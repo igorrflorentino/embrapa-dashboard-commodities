@@ -124,7 +124,12 @@ make dbt-test
 - **Description**: explain WHAT changed and WHY
 - **Checklist**:
   - [ ] `make lint` passes without errors
-  - [ ] `make test` passes without errors
+  - [ ] `make test` passes without errors (runs the **absolute** coverage floor, 98%)
+  - [ ] `make coverage-diff` passes — **patch coverage**: ≥90% of the lines *this branch
+        changed* must be covered. This is a separate CI check from `make test` and it is
+        the one that usually catches a missing test, because the absolute floor barely
+        moves when you add a handful of untested lines. Needs `make test` first (it writes
+        `coverage.xml`). See [`docs/testing.md`](docs/testing.md#the-two-coverage-layers-and-why-one-number-was-not-enough).
   - [ ] New tests were added (if applicable)
   - [ ] Documentation was updated (if applicable)
   - [ ] dbt changes were validated with `make dbt-build` (dev)
@@ -132,7 +137,7 @@ make dbt-test
 
 ### 4. Code Review
 
-- CI (GitHub Actions) must pass — all three status checks: **`Lint, test, dbt parse`** (Python lint + pytest + dbt parse), **`Frontend tests (Vitest)`** (ESLint + Vitest), and **`SQLFluff (dbt templater, BigQuery)`** (dbt SQL style).
+- CI (GitHub Actions) must pass — **five** status checks: **`Lint, test, dbt parse`** (Python lint + pytest + the 98% coverage floor + **patch coverage** + dbt parse), **`Frontend tests (Vitest)`** (ESLint + Vitest), **`SQLFluff (dbt templater, BigQuery)`** (dbt SQL style), **`dbt unit tests (BigQuery)`**, and **`gitleaks`** (secret scan).
 - The branch must be **up to date with `main`** before merging (branch protection requires this).
 - Review approvals are recommended but not required by the current branch protection.
 - Use **Squash and Merge** to keep the history clean.

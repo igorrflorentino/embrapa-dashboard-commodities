@@ -66,7 +66,7 @@ The project implements a **Medallion architecture** (Bronze → Silver → Gold)
 | REST API / SPA host | Flask app factory + gunicorn (`webapi` extra) | Serves the built SPA **and** `/api` from one origin behind IAP |
 | Dashboard data access | `google-cloud-bigquery` + `flask-caching` | Pushdown Computing: UI filters → `@param` SQL on `serving`, cached results |
 
-> The **dedicated visualization** layer shipped in the 2026-06 Dash→React migration and is **live on Cloud Run** (private + IAP, 3-stage node-build→python image in [`deploy/webapi/`](deploy/webapi/), `make webapi-deploy`). Looker Studio is the second consumption path and remains available in parallel. Spec/history of the migration: [`PLANS/react_migration_contract_map.md`](PLANS/react_migration_contract_map.md).
+> The **dedicated visualization** layer shipped in the 2026-06 Dash→React migration and is **live on Cloud Run** (private + IAP, 3-stage node-build→python image in [`deploy/webapi/`](deploy/webapi/); auto-deploys on merge to `main` via [`.github/workflows/webapi-deploy.yml`](.github/workflows/webapi-deploy.yml); `make webapi-deploy` is the **env-change** path). Looker Studio is the second consumption path and remains available in parallel. Spec/history of the migration: [`PLANS/react_migration_contract_map.md`](PLANS/react_migration_contract_map.md).
 
 ---
 
@@ -82,6 +82,8 @@ embrapa-dashboard-commodities/
 │   ├── discover.py                   # Auxiliary helpers (not used in the pipeline)
 │   ├── doctor.py                     # Diagnostics + SOURCE_CHECKS / BRONZE_TARGETS registry
 │   ├── backup.py                     # Gold snapshot → GCS (introspection via list_tables)
+│   ├── reconcile_check.py            # Read-only: did any OLD year change upstream? (pre-`reconcile` evidence)
+│   ├── release.py                    # Running version + its CHANGELOG release date (Sobre page)
 │   ├── monitor/                      # Live progress monitor (`embrapa monitor`)
 │   │   ├── state.py                  # State + JSONL event parsing
 │   │   └── render.py                 # Rich rendering (progress table)
@@ -210,7 +212,7 @@ embrapa-dashboard-commodities/
 ├── deploy/                           # ⭐ Cloud Run deploy artifacts (operator-run)
 │   ├── webapi/                       # Dashboard SERVICE: 3-stage Dockerfile (node build →
 │   │                                 #   python deps → runtime), cloudbuild.yaml, deploy.sh
-│   │                                 #   (`make webapi-deploy`; private + IAP)
+│   │                                 #   (auto-deploys on merge; private + IAP)
 │   ├── ingestion/                    # Ingestion JOB: Dockerfile, deploy.sh, schedule*.sh
 │   │                                 #   (nightly / monthly reconcile / monthly Comtrade), alert.sh
 │   └── iam/                          # grant_least_privilege.sh (`make iam-grant`)
@@ -240,6 +242,7 @@ embrapa-dashboard-commodities/
 │   ├── test_gcp_storage.py
 │   ├── test_backup.py
 │   ├── test_doctor.py
+│   ├── test_reconcile_check.py
 │   ├── test_monitor.py
 │   ├── test_observability.py
 │   └── test_observability_helpers.py
@@ -354,7 +357,7 @@ as a per-run stamped object (append-only trail).
 Two parallel paths, both reading the same Gold tables — they are not exclusive and can coexist:
 
 - **Looker Studio** (no-code): direct connection to the Gold tables (`gold.gold_pevs_production`, `gold.gold_comex_flows`). Good for standardized reports and quick exploration without a deploy. Available now.
-- **Dedicated dashboard (React SPA + Flask REST API) on Cloud Run, behind IAP — stateless, Pushdown Computing**: a tailored frontend for researchers, live since the 2026-06 Dash→React migration. It does **not** load Gold tables into memory (Pandas) behind a global lock — that design was dropped due to OOM and concurrency risk. The Flask backend ([`src/embrapa_dashboard/webapi/`](src/embrapa_dashboard/webapi/)) translates each UI filter into **parameterized SQL** (`@param`) over the **`serving`** layer (pre-aggregated marts), with **flask-caching** on the results; curation uses an **append-only log + SCD Type 2** (see §§ [Serving Layer](#serving-layer--pushdown-computing-webapi-dashboard) and [Dynamic Curation](#dynamic-curation--append-only-log--scd-type-2)). The data-access layer (BFF) lives in [`src/embrapa_dashboard/serving/`](src/embrapa_dashboard/serving/); the SPA in [`frontend/`](frontend/) (React/Vite UI + Plotly.js charts); the Dockerfile/Cloud Run deploy in [`deploy/webapi/`](deploy/webapi/) (`make webapi-deploy`).
+- **Dedicated dashboard (React SPA + Flask REST API) on Cloud Run, behind IAP — stateless, Pushdown Computing**: a tailored frontend for researchers, live since the 2026-06 Dash→React migration. It does **not** load Gold tables into memory (Pandas) behind a global lock — that design was dropped due to OOM and concurrency risk. The Flask backend ([`src/embrapa_dashboard/webapi/`](src/embrapa_dashboard/webapi/)) translates each UI filter into **parameterized SQL** (`@param`) over the **`serving`** layer (pre-aggregated marts), with **flask-caching** on the results; curation uses an **append-only log + SCD Type 2** (see §§ [Serving Layer](#serving-layer--pushdown-computing-webapi-dashboard) and [Dynamic Curation](#dynamic-curation--append-only-log--scd-type-2)). The data-access layer (BFF) lives in [`src/embrapa_dashboard/serving/`](src/embrapa_dashboard/serving/); the SPA in [`frontend/`](frontend/) (React/Vite UI + Plotly.js charts); the Dockerfile/Cloud Run deploy in [`deploy/webapi/`](deploy/webapi/) — auto-deploys on merge to `main` via [`.github/workflows/webapi-deploy.yml`](.github/workflows/webapi-deploy.yml); `make webapi-deploy` is the **env-change** path.
 
 ---
 
