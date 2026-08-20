@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.19] - 2026-08-20
+
+**O Service ficou defasado do Gold que ele lê, e derrubou as views de cruzamento.**
+
+### Fixed
+- **Incidente (resolvido no mesmo dia):** o `dbt build` da v1.24.18 publicou as linhas
+  `pam`/`ppm` no `gold_produto_agrupamento` de produção, mas o Service seguia na v1.24.14 —
+  cuja `produto_catalog()` indexava um dicionário fixo `pevs/comex/comtrade` por
+  `c[r.source]`. A primeira linha `pam` levantava `KeyError` e **todas as views multi-fonte
+  respondiam 500**. Reproduzido contra o crosswalk real antes de corrigir; Service atualizado
+  para v1.24.18 e verificado.
+
+  A causa não foi o código: **a correção do `KeyError` estava no próprio PR que quebrou**. Foi
+  a assimetria de entrega — mudanças de dbt chegam à produção no instante do build, mudanças de
+  Service só no deploy manual —, que abre uma janela em que o Gold já mudou e o código que o lê
+  ainda não.
+
+### Added
+- **Workflow `Deploy webapi service`**: a cada merge no `main` que toque
+  `src/embrapa_dashboard/**`, `frontend/**`, `pyproject.toml`, `uv.lock` ou `deploy/webapi/**`,
+  reconstrói a imagem e aponta o Service com `gcloud run services update --image` cirúrgico —
+  env, secret, SA de runtime, escalonamento e anotações do IAP persistem. Depois **lê o Service
+  de volta** e falha se a imagem, qualquer env var crítica ou o `iap-enabled` não tiverem
+  sobrevivido.
+
+  Fecha a mesma classe que o `ingestion-job-deploy.yml` fechou para o Job — que existia porque
+  aquela imagem tinha ficado um mês atrás do `main`. Os dois artefatos agora se mantêm no HEAD
+  sozinhos.
+
+  Requer configuração GCP one-time (identidade `sa-webapi-deploy-ci` + variável
+  `GCP_WEBAPI_DEPLOY_SERVICE_ACCOUNT`), documentada no cabeçalho. **Enquanto a variável não
+  existir o job pula** (verde), então o merge não muda nada.
+
 ## [1.24.18] - 2026-08-20
 
 **PAM e PPM entram na ponte entre fontes.** A castanha-de-caju passa a cruzar quatro fontes,
