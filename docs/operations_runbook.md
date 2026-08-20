@@ -237,6 +237,13 @@ Operator steps (one-time per deployment):
    `IAP_AUDIENCE` armed instead of dropping it — which previously forced an
    out-of-band / image-only deploy to restore. (`FEEDBACK_GITHUB_REPO` belongs here
    too.) Then run `make webapi-deploy`.
+
+   > ℹ️ This is the **env-change** path, and the only one that needs `.env.prod`. A
+   > **code-only** change needs none of this: merging to `main` triggers
+   > `.github/workflows/webapi-deploy.yml`, which swaps ONLY the image
+   > (`gcloud run services update --image`) and leaves env, secrets and the IAP
+   > annotations untouched. Don't reach for `deploy.sh` to ship code — from a machine
+   > without `.env.prod` it would strip `IAP_AUDIENCE` and disarm the in-app IAP check.
 3. Verify: a curation save in prod records the IAP identity; with a wrong
    audience the write is rejected rather than silently mis-attributed.
 

@@ -20,6 +20,42 @@ through OAuth + service account impersonation.
 
 **Estimated time:** 10-15 minutes
 
+## CI service accounts (keyless, via Workload Identity Federation)
+
+Separate from the human/pipeline identities below: GitHub Actions authenticates with
+**no service-account keys**, through a WIF pool (`github`) that maps this repository to a
+dedicated identity **per purpose**. There is one SA per workflow rather than a shared
+"CI" SA, so a compromised workflow cannot do another one's job.
+
+| Service account | Used by | Can do |
+|---|---|---|
+| `sa-dbt-build-ci` | `ci.yml`, `dbt-build-prod.yml`, `dbt-source-freshness.yml` | build prod Silver/Gold in BigQuery |
+| `sa-release-ci` | `release.yml` | push the release image |
+| `sa-ingest-deploy-ci` | `ingestion-job-deploy.yml` | push + update the ingestion **Job** |
+| `sa-webapi-deploy-ci` | `webapi-deploy.yml` | push + update the webapi **Service** image |
+| `sa-dashboard-smoke-ci` | ⚠️ **nothing, currently** | invoke the Service |
+
+> ⚠️ `sa-dashboard-smoke-ci` is a **leftover**: it still exists, still has its
+> `GCP_SMOKE_SERVICE_ACCOUNT` repo variable and its WIF binding, but **no workflow
+> references it** — verified 2026-08-20. It belonged to the smoke test that was removed
+> along with the Dash UI. Standing keyless access that nothing uses is access worth
+> removing; delete the SA and the variable, or wire up the smoke check it was meant for.
+
+**The exact `gcloud` commands for each live in the header comment of the workflow that
+uses it** — deliberately, so the grant and the thing it enables never drift apart. This
+table is the index; the workflow header is the source of truth.
+
+Two recurring gotchas, both already documented in those headers:
+
+- Bindings are scoped to the **resource** (this Artifact Registry repo, this Cloud Run
+  service, this runtime SA), never project-wide. Deploying a service that *runs as*
+  another SA additionally needs `roles/iam.serviceAccountUser` **on that runtime SA**.
+- A fresh `workloadIdentityUser` binding takes **~2 minutes to propagate**. A workflow run
+  started immediately fails with a 403 on `iam.serviceAccounts.getAccessToken`; just re-run
+  it — no config change is needed.
+
+---
+
 ## Step 1: Authenticate as Admin
 
 ```bash
