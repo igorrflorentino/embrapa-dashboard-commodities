@@ -263,3 +263,99 @@ def test_feedback_invalid_iap_assertion_is_403(monkeypatch):
     resp = client.post("/api/feedback", json={"category": "bug", "message": "oi"})
     assert resp.status_code == 403
     assert "error" in resp.get_json()
+
+
+# ── the authz fall-throughs and the group routes (coverage-gate re-arm, 2026-08-20) ──
+#
+# The two authz tests below are the security-relevant ones: both assert the endpoint
+# FAILS CLOSED. An allowlist that cannot be read must never be mistaken for an empty
+# allowlist, because empty means "open to every IAP caller" by design.
+
+
+def test_catalog_write_is_503_when_the_editor_allowlist_cannot_be_ensured(monkeypatch):
+    """Empty allowlist = open mode — but ONLY when we could confirm the table's state.
+
+    If ensuring the table failed, an empty read is indistinguishable from "allowlist
+    unavailable". Admitting everyone there would silently open the catalog to any IAP
+    caller, so the endpoint refuses with 503 instead.
+    """
+    from embrapa_dashboard.webapi import routes
+
+    client = _client(monkeypatch, dev_author="alice@embrapa.br")
+    monkeypatch.setattr(routes, "_ensure_catalog_editors_table", lambda: False)
+    monkeypatch.setattr(routes, "_catalog_editor_allowlist", lambda _r: set())
+
+    resp = client.post("/api/catalog/entry", json={"codigo_produto": "4403", "banco": "pevs"})
+    assert resp.status_code == 503
+    assert "indisponível" in resp.get_json()["error"]
+
+
+def test_can_edit_reports_false_when_the_allowlist_lookup_faults(monkeypatch):
+    """`/me`'s can_edit is only a UX affordance, but a lookup fault must still read as
+    "cannot edit" (hide the controls) rather than leaking an optimistic true."""
+    from embrapa_dashboard.webapi import routes
+
+    client = _client(monkeypatch, dev_author="alice@embrapa.br")
+
+    def boom(_resource):
+        raise RuntimeError("bigquery down")
+
+    monkeypatch.setattr(routes, "_catalog_editor_allowlist", boom)
+    monkeypatch.setattr(routes.seam, "catalog_worklist", lambda _b=None: [])
+    monkeypatch.setattr(routes.seam, "catalog_driven_bancos", lambda: [])
+    body = client.get("/api/catalog/entries").get_json()
+    assert body["can_edit"] is False
+
+
+def test_group_worklist_is_readable_behind_iap(monkeypatch):
+    """Read is open behind IAP — no editor allowlist required."""
+    from embrapa_dashboard.webapi import routes
+
+    client = _client(monkeypatch, dev_author="alice@embrapa.br")
+    monkeypatch.setattr(
+        routes.seam, "group_worklist", lambda: [{"group_id": "g1", "group_name": "Madeira", "n": 3}]
+    )
+    resp = client.get("/api/catalog/groups")
+    assert resp.status_code == 200
+    assert resp.get_json()[0]["group_name"] == "Madeira"
+
+
+def test_group_upsert_rejects_a_missing_name_before_writing(monkeypatch):
+    """A nameless group would be unidentifiable in the UI forever (the log is
+    append-only), so the write is refused rather than recorded."""
+    from embrapa_dashboard.webapi import routes
+
+    client = _client(monkeypatch, dev_author="alice@embrapa.br")
+    monkeypatch.setattr(routes, "_ensure_catalog_editors_table", lambda: True)
+    monkeypatch.setattr(routes, "_catalog_editor_allowlist", lambda _r: set())
+    recorded = []
+    monkeypatch.setattr(routes.seam, "record_group", lambda b: recorded.append(b) or {})
+
+    resp = client.post("/api/catalog/group", json={"group_name": "   "})
+    assert resp.status_code == 400
+    assert recorded == []  # nothing was written
+
+
+def test_group_remove_requires_an_editor(monkeypatch):
+    """The delete path goes through the same allowlist as every other catalog write."""
+    from embrapa_dashboard.webapi import routes
+
+    client = _client(monkeypatch)  # no identity at all
+    monkeypatch.setattr(routes, "ensure_catalog_editors_table", lambda: None)
+    resp = client.post("/api/catalog/group/remove", json={"group_id": "g1"})
+    assert resp.status_code == 401
+
+
+def test_group_upsert_requires_an_editor(monkeypatch):
+    """The create/rename path goes through the same allowlist as every other catalog
+    write — no identity, no write (and the 401 comes back before the body is even read)."""
+    from embrapa_dashboard.webapi import routes
+
+    client = _client(monkeypatch)  # no identity at all
+    monkeypatch.setattr(routes, "ensure_catalog_editors_table", lambda: None)
+    recorded = []
+    monkeypatch.setattr(routes.seam, "record_group", lambda b: recorded.append(b) or {})
+
+    resp = client.post("/api/catalog/group", json={"group_name": "Madeira"})
+    assert resp.status_code == 401
+    assert recorded == []

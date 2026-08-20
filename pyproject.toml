@@ -1,6 +1,6 @@
 [project]
 name = "embrapa-dashboard"
-version = "1.24.26"
+version = "1.24.27"
 description = "Medallion pipeline (IBGE PEVS + PAM + PPM + BCB + COMEX + UN Comtrade) → BigQuery → Looker Studio + React/Flask dashboard"
 readme = "README.md"
 requires-python = "==3.12.*"
@@ -103,6 +103,14 @@ source = ["src/embrapa_dashboard"]
 
 [tool.coverage.report]
 show_missing = true
+# WITHOUT this the gate does not gate. coverage decides with
+# `round(total, precision) < fail_under`, and precision DEFAULTS TO 0 — so
+# `--cov-fail-under=99` accepted anything that rounds to 99, i.e. >=98.5%, while the
+# log printed a reassuring-looking `FAIL Required test coverage of 99% not reached`
+# line that never affected the exit code. Measured 2026-08-20: 0.38% coverage still
+# exited 0, and the real total had quietly drifted to 98.79%. precision=2 makes the
+# comparison exact, so 99 means 99.
+precision = 2
 # Conventional NON-testable lines excluded so the % reflects real, reachable logic:
 # the `python -m`/script entry guard, type-checking-only imports, abstract stubs, and
 # anything a maintainer explicitly marks `# pragma: no cover`.
