@@ -27,6 +27,14 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
   const [failed, setFailed] = useState(false);
+  // TRUE once map.on('load') has added the 'uf-fill' layer. It is a dependency of the
+  // paint effect, not just a flag: the load callback is created on the FIRST render and
+  // closes over that render's (empty) `data`, so calling paint() from inside it painted
+  // the no-data grey and nothing re-ran it — the choropleth stayed colourless until the
+  // researcher happened to change a metric, which re-fired the effect with the layer now
+  // present. Flipping state instead lets the effect below repaint with CURRENT data.
+  // (The hover path already dodged the same stale closure via lookupRef.)
+  const [layerReady, setLayerReady] = useState(false);
 
   // uf -> { name, value, label } for the hover popup, kept in a ref so the map's
   // event handlers always read the latest data without re-binding listeners.
@@ -95,7 +103,9 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
         map.addSource('uf', { type: 'geojson', data: UF_GEO });
         map.addLayer({ id: 'uf-fill', type: 'fill', source: 'uf', paint: { 'fill-color': NODATA, 'fill-opacity': 0.9 } });
         map.addLayer({ id: 'uf-line', type: 'line', source: 'uf', paint: { 'line-color': '#ffffff', 'line-width': 0.8 } });
-        paint();
+        // Signal readiness rather than paint()ing here: this callback's `data` is frozen
+        // at the first render (see layerReady).
+        setLayerReady(true);
         map.on('mousemove', 'uf-fill', onMove);
         map.on('mouseleave', 'uf-fill', onLeave);
       });
@@ -141,7 +151,9 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
       if (map) map.remove();
       mapRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // No suppression needed any more: this effect used to call paint() — a value it did
+    // not declare — and the disable comment hid that. It now only flips layerReady, whose
+    // setter React guarantees stable, so the empty dependency list is genuinely correct.
   }, []);
 
   // Re-paint when the data / metric changes (no map rebuild). Guarded so it is a
@@ -153,8 +165,21 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
   function paint() {
     const map = mapRef.current;
     if (!map || typeof map.getLayer !== 'function') return;
-    if (typeof map.isStyleLoaded === 'function' && !map.isStyleLoaded()) return;
-    if (!map.getLayer('uf-fill')) return;
+    // DEFER, don't give up. These two conditions are transient — the style is still
+    // settling right after addSource/addLayer, and 'uf-fill' does not exist until the
+    // async load handler runs. Returning silently (what this used to do) made every such
+    // moment PERMANENT: nothing re-ran paint, so the map kept the no-data grey until the
+    // researcher happened to change a metric, which re-fired the effect once everything
+    // had settled. That workaround was the only reason the map ever showed colour.
+    // 'idle' fires when the map has finished loading and rendering, and `once` removes
+    // itself, so this retries exactly as often as needed and never stacks handlers.
+    const notReady =
+      (typeof map.isStyleLoaded === 'function' && !map.isStyleLoaded()) ||
+      !map.getLayer('uf-fill');
+    if (notReady) {
+      if (typeof map.once === 'function') map.once('idle', paint);
+      return;
+    }
     try {
       const { byUf } = ufColorScale(data, valueKey);
       map.setPaintProperty('uf-fill', 'fill-color', fillColorExpression(byUf));
@@ -167,10 +192,14 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
       }
     }
   }
+  // `paint` is re-created every render, so it stays OUT of the dependency list (listing
+  // it would repaint on every render); the values it actually reads — data, valueKey and
+  // layerReady — are all here, which is what matters. layerReady is the one this effect
+  // was missing: without it the effect never re-ran after the layer appeared.
   useEffect(() => {
     paint();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, valueKey]);
+  }, [data, valueKey, layerReady]);
 
   if (failed) {
     return (
