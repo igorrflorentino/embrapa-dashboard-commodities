@@ -772,3 +772,57 @@ def test_check_catalog_data_arrival_degrades_on_error(monkeypatch, settings: Set
     r = doctor._check_catalog_data_arrival(settings)
 
     assert r.ok is True and r.detail.startswith("skipped:")
+
+
+# ── advisory fall-throughs that were never exercised (coverage-gate re-arm, 2026-08-20) ──
+#
+# `doctor` is a health REPORT: a probe that cannot answer must degrade to an advisory
+# line, never crash the whole report or — worse — report a false green.
+
+
+def test_check_ibge_variable_codes_degrades_when_the_config_read_faults(
+    monkeypatch, settings: Settings
+) -> None:
+    """A malformed/unreadable variable-code config must surface as a FAILED check with
+    the reason, not raise out of `doctor` and take every remaining probe with it."""
+
+    class _Boom:
+        def __getattr__(self, name):
+            raise RuntimeError("config exploded")
+
+    r = doctor._check_ibge_variable_codes(_Boom())
+
+    assert r.ok is False
+    assert "config exploded" in r.detail
+
+
+def test_check_catalog_resolver_parity_is_advisory_when_the_catalog_read_faults(
+    monkeypatch, settings: Settings
+) -> None:
+    """This probe DIFFS the catalog against .env — informational only. If the catalog
+    can't be read it reports `skipped` and stays ok=True: a curation-side fault must not
+    make the pipeline's health look broken."""
+    monkeypatch.setattr(
+        "embrapa_dashboard.ibge.catalog_resolver.read_catalog_codes",
+        MagicMock(side_effect=RuntimeError("research_inputs absent")),
+    )
+
+    r = doctor._check_catalog_resolver_parity(settings)
+
+    assert r.ok is True
+    assert "skipped" in r.detail
+
+
+def test_check_catalog_resolver_parity_falls_back_to_env_when_the_catalog_is_empty(
+    monkeypatch, settings: Settings
+) -> None:
+    """An empty catalog is the pre-adoption state, not drift: the probe says so per
+    banco (`vazio→.env(n)`) instead of reporting every configured code as removed."""
+    monkeypatch.setattr(
+        "embrapa_dashboard.ibge.catalog_resolver.read_catalog_codes", MagicMock(return_value=[])
+    )
+
+    r = doctor._check_catalog_resolver_parity(settings)
+
+    assert r.ok is True
+    assert "vazio→.env(" in r.detail

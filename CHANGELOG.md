@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.24.27] - 2026-08-20
+
+### Fixed
+- **O portão de cobertura não gateava — agora gateia.** `--cov-fail-under=99` comparava a
+  cobertura **arredondada**:
+
+  ```python
+  round(total, precision) < fail_under     # precision default = 0
+  round(98.79, 0) == 99  →  99 < 99  →  False  →  passa
+  ```
+
+  Na prática o portão de "99%" exigia **≥98,5%**, e a linha
+  `FAIL Required test coverage of 99% not reached` que aparecia no log do CI era
+  **cosmética** — o job seguia verde. Comprovado pelo extremo: **0,38% de cobertura ainda
+  saía com exit 0**. Sem ninguém perceber, a cobertura total já tinha escorregado para
+  **98,79%**.
+
+  Correção: `precision = 2` em `[tool.coverage.report]`, com a explicação ao lado. Agora
+  99 quer dizer 99. Verificado nos dois sentidos: 0,38% → exit **1**; 99,12% → exit **0**;
+  limiar inatingível de 99,5 → exit **1**.
+
+### Added
+- **17 testes cobrindo guardas que nunca tinham sido exercitadas**, subindo a cobertura de
+  98,79% para **99,12%** (60 linhas descobertas, margem de 7 até o teto). Escolhidos por
+  serem **rejeições e caminhos fail-closed** — onde um defeito silencioso é mais caro —
+  e não por serem fáceis de cobrir:
+
+  - **`webapi/routes.py`** — o 503 quando a allowlist de editores não pôde ser confirmada
+    (allowlist vazia significa "aberto a qualquer chamador IAP" **por design**, então uma
+    leitura vazia que na verdade é "indisponível" jamais pode ser confundida com ela);
+    `can_edit` virando `false` quando a consulta falha; e as três rotas de agrupamento
+    exigindo editor.
+  - **`serving/curation.py`** — a rejeição de eixo com erro de digitação (a docstring cita
+    `'ocluto'` pelo nome: armazenado em silêncio, deixaria em exibição um produto que o
+    pesquisador quis ocultar); banco desconhecido, que é a **única** camada que valida isso;
+    e as quedas `NotFound`/`BadRequest` que significam "nada armazenado ainda" — deliberadamente
+    estreitas, para que uma falha transitória do BigQuery nunca apague a anotação de um
+    pesquisador.
+  - **`doctor.py`** — as saídas consultivas: uma sonda que não consegue responder degrada
+    para uma linha informativa, nunca derruba o relatório inteiro nem reporta verde falso.
+
+  **Não** cobri `serving/attribute_engineering.py` (20 linhas, a maior fatia restante):
+  é a Engenharia de Atributos, congelada e oculta da UI. Testar código congelado só para
+  subir número é enchimento.
+
+---
+
 ## [1.24.26] - 2026-08-20
 
 ### Added

@@ -17,7 +17,7 @@ from __future__ import annotations
 from unittest import mock
 
 import pytest
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import BadRequest, NotFound
 
 from embrapa_dashboard.serving import iap
 from tests.test_serving import _bind_simplecache, _isolated_settings
@@ -777,3 +777,132 @@ def test_current_sidra_tabela_reads_stored_absent_and_pre_migration(monkeypatch)
     boom2 = mock.Mock()
     boom2.query.side_effect = BadRequest("Unrecognized name: sidra_tabela")
     assert curation._current_sidra_tabela(boom2, "t.r.log", "3405", "ppm") is None
+
+
+# ── the guards that were never exercised (coverage-gate re-arm, 2026-08-20) ────
+#
+# Every test below covers a REJECTION or a FALL-THROUGH: the paths that decide what
+# the Curadoria writer refuses, and what it treats as "nothing stored yet". They are
+# the cheapest place for a silent data defect to hide, which is why they are worth a
+# test rather than a coverage waiver.
+
+
+def test_ensure_log_table_warns_but_survives_a_failed_column_backfill(monkeypatch, caplog):
+    """A late-added column that cannot be ALTERed in must not abort the write path.
+
+    `create_table(exists_ok=True)` never adds columns to a table that predates one, so
+    the writer ALTERs them in. If that ALTER fails (permissions, a concurrent DDL), the
+    caller still needs the table reference back — raising here would take down every
+    catalog edit over a column that may not even be needed by this write.
+    """
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)
+    bq = mock.Mock()
+    bq.query.side_effect = RuntimeError("denied")
+
+    with caplog.at_level("WARNING"):
+        fqn = curation.ensure_produto_catalog_log_table(_settings(), bq)
+
+    assert fqn.endswith("produto_catalog_log")
+    assert any("Could not ensure" in r.message for r in caplog.records)
+
+
+def test_add_catalog_editor_rejects_a_blank_email(monkeypatch):
+    """An empty email would append an allowlist row matching nobody — or, worse, be
+    read back as an entry that silently widens who can edit."""
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    monkeypatch.setattr(curation, "ensure_catalog_editors_table", lambda *a, **k: "t.editors")
+    bq = mock.Mock()
+
+    with pytest.raises(ValueError, match="email is required"):
+        curation.add_catalog_editor("produto_catalog", "   ", settings=_settings(), client=bq)
+    bq.query.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("ingestao", "visibilidade", "trecho"),
+    [
+        ("pausadaa", None, "ingestao"),
+        (None, "ocluto", "visibilidade"),  # the typo the docstring calls out by name
+    ],
+)
+def test_validate_lifecycle_rejects_a_misspelled_axis(ingestao, visibilidade, trecho):
+    """A typo must RAISE, never pass through. 'ocluto' silently stored would leave a
+    produto the researcher meant to hide still on display for every reader."""
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    with pytest.raises(ValueError, match=trecho):
+        curation._validate_lifecycle(ingestao, visibilidade)
+
+
+@pytest.mark.parametrize("boom", [NotFound("no table"), BadRequest("no column")])
+def test_current_descricao_reads_the_pre_migration_shapes_as_nothing_stored(boom):
+    """Absent table / absent column = "no annotation yet", which is a legitimate state
+    before the migration. Narrow on purpose: any OTHER fault propagates, so a transient
+    BQ error can never be mistaken for "the researcher had no note" and erase one."""
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    bq = mock.Mock()
+    bq.query.side_effect = boom
+    assert curation._current_descricao(bq, "t.log", "3405", "ibge_pevs") is None
+
+
+@pytest.mark.parametrize("boom", [NotFound("no table"), BadRequest("no column")])
+def test_current_lifecycle_reads_the_pre_migration_shapes_as_nothing_stored(boom):
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    bq = mock.Mock()
+    bq.query.side_effect = boom
+    assert curation._current_lifecycle(bq, "t.log", "3405", "ibge_pevs") == (None, None)
+
+
+def test_current_lifecycle_returns_none_pair_when_the_code_has_no_row():
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    bq = mock.Mock()
+    bq.query.return_value.result.return_value = []
+    assert curation._current_lifecycle(bq, "t.log", "3405", "ibge_pevs") == (None, None)
+
+
+def test_check_code_status_hard_rejects_an_unknown_banco():
+    """The ONLY layer that validates the banco. A junk token writes a row that never
+    joins in gold_produto_agrupamento — orphaned data nobody would notice."""
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    with pytest.raises(ValueError, match="banco"):
+        curation._check_code_status(mock.Mock(), "t.log", "3405", "ibge_pevsx", is_active=False)
+
+
+def test_check_code_status_is_advisory_when_gold_is_not_built_yet(monkeypatch):
+    """A code with no Gold table behind it is NOT an error: the catalog now drives
+    ingestion, so a researcher registers a produto precisely so the next run fetches it."""
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    monkeypatch.setattr(
+        curation.gateway,
+        "fetch_source_code_stats",
+        mock.Mock(side_effect=NotFound("gold not built")),
+    )
+    curation._check_code_status(mock.Mock(), "t.log", "3405", "pevs", is_active=False)
+
+
+def test_check_code_status_is_advisory_when_gold_has_no_codes(monkeypatch):
+    pytest.importorskip("flask_caching")
+    import pandas as pd
+
+    from embrapa_dashboard.serving import curation
+
+    monkeypatch.setattr(
+        curation.gateway, "fetch_source_code_stats", mock.Mock(return_value=pd.DataFrame())
+    )
+    curation._check_code_status(mock.Mock(), "t.log", "3405", "pevs", is_active=False)
