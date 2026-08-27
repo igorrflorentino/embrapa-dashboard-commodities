@@ -565,8 +565,13 @@ def serialize_productivity(payload: dict | None) -> dict | None:
         "areaUnit": "ha",
         "series": [],
         # ProductivityData.national is {yieldKgHa, areaHa, prodT, yieldCagr} — the
-        # latest-year national totals + the CAGR over the covered span.
+        # latest-year totals + the CAGR over the covered span. "national" is the key's
+        # historical name; with `states` non-empty these are the SELECTED states'
+        # figures, and the view relabels them from that field rather than keeping the
+        # word "nacional" over a subset (yield is a ratio — a subset's is a different
+        # number, not a smaller one).
         "national": {"yieldKgHa": 0.0, "areaHa": 0.0, "prodT": 0.0, "yieldCagr": 0.0},
+        "states": payload.get("states", []),
         "byUF": [],
     }
     if _empty(df):
@@ -669,8 +674,11 @@ def serialize_export_coef(d: dict) -> dict:
         "preview": False,
         "unit": d.get("unit", ""),
         "byUf": d.get("by_uf", []),
+        # "national" is the key's historical name; with `states` non-empty these are
+        # the SELECTED states' figures, and the view relabels from that field.
         "national": d.get("national", {}),
         "timeseries": d.get("timeseries", []),
+        "states": d.get("states", []),
     }
     if d.get("incompatible"):
         out["incompatible"] = True

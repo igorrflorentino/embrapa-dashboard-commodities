@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.28.0] - 2026-08-27
+
+Os três leitores que **ignoravam o filtro de UF** passam a honrá-lo. Ficou registrado
+como achado na v1.27.0: `/api/product-uf`, `/api/productivity` e
+`/api/cross/export-coef` não aceitavam recorte por estado, então seus mapas mostravam
+as 27 UFs enquanto o resto da sessão estava filtrado.
+
+### Fixed
+- **`/api/product-uf`** (Perfil do produto · "Onde X é produzido", e o mapa por UF do
+  Rebanho) e **`/api/productivity`** (Produtividade) passam a aceitar `states`;
+  `production_by_uf`, `comex_by_uf` e `productivity` ganharam `uf_codes`.
+
+  O recorte é aplicado **antes** do pin de ano mais recente, de propósito: com filtro
+  de UF ativo o ano de referência deve ser o último que **aqueles** estados têm, não o
+  do país. Um estado cuja série termina antes fixaria num ano sem linhas e leria como
+  tendo parado de produzir.
+
+- **`/api/cross/export-coef`** narra **os dois lados da razão** — produção (PEVS) e
+  exportação (COMEX) — mais o agregado. Estreitar só a produção dividiria a saída do
+  estado pela exportação do país inteiro e desinflaria o coeficiente em silêncio: um
+  número errado, não um número menor. Verificado: Castanha-do-pará dá **35,5%**
+  nacional e **52,0%** recortado no PA — exatamente o que o quadrinho do PA já
+  mostrava no mapa nacional.
+
+- **Efeitos de busca que não refariam a consulta.** Os dois consumidores de
+  `/api/product-uf` montam o fetch num `useEffect` cujo array de dependências não
+  tinha o recorte de UF — a requisição sairia com o filtro novo só por acidente de
+  re-render. Passam a depender de uma chave primitiva derivada (`ufScopeKey`), que
+  preserva a distinção entre "sem filtro" (`null`) e "nenhum selecionado" (`''`);
+  depender do array cru refaria a busca a cada render.
+
+### Changed — rótulos que precisavam acompanhar
+Encanamento sozinho teria criado uma desonestidade **nova**, pior que a de antes:
+rendimento e coeficiente são **razões**, então recortar não devolve "menos" do mesmo
+número — devolve **outro** número.
+
+- **Produtividade**: "Rendimento nacional" vira "Rendimento no PA" quando há recorte.
+  Medido: arroz dá **6.728 kg/ha** nacional e **3.276 kg/ha** no PA — menos da metade.
+  Sem o rótulo, a tela mostraria 3.276 kg/ha sob a palavra "nacional".
+- **Coeficiente de exportação**: "Coeficiente nacional" vira "Coeficiente · PA".
+- `ui/geoSelect.js` ganhou `geoScopeLabel(states)`, a fonte única dessa palavra.
+
+### Changed — de onde vem o recorte no cruzamento
+O **Coeficiente de exportação** ganhou seletor **próprio** de UF (`UfScopePicker`),
+não o filtro global — igual à view irmã Preço porteira×FOB, que já fazia assim.
+
+As perspectivas cruzadas **escondem a barra de filtros** de propósito (`isDataView`
+as exclui: "no single-banco filter surface"). Fazê-la honrar silenciosamente um
+filtro que o pesquisador não vê nem controla naquela tela estreitaria o mapa por um
+motivo invisível na página — o oposto do que esta série de versões vem corrigindo. O
+recorte server-side é o mesmo; só a origem do valor muda.
+
+---
+
 ## [1.27.0] - 2026-08-27
 
 Leva à **app inteira** o que a v1.25.0 tinha entregue só à Geografia, e fecha a

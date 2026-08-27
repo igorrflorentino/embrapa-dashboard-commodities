@@ -490,12 +490,20 @@ def _apply_banco_metadata(meta: dict, banco_id: str) -> None:
 def product_uf_ranking(
     banco_id: str, code: str, conv: dict, summary: dict | None = None
 ) -> pd.DataFrame | None:
-    """Per-UF value for a single product (backs the Perfil do produto ranking)."""
+    """Per-UF value for a single product (backs the Perfil do produto ranking and
+    the Rebanho per-UF map).
+
+    Honours the UF filter. It did not before, which made both consumers show all 27
+    states while the rest of the screen was narrowed to the researcher's selection —
+    the same "displayed value computed over a different dataset than the filter"
+    the geography audit removed everywhere else.
+    """
     banco = banco_by_id(banco_id)
     if banco_id not in _LIVE_SOURCES or "geo" not in banco.provides:
         return None
     value_col, _ = effective_value_column(banco, conv)
     y0, y1 = _years_from_summary(summary)
+    states = _states(summary)
     if banco_id == "mdic_comex":
         # Pin exports only: SG_UF_NCM is the UF *of the product*, so on import rows the
         # real direction is country→UF — summing export+import per UF would inflate and
@@ -503,10 +511,20 @@ def product_uf_ranking(
         # the per-UF ranking would sum both flows while the rest of the screen honours
         # the selected direction — internally-inconsistent numbers in one session.
         return gateway.fetch_comex_by_uf(
-            year_start=y0, year_end=y1, ncm_codes=(code,), value_column=value_col, flow="export"
+            year_start=y0,
+            year_end=y1,
+            ncm_codes=(code,),
+            uf_codes=states,
+            value_column=value_col,
+            flow="export",
         )
     return gateway.fetch_production_by_uf(
-        year_start=y0, year_end=y1, product_codes=(code,), value_column=value_col, source=banco_id
+        year_start=y0,
+        year_end=y1,
+        product_codes=(code,),
+        uf_codes=states,
+        value_column=value_col,
+        source=banco_id,
     )
 
 
@@ -621,11 +639,17 @@ def geo_municipio_yearly(
 def productivity(banco_id: str, crop: str | None, summary: dict | None = None) -> dict | None:
     """Área × rendimento for one crop (backs ViewProductivity).
 
-    Returns ``{crops, active, active_name, rows}`` where ``rows`` is the per-(year,
-    UF) production + harvested-area frame for the active crop, or ``None`` when the
-    banco lacks the ``yield`` capability (the router gates the perspective before
-    this is reached). The serializer recomputes yield (= prod_kg / area_ha) and
+    Returns ``{crops, active, active_name, rows, states}`` where ``rows`` is the
+    per-(year, UF) production + harvested-area frame for the active crop, or ``None``
+    when the banco lacks the ``yield`` capability (the router gates the perspective
+    before this is reached). The serializer recomputes yield (= prod_kg / area_ha) and
     shapes the national series + per-UF latest-year geography.
+
+    Honours the UF filter, which it did not before. Note this is NOT a cosmetic
+    narrowing: yield is a RATIO, so restricting the rows changes the aggregate the
+    serializer recomputes — the "national" trajectory becomes the selected states'
+    trajectory. ``states`` is echoed back so the view can relabel it; presenting a
+    subset's ratio as a national figure would be a wrong number, not a smaller one.
     """
     banco = banco_by_id(banco_id)
     if banco_id not in _LIVE_SOURCES or "yield" not in banco.provides:
@@ -637,11 +661,15 @@ def productivity(banco_id: str, crop: str | None, summary: dict | None = None) -
     active = crop if (crop and crop in codes) else crops[0]["code"]
     active_name = next((c["name"] for c in crops if c["code"] == active), active)
     y0, y1 = _years_from_summary(summary)
+    states = _states(summary)
     return {
         "crops": crops,
         "active": active,
         "active_name": active_name,
-        "rows": gateway.fetch_productivity(active, source=banco_id, year_start=y0, year_end=y1),
+        "states": list(states),
+        "rows": gateway.fetch_productivity(
+            active, source=banco_id, year_start=y0, year_end=y1, uf_codes=states
+        ),
     }
 
 

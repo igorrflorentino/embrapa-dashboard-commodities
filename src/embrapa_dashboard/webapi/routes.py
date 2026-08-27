@@ -667,16 +667,22 @@ def snapshot():
 @api.get("/product-uf")
 def product_uf():
     """Real per-UF ranking for a single product (backs ViewProductProfile's
-    'Onde X é produzido' bars). currency+correction pick the deflated value column
-    server-side, same as /snapshot; optional startDate/endDate scope the year
-    window to match the view's filter. { uf: [] } when the banco has no geo grain."""
+    'Onde X é produzido' bars, and the Rebanho per-UF map). currency+correction pick
+    the deflated value column server-side, same as /snapshot; optional
+    startDate/endDate scope the year window and ``states`` the UF filter, to match
+    the view's own filter. { uf: [] } when the banco has no geo grain."""
     banco = request.args.get("banco", "")
     code = request.args.get("code", "")
     conv, err = _conversion_or_400()
     if err:
         return err
     start, end = request.args.get("startDate"), request.args.get("endDate")
-    summary = {"startDate": start, "endDate": end} if (start or end) else None
+    states = _csv_param(request.args.get("states"))
+    summary: dict | None = None
+    if start or end or states:
+        summary = {"startDate": start, "endDate": end}
+        if states:
+            summary["states"] = states
     df = seam.product_uf_ranking(banco, code, conv, summary)
     return jsonify(serializers.serialize_product_uf(df))
 
@@ -801,12 +807,21 @@ def productivity():
     `crop` picks the active crop (defaults to the first when absent). Yield (kg/ha)
     is recomputed server-side from production ÷ harvested area on the PAM mart;
     `null` when the banco lacks the `yield` capability. ``y0``/``y1`` scope the
-    year window to the view's active period filter (the product basket does NOT
-    apply — the crop selector is this view's own product dimension)."""
+    year window and ``states`` the UF filter (the product basket does NOT apply —
+    the crop selector is this view's own product dimension).
+
+    With ``states`` set, the payload's ``national`` block holds the SELECTED states'
+    figures and echoes ``states`` back: yield is a ratio, so a subset's is a
+    different number, and the view relabels rather than calling it national."""
     banco = request.args.get("banco", "")
     crop = request.args.get("crop") or None
     y0, y1 = request.args.get("y0"), request.args.get("y1")
-    summary = {"startDate": y0, "endDate": y1} if (y0 or y1) else None
+    states = _csv_param(request.args.get("states"))
+    summary: dict | None = None
+    if y0 or y1 or states:
+        summary = {"startDate": y0, "endDate": y1}
+        if states:
+            summary["states"] = states
     payload = seam.productivity(banco, crop, summary)
     return jsonify(serializers.serialize_productivity(payload))
 
@@ -950,7 +965,12 @@ def _commodity() -> str | None:
 
 @api.get("/cross/export-coef")
 def cross_export_coef():
-    return jsonify(serializers.serialize_export_coef(seam.export_coefficient(_commodity())))
+    """``states`` optionally narrows the export coefficient to origin UF(s) — BOTH
+    sides of the ratio (production and exports) and the aggregate, so the figure
+    stays a real coefficient rather than a subset over a national denominator."""
+    return jsonify(
+        serializers.serialize_export_coef(seam.export_coefficient(_commodity(), _uf_codes()))
+    )
 
 
 @api.get("/cross/market-share")

@@ -310,6 +310,7 @@ def production_by_uf(
     year_start: int | None = None,
     year_end: int | None = None,
     product_codes: Sequence[str] = (),
+    uf_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     latest_year_only: bool = True,
     has_measure_kind: bool = False,
@@ -336,6 +337,12 @@ def production_by_uf(
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
+    # `uf_codes` narrows to the researcher's selected states. It is applied BEFORE the
+    # latest-year pin below, deliberately: with a UF filter active the reference year
+    # must be the latest year THOSE states have, not the country's. A state whose
+    # series ends earlier would otherwise pin to a year it has no rows in and read as
+    # having stopped producing.
+    _in_array(conditions, params, "state_acronym", "uf_codes", uf_codes)
     if latest_year_only:
         # Pin to the latest year under the same filters (correlated subquery reuses
         # the same bound params) — appended last so the subquery's WHERE excludes it.
@@ -496,6 +503,7 @@ def productivity(
     product_code: str,
     year_start: int | None = None,
     year_end: int | None = None,
+    uf_codes: Sequence[str] = (),
 ) -> tuple[str, list]:
     """Production (t) + planted/harvested area (ha) by (year, UF) for ONE crop,
     from a PAM-shaped mart (``serving_pam_annual``; backs ViewProductivity).
@@ -504,10 +512,18 @@ def productivity(
     here; the seam recomputes it as ``production_kg / area_harvested_ha`` at each
     grain it needs (national per year, per UF for the latest year). ``product_code``
     is bound as a parameter (one crop at a time, picked by the view's selector).
-    ``year_start``/``year_end`` apply the view's active period filter."""
+    ``year_start``/``year_end`` apply the view's active period filter, and
+    ``uf_codes`` the state filter.
+
+    Because yield is a ratio, the UF filter is NOT cosmetic here: narrowing the rows
+    changes the aggregate the serializer recomputes, so the "national" series becomes
+    the selected states' series. The view relabels it accordingly — a ratio over a
+    subset presented as a national figure would be a wrong number, not a smaller one.
+    """
     conditions: list[str] = ["product_code = @product_code"]
     params: list = [bigquery.ScalarQueryParameter("product_code", "STRING", product_code)]
     _year_bounds(conditions, params, year_start, year_end)
+    _in_array(conditions, params, "state_acronym", "uf_codes", uf_codes)
     sql = f"""
         select
             reference_year,
@@ -774,6 +790,7 @@ def comex_by_uf(
     year_start: int | None = None,
     year_end: int | None = None,
     ncm_codes: Sequence[str] = (),
+    uf_codes: Sequence[str] = (),
     flow: str | None = None,
     value_column: str = "val_yearfx_usd",
     latest_year_only: bool = True,
@@ -798,6 +815,9 @@ def comex_by_uf(
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
     _in_array(conditions, params, "ncm_code", "ncm_codes", ncm_codes)
+    # See production_by_uf: applied before the latest-year pin so a UF filter reports
+    # the latest year THOSE states have, not the country's.
+    _in_array(conditions, params, "state_acronym", "uf_codes", uf_codes)
     _flow(conditions, params, flow)
     if latest_year_only:
         # Pin to the latest year under the same filters (correlated subquery reuses

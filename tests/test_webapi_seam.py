@@ -715,9 +715,15 @@ def test_productivity_threads_year_window_to_gateway(monkeypatch):
         lambda banco_id: pd.DataFrame([{"code": "2713", "name": "Café"}]),
     )
 
-    def fake_productivity(product_code, source="ibge_pam", year_start=None, year_end=None):
+    def fake_productivity(
+        product_code, source="ibge_pam", year_start=None, year_end=None, uf_codes=()
+    ):
         recorded.update(
-            product_code=product_code, source=source, year_start=year_start, year_end=year_end
+            product_code=product_code,
+            source=source,
+            year_start=year_start,
+            year_end=year_end,
+            uf_codes=uf_codes,
         )
         return pd.DataFrame(columns=["reference_year", "state_acronym"])
 
@@ -799,10 +805,16 @@ def test_export_coefficient_empty_for_commodity_without_comex_codes(monkeypatch)
     monkeypatch.setattr(
         _cross(),
         "_pevs_mass_by_year",
-        lambda codes: pytest.fail("must not query the unscoped totals"),
+        lambda codes, uf_codes=(): pytest.fail("must not query the unscoped totals"),
     )
     out = seam.export_coefficient("manicoba")
-    assert out == {"unit": "mil t", "by_uf": [], "national": {}, "timeseries": []}
+    assert out == {
+        "unit": "mil t",
+        "by_uf": [],
+        "national": {},
+        "timeseries": [],
+        "states": [],
+    }
 
 
 # ── export coefficient: by-UF/national restricted to the common year window ────
@@ -827,7 +839,9 @@ def test_export_coefficient_aligns_by_uf_window_to_common_years(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        _cross(), "_pevs_mass_by_year", lambda codes: {1986: 5.0, 1997: 10.0, 2000: 20.0}
+        _cross(),
+        "_pevs_mass_by_year",
+        lambda codes, uf_codes=(): {1986: 5.0, 1997: 10.0, 2000: 20.0},
     )
     monkeypatch.setattr(  # exp_weight (kg): years 1997/2000/2024
         _base(), "_xyear", lambda metric, codes, uf_codes=(): {1997: 2e9, 2000: 4e9, 2024: 1e9}
@@ -1865,10 +1879,148 @@ def test_export_coefficient_empty_timeseries_when_no_year_overlap(monkeypatch):
         "produto_catalog",
         lambda: {"c": {"name": "C", "pevs": ["1"], "comex": ["0801"], "comtrade": ["080121"]}},
     )
-    monkeypatch.setattr(_cross(), "_pevs_mass_by_year", lambda codes: {1986: 5.0})
+    monkeypatch.setattr(_cross(), "_pevs_mass_by_year", lambda codes, uf_codes=(): {1986: 5.0})
     monkeypatch.setattr(_base(), "_xyear", lambda metric, codes, uf_codes=(): {2022: 1e6})
     out = seam.export_coefficient("c")
-    assert out == {"unit": "mil t", "by_uf": [], "national": {}, "timeseries": []}
+    assert out == {
+        "unit": "mil t",
+        "by_uf": [],
+        "national": {},
+        "timeseries": [],
+        "states": [],
+    }
+
+
+# ── The three readers that used to IGNORE the UF filter ───────────────────────
+# Their maps showed all 27 states while the rest of the session was narrowed to the
+# researcher's selection — the "displayed value computed over a different dataset
+# than the filter" the geography audit removed everywhere else.
+
+
+def test_product_uf_ranking_threads_states_to_the_production_gateway(monkeypatch):
+    seam = _seam()
+    recorded = {}
+
+    def fake(**kw):
+        recorded.update(kw)
+        return pd.DataFrame()
+
+    monkeypatch.setattr(seam.gateway, "fetch_production_by_uf", fake)
+    seam.product_uf_ranking(
+        "ibge_pevs", "3405", {"currency": "BRL", "correction": "IPCA"}, {"states": ["PA", "AM"]}
+    )
+    assert tuple(recorded["uf_codes"]) == ("PA", "AM")
+    assert recorded["product_codes"] == ("3405",)
+
+
+def test_product_uf_ranking_threads_states_on_the_comex_path(monkeypatch):
+    """The COMEX branch keeps its export-only pin AND gains the UF scope."""
+    seam = _seam()
+    recorded = {}
+
+    def fake(**kw):
+        recorded.update(kw)
+        return pd.DataFrame()
+
+    monkeypatch.setattr(seam.gateway, "fetch_comex_by_uf", fake)
+    seam.product_uf_ranking(
+        "mdic_comex", "08012100", {"currency": "USD", "correction": "Nominal"}, {"states": ["MT"]}
+    )
+    assert tuple(recorded["uf_codes"]) == ("MT",)
+    assert recorded["flow"] == "export"
+
+
+def test_product_uf_ranking_sends_no_uf_scope_without_a_state_filter(monkeypatch):
+    seam = _seam()
+    recorded = {}
+
+    def fake(**kw):
+        recorded.update(kw)
+        return pd.DataFrame()
+
+    monkeypatch.setattr(seam.gateway, "fetch_production_by_uf", fake)
+    seam.product_uf_ranking("ibge_pevs", "3405", {"currency": "BRL", "correction": "IPCA"}, None)
+    assert tuple(recorded["uf_codes"]) == ()
+
+
+def test_productivity_threads_states_and_echoes_them_back(monkeypatch):
+    """Yield is a RATIO, so narrowing the rows changes the aggregate the serializer
+    recomputes — the 'national' trajectory becomes the selected states'. The seam
+    echoes `states` so the view can relabel instead of calling a subset national."""
+    seam = _seam()
+    recorded = {}
+
+    monkeypatch.setattr(
+        seam.gateway,
+        "fetch_products",
+        lambda banco_id: pd.DataFrame([{"code": "2713", "name": "Café"}]),
+    )
+
+    def fake_productivity(
+        product_code, source="ibge_pam", year_start=None, year_end=None, uf_codes=()
+    ):
+        recorded.update(uf_codes=uf_codes)
+        return pd.DataFrame(columns=["reference_year", "state_acronym"])
+
+    monkeypatch.setattr(seam.gateway, "fetch_productivity", fake_productivity)
+    out = seam.productivity("ibge_pam", "2713", {"states": ["MG", "SP"]})
+    assert tuple(recorded["uf_codes"]) == ("MG", "SP")
+    assert out["states"] == ["MG", "SP"]
+
+
+def test_export_coefficient_narrows_BOTH_sides_of_the_ratio(monkeypatch):
+    """The decisive one: production AND exports must be scoped together. Narrowing
+    only the production half would divide the selected states' output by the WHOLE
+    country's exports and silently deflate the coefficient — a wrong ratio, not a
+    smaller one."""
+    seam = _seam()
+    monkeypatch.setattr(_cross(), "_is_mass_basis", lambda cid: True)
+    monkeypatch.setattr(
+        _base(),
+        "produto_catalog",
+        lambda: {
+            "castanha": {
+                "name": "Castanha",
+                "pevs": ["3405"],
+                "comex": ["08012100"],
+                "comtrade": ["080121"],
+            }
+        },
+    )
+    seen = {}
+
+    def fake_mass(codes, uf_codes=()):
+        seen["pevs_uf"] = tuple(uf_codes)
+        return {2000: 10.0}
+
+    def fake_xyear(metric, codes, uf_codes=()):
+        seen["comex_uf"] = tuple(uf_codes)
+        return {2000: 4e9}
+
+    monkeypatch.setattr(_cross(), "_pevs_mass_by_year", fake_mass)
+    monkeypatch.setattr(_base(), "_xyear", fake_xyear)
+
+    def fake_prod(**kw):
+        seen["prod_uf"] = tuple(kw.get("uf_codes") or ())
+        return pd.DataFrame(
+            [{"state_acronym": "PA", "state_name": "Pará", "region_abbrev": "N", "total_value": 1}]
+        )
+
+    def fake_exp(**kw):
+        seen["exp_uf"] = tuple(kw.get("uf_codes") or ())
+        return pd.DataFrame([{"state_acronym": "PA", "total_weight_kg": 1}])
+
+    monkeypatch.setattr(seam.gateway, "fetch_production_by_uf", fake_prod)
+    monkeypatch.setattr(seam.gateway, "fetch_comex_by_uf", fake_exp)
+
+    out = seam.export_coefficient("castanha", ("PA",))
+    # Every one of the four readers behind the ratio carries the same UF scope.
+    assert seen["pevs_uf"] == ("PA",)
+    assert seen["comex_uf"] == ("PA",)
+    assert seen["prod_uf"] == ("PA",)
+    assert seen["exp_uf"] == ("PA",)
+    # And the scope is echoed so the view can relabel its "nacional" figures.
+    assert out["states"] == ["PA"]
 
 
 def test_trade_mirror_happy_path_discrepancy(monkeypatch):

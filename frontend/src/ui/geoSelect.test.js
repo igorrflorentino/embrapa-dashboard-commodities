@@ -7,7 +7,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { selectedSingleUf, tileSelectHandler, ufClickHandler } from './geoSelect.js';
+import { geoScopeLabel, selectedSingleUf, tileSelectHandler, ufClickHandler } from './geoSelect.js';
 
 afterEach(() => { delete window.patchFilter; });
 
@@ -78,5 +78,23 @@ describe('tileSelectHandler', () => {
     expect(patch).not.toHaveBeenCalled();
     delete window.patchFilter;
     expect(tileSelectHandler({})).toBeNull();
+  });
+});
+
+describe('geoScopeLabel', () => {
+  // Readers that aggregate a RATIO (productivity's kg/ha, the export coefficient) do
+  // not return LESS data under a UF filter — they return a DIFFERENT number. Keeping
+  // the word "nacional" over it would assert something false.
+  it('says nacional only when nothing narrows', () => {
+    expect(geoScopeLabel([])).toBe('nacional');
+    expect(geoScopeLabel(null)).toBe('nacional');
+    expect(geoScopeLabel(undefined)).toBe('nacional');
+    expect(geoScopeLabel('PA')).toBe('nacional'); // non-array → treated as no scope
+  });
+
+  it('names the single state, and counts several', () => {
+    expect(geoScopeLabel(['PA'])).toBe('no PA');
+    expect(geoScopeLabel(['PA', 'AM'])).toBe('em 2 UFs');
+    expect(geoScopeLabel(['PA', 'AM', 'MT'])).toBe('em 3 UFs');
   });
 });
