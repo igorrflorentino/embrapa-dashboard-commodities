@@ -62,6 +62,14 @@ window.VIEW_GROUPS = [
     views: [
       { id: 'geo',           label: 'Geografia', status: 'live', exportable: true, requires: ['geo'],
         desc: 'Distribuição territorial por valor, massa e volume, em região, UF ou município. Mapas, mapas de calor e rankings.' },
+      // The TRANSPOSE of 'product_profile': that one drills into a single produto
+      // across places; this one drills into a single PLACE across produtos. Kept a
+      // perspective of its own rather than folded into Geografia, because Geografia
+      // answers "how is it spread ACROSS places" and this answers "what happens in
+      // THIS one" — same data, opposite question.
+      { id: 'territory_profile', label: 'Perfil do território', status: 'live', exportable: false, requires: ['geo'],
+        desc: 'Raio-x de um território: o que uma UF ou um município produz, a trajetória do lugar, sua composição por produto, seu peso no país e a qualidade do dado ali.',
+        planned: ['Composição por produto do território', 'Trajetória histórica do lugar', 'Peso e posição no ranking nacional', 'Principais municípios (quando o banco tem grão municipal)'] },
       { id: 'concentration', label: 'Concentração e desigualdade', status: 'live', exportable: true, requires: [],
         desc: 'Quão concentrada é a atividade: curva de Lorenz, índice de Gini e HHI (Herfindahl-Hirschman) por geografia e por produto.',
         planned: ['Curva de Lorenz', 'Índice de Gini ao longo do tempo', 'HHI por UF e por produto', 'Participação dos top-5 produtores'] },
@@ -176,6 +184,7 @@ window.VIEW_COMPONENTS = {
   flows_territorial:     'ViewFlows',
   flows_partners:        'ViewPartners',
   geo:                   'ViewGeography',
+  territory_profile:     'ViewTerritoryProfile',
   concentration:         'ViewConcentration',
   seasonality:           'ViewSeasonality',
   quality:               'ViewQuality',

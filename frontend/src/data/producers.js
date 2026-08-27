@@ -449,6 +449,31 @@ window.productsByUf = function productsByUf(bancoId, summary, conv) {
   ensure(key, () => `${API}/products-by-uf?${qs({ banco: bancoId, codes, states, y0, y1, currency, correction })}`);
   return get(key) || { products: [], loadError: errorOf(key) };
 };
+// Per-product breakdown WITHIN a município selection — the território profile's
+// município counterpart to productsByUf. The município cube groups by city and sums
+// the products away, so it can draw a place's trajectory but never name what is
+// behind it; this fills exactly that gap, on the SAME value basis.
+//
+// POST for the same reason municipioYearly is POST: the city set can be hundreds of
+// codes and would overflow gunicorn's ~4 KB request line (HTTP 414). The cache key
+// still carries the full list (a Map key, no length limit), so selections never
+// collide. Always city-scoped — with no city set there is nothing to fetch (and the
+// backend would refuse anyway, since this reads Gold directly).
+window.productsByMunicipio = function productsByMunicipio(bancoId, summary, conv, cityCodes) {
+  if (!cityCodes || !cityCodes.length) return { products: [], loadError: null };
+  const codes = filterCodes(summary);
+  const y0 = filterYear(summary && summary.startDate);
+  const y1 = filterYear(summary && summary.endDate);
+  const currency = conv && conv.currency;
+  const correction = conv && conv.correction;
+  const key = `pbm:${bancoId}:${codes ?? '*'}:${y0 ?? '*'}-${y1 ?? '*'}:${currency || ''}|${correction || ''}:${cityCodes.join(',')}`;
+  ensure(key, () => [
+    `${API}/products-by-municipio?${qs({ banco: bancoId, codes, currency, correction, y0, y1 })}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cityCodes }) },
+  ]);
+  return get(key) || { products: [], loadError: errorOf(key) };
+};
+
 window.monthlyData = function monthlyData(bancoId, summary) {
   const codes = filterCodes(summary);
   const states = filterStates(summary);

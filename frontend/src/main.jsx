@@ -79,6 +79,7 @@ import './ui/ViewDados.jsx';
 import './ui/ViewReferencias.jsx'; // read-only seed reference consultation ("Referências")
 import './ui/ViewCadastroProdutos.jsx'; // Curadoria — the editable commodity catalog
 import './ui/ViewProductProfile.jsx';
+import './ui/ViewTerritoryProfile.jsx';
 import './ui/ViewProductCompare.jsx';
 import './ui/ViewRebanho.jsx';
 import './ui/ViewProductivity.jsx';

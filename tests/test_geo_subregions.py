@@ -292,3 +292,93 @@ def test_geo_readers_degrade_to_none_on_missing_table(monkeypatch):
         )
         is None
     )
+
+
+# ── products_by_municipio: the seam + gateway gating ─────────────────────────
+#
+# The território profile ("raio-x" of one place) needs the products behind a city's
+# trajectory, which the cube cannot give — it groups by city and sums products away.
+# Because it reads Gold directly, it inherits the cube's gating EXACTLY: no município
+# grain or no city scope ⇒ None, without a query.
+
+
+def test_products_by_municipio_threads_scope_and_convention(monkeypatch):
+    """Basket, city scope, year window and the convention→deflation column must all
+    reach the gateway. The value column is the sharp one: it has to match the cube's,
+    or the breakdown and the trajectory above it would be on different bases."""
+    seam = _seam()
+    captured = {}
+
+    def fake(**k):
+        captured.update(k)
+        return pd.DataFrame()
+
+    monkeypatch.setattr(seam.gateway, "fetch_products_by_municipio", fake)
+    seam.products_by_municipio(
+        "ibge_pevs",
+        {"currency": "BRL", "correction": "IPCA"},
+        {
+            "basket": ["3405"],
+            "cityCodes": ["1500602", "1500701"],
+            "startDate": "2010-01-01",
+            "endDate": "2020-12-01",
+        },
+    )
+    assert captured["source"] == "ibge_pevs"
+    assert captured["product_codes"] == ("3405",)
+    assert tuple(captured["city_codes"]) == ("1500602", "1500701")
+    # Same column the cube resolves for IPCA/BRL — not the nominal default.
+    assert captured["value_column"] == "val_real_ipca_brl"
+    assert captured["year_start"] == 2010
+    assert captured["year_end"] == 2020
+
+
+def test_products_by_municipio_seam_none_for_banco_without_geo(monkeypatch):
+    """UN Comtrade has no national geography at all, so there is no território to
+    profile. None here becomes {"products": []} at the route — the view then says the
+    grain is absent rather than implying the place produces nothing."""
+    seam = _seam()
+
+    def must_not_run(**k):
+        raise AssertionError("gateway reached for a banco with no geo dimension")
+
+    monkeypatch.setattr(seam.gateway, "fetch_products_by_municipio", must_not_run)
+    assert (
+        seam.products_by_municipio("un_comtrade", {"currency": "USD", "correction": "Nominal"})
+        is None
+    )
+
+
+def test_products_by_municipio_gateway_gating():
+    """Same two guards as the cube: a source with no município grain, and an empty
+    city scope, both return None WITHOUT issuing a query."""
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import gateway
+
+    app, _ = _bind_simplecache()
+    with app.app_context():
+        # COMEX is UF-origin — no município grain.
+        assert gateway.fetch_products_by_municipio(source="mdic_comex") is None
+        # Cost guard: always city-scoped, so an empty set is "nothing to fetch".
+        assert gateway.fetch_products_by_municipio(source="ibge_pevs", city_codes=()) is None
+
+
+def test_products_by_municipio_seam_survives_unbuilt_gold(monkeypatch):
+    """A dev/CI project without gold_<source>_production must get the documented
+    empty answer, not a 500: NotFound is the "table isn't built" signal, and the route
+    turns None into {"products": []}. Any OTHER error still propagates — a silent
+    catch-all here would hide real query failures behind "este lugar não produz nada"."""
+    from google.api_core.exceptions import NotFound
+
+    seam = _seam()
+
+    def boom(**k):
+        raise NotFound("gold_pevs_production")
+
+    monkeypatch.setattr(seam.gateway, "fetch_products_by_municipio", boom)
+    assert (
+        seam.products_by_municipio(
+            "ibge_pevs", {"currency": "BRL", "correction": "IPCA"}, {"cityCodes": ["1500107"]}
+        )
+        is None
+    )
