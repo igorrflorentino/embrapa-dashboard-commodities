@@ -1876,3 +1876,123 @@ def test_catalog_entry_absent_note_stays_none(monkeypatch):
 
     assert resp.status_code == 200
     assert captured.get("descricao_produto") is None
+
+
+# ── POST /products-by-municipio: "o que este lugar produz" ────────────────────
+#
+# The município cube sums products away, so the território profile needs this to name
+# what is behind a city's trajectory. It reads Gold directly, so it inherits the cube's
+# cost contract EXACTLY — same required cityCodes, same cap, same 400s.
+
+
+def test_products_by_municipio_enforces_the_same_city_scope_contract(monkeypatch):
+    """The cost guard is the whole point: this reads Gold directly, so an absent,
+    empty or mistyped cityCodes must 400 BEFORE the seam runs — never a full
+    ~146k-row município grid scan."""
+    from embrapa_dashboard.webapi import seam
+
+    client = _client(monkeypatch)
+
+    def must_not_run(*a, **k):
+        raise AssertionError("seam reached despite an invalid city scope")
+
+    monkeypatch.setattr(seam, "products_by_municipio", must_not_run)
+    base = "/api/products-by-municipio?banco=ibge_pevs&currency=BRL&correction=IPCA"
+    assert client.post(base).status_code == 400  # no body
+    assert client.post(base, json={"cityCodes": []}).status_code == 400  # empty
+    assert client.post(base, json={"cityCodes": ["", None]}).status_code == 400  # blanks
+    # A bare string must not char-split into bogus single-char codes.
+    assert client.post(base, json={"cityCodes": "3550308"}).status_code == 400
+    # A non-object body must 400, not AttributeError into an opaque 500.
+    assert client.post(base, json=["3550308"]).status_code == 400
+
+
+def test_products_by_municipio_400_on_invalid_conversion(monkeypatch):
+    """An unknown currency/correction must 400 naming the bad value, BEFORE any query.
+    Without the guard it silently falls back to BRL/IPCA inside monetary_column, and the
+    researcher reads a território breakdown on a deflation basis they did not ask for —
+    wrong numbers with no signal."""
+    from embrapa_dashboard.webapi import seam
+
+    client = _client(monkeypatch)
+
+    def must_not_run(*a, **k):
+        raise AssertionError("seam reached despite an invalid conversion")
+
+    monkeypatch.setattr(seam, "products_by_municipio", must_not_run)
+    resp = client.post(
+        "/api/products-by-municipio?banco=ibge_pevs&currency=XYZ&correction=IPCA",
+        json={"cityCodes": ["1500107"]},
+    )
+    assert resp.status_code == 400
+    assert "moeda" in resp.get_json()["error"]
+
+
+def test_products_by_municipio_caps_city_codes_count(monkeypatch):
+    """The same numeric cap as the cube — the shared helper must apply to BOTH routes,
+    so a future divergence between them fails here."""
+    from embrapa_dashboard.webapi import routes, seam
+
+    client = _client(monkeypatch)
+
+    def must_not_run(*a, **k):
+        raise AssertionError("seam reached despite over-limit cityCodes")
+
+    monkeypatch.setattr(seam, "products_by_municipio", must_not_run)
+    over = [str(i) for i in range(routes._MAX_MUNICIPIO_CODES + 1)]
+    resp = client.post(
+        "/api/products-by-municipio?banco=ibge_pevs&currency=BRL&correction=IPCA",
+        json={"cityCodes": over},
+    )
+    assert resp.status_code == 400
+    assert "limite" in resp.get_json()["error"]
+
+
+def test_products_by_municipio_passes_scope_through_and_serializes(monkeypatch):
+    """The basket, the year window and the city set all have to REACH the seam —
+    each one is a cost control or a correctness control, and a dropped param is
+    silent (a wider scan, or a breakdown over the wrong products)."""
+    import pandas as pd
+
+    from embrapa_dashboard.webapi import seam
+
+    client = _client(monkeypatch)
+    seen = {}
+
+    def fake(banco_id, conv, summary=None):
+        seen["banco"] = banco_id
+        seen["summary"] = summary
+        return pd.DataFrame(
+            [{"product_code": "4403", "product_name": "Madeira", "total_value": 5.0}]
+        )
+
+    monkeypatch.setattr(seam, "products_by_municipio", fake)
+    resp = client.post(
+        "/api/products-by-municipio?banco=ibge_pevs&currency=BRL&correction=IPCA"
+        "&codes=4403,0801&y0=2010&y1=2020",
+        json={"cityCodes": ["1500107", "1500206"]},
+    )
+    assert resp.status_code == 200
+    assert seen["banco"] == "ibge_pevs"
+    assert seen["summary"]["cityCodes"] == ["1500107", "1500206"]
+    assert seen["summary"]["basket"] == ["4403", "0801"]
+    assert seen["summary"]["startDate"] == "2010"
+    assert seen["summary"]["endDate"] == "2020"
+    # Reuses the per-UF breakdown shape so one renderer serves both grains.
+    assert resp.get_json()["products"][0]["code"] == "4403"
+
+
+def test_products_by_municipio_empty_when_banco_has_no_municipio_grain(monkeypatch):
+    """COMEX is UF-origin and COMTRADE international: the seam returns None and the
+    route must answer an explicit empty list, not 500. The view then says the grain
+    is absent instead of implying the place produces nothing."""
+    from embrapa_dashboard.webapi import seam
+
+    client = _client(monkeypatch)
+    monkeypatch.setattr(seam, "products_by_municipio", lambda *a, **k: None)
+    resp = client.post(
+        "/api/products-by-municipio?banco=mdic_comex&currency=USD&correction=Nominal",
+        json={"cityCodes": ["3550308"]},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json() == {"products": []}

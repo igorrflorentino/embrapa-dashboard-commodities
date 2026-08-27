@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.29.0] - 2026-08-27
+
+Nova perspectiva **"Perfil do território"**: o raio-x de um lugar. Até agora o
+dashboard sabia responder "onde este produto é produzido"; passa a responder também
+"o que este lugar produz".
+
+### Added
+- **Perspectiva "Perfil do território"** (`territory_profile`, em *Análise de
+  distribuição*, exigindo a capacidade `geo`). É a **transposta** do "Perfil do
+  produto": aquele fixa um produto e olha através dos lugares; este fixa um **lugar**
+  e olha através dos produtos.
+
+  Deliberadamente **não** foi embutida na Geografia. Geografia responde "como a
+  atividade se distribui **entre** territórios" — a unidade de análise é a
+  distribuição. Esta responde "o que acontece **neste** território" — a unidade é o
+  lugar. Uma só perspectiva servindo as duas passaria a significar duas coisas.
+
+  Traz, para uma UF ou um município: a trajetória histórica do lugar, sua composição
+  por produto, o peso e a posição dele no país, e o pico histórico.
+
+- **`POST /api/products-by-municipio`** — o que os cubos existentes não conseguiam
+  dizer. Tanto `production_by_municipio_yearly` quanto o cubo por UF **agrupam pelo
+  lugar e somam os produtos**, então desenham a trajetória de um território mas nunca
+  nomeiam o que está por trás dela. Novo builder `sql.products_by_municipio` +
+  `gateway.fetch_products_by_municipio` + `seam.products_by_municipio`.
+
+  Lê o Gold direto e herda **exatamente** o contrato de custo do cubo: `cityCodes`
+  não-vazio obrigatório, mesmo teto, mesmos 400s — a validação virou o helper
+  compartilhado `_city_codes_or_400`, para que as duas rotas não possam divergir.
+  Aplica o mesmo gate F7 de visibilidade: um produto marcado indisponível não
+  reaparece só porque a pergunta mudou de "quanto aqui" para "o que aqui".
+
+### Changed
+- **A entrada é explícita, não o clique.** O clique no mapa continua sendo o que já
+  era em toda parte — um filtro barato e reversível, com toggle. Navegar até um
+  raio-x não é nenhuma das duas coisas, e empilhar o segundo significado no mesmo
+  gesto quebraria o toggle no controle mais usado da interface. A perspectiva tem
+  seus próprios seletores e **se posiciona** a partir do filtro global quando ele já
+  nomeia um único lugar — então clicar numa UF e trocar de perspectiva cai no lugar
+  certo.
+
+### Honestidade
+- **Participação e posição são calculadas sobre a janela selecionada**, não sobre o
+  último ano. O gráfico ao lado cobre a janela inteira; duas perguntas diferentes sob
+  um mesmo rótulo seria o bug.
+- **O denominador nacional ignora o filtro de UF de propósito** — caso contrário a
+  participação de uma sessão filtrada num único estado seria sempre 100%. O KPI diz
+  qual é o denominador e qual é a janela.
+- **Um município nunca toma emprestado o número da UF em silêncio:** participação e
+  posição só existem por UF, e a página afirma isso quando o nível é municipal.
+- **Um banco só com grão de UF declara isso** (`NotApplicableNote`) em vez de oferecer
+  um nível municipal que voltaria vazio — o que se leria como "este estado não tem
+  municípios produzindo", uma afirmação diferente e falsa.
+
+---
+
 ## [1.28.3] - 2026-08-27
 
 Os 36 testes que falhavam localmente e passavam no CI não eram flaky nem culpa do

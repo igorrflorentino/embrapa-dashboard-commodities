@@ -2226,6 +2226,16 @@ def test_quality_readers_thread_f7_visibility_gate(monkeypatch):
         assert "dim_produto_visibility" in recorded["query"]
         assert "v.source = 'ppm'" in recorded["query"]
 
+        # The território profile's per-product breakdown reads Gold directly too, so it
+        # needs the SAME F7 gate — a produto marked indisponível must not reappear just
+        # because the question changed from "how much here" to "what is here".
+        cache.clear()
+        gateway.fetch_products_by_municipio(source="ibge_pam", city_codes=("3550308",))
+        assert "dim_produto_visibility" in recorded["query"]
+        assert "v.source = 'pam'" in recorded["query"]
+        assert "group by product_code" in recorded["query"].lower()
+        assert "city_code in unnest(@city_codes)" in recorded["query"].lower()
+
 
 def test_inspect_visibility_predicate_gates_gold_facts_only(monkeypatch):
     """The Dados raw-row inspector gates ONLY the Gold facts — the serving marts are already
@@ -3837,3 +3847,62 @@ def test_raw_table_rows_rejects_missing_and_nonfinite_filter_values():
                 limit=10,
                 filters=[{"col": "val_yearfx_brl", "op": "gt", "val": bad}],
             )
+
+
+# ── products_by_municipio: naming what the município cube sums away ───────────
+
+
+def test_products_by_municipio_groups_by_product_and_scopes_to_cities():
+    """The território profile's core query: GROUP BY product, constrain city_code.
+
+    This is to production_by_municipio_yearly what products_by_uf is to
+    production_by_uf — the cube groups by city and sums products away, so it can plot
+    a place's trajectory but never name what is behind it.
+    """
+    query, params = sql.products_by_municipio(
+        "p.gold.gold_pevs_production",
+        year_start=2010,
+        year_end=2024,
+        product_codes=("4403",),
+        city_codes=("1500107", "1500206"),
+        value_column="val_real_ipca_brl",
+    )
+    low = query.lower()
+    assert "group by product_code" in low
+    assert "any_value(product_description)" in low
+    assert "city_code in unnest(@city_codes)" in low
+    assert "sum(val_real_ipca_brl)" in low
+    # Quantities stay family-split — they are only ever summable WITHIN a family.
+    assert "case when family = 'massa'    then qty_base end" in query
+    assert "case when family = 'volume'   then qty_base end" in query
+    assert "case when family = 'contagem' then qty_base end" in query
+    by_name = {p.name: p for p in params}
+    assert by_name["city_codes"].values == ["1500107", "1500206"]
+    assert by_name["product_codes"].values == ["4403"]
+
+
+def test_products_by_municipio_validates_identifiers_and_takes_visibility():
+    """Interpolated identifiers are allowlisted (injection guard) and the F7
+    visibility predicate reaches the WHERE clause — a produto marked indisponível must
+    not surface in a território breakdown any more than anywhere else."""
+    import pytest
+
+    query, _ = sql.products_by_municipio(
+        "p.gold.gold_pevs_production",
+        city_codes=("1500107",),
+        visibility_predicate="product_code not in ('9999')",
+    )
+    assert "product_code not in ('9999')" in query
+
+    with pytest.raises(ValueError):
+        sql.products_by_municipio(
+            "p.gold.gold_pevs_production",
+            code_column="1; drop table x --",
+            city_codes=("1500107",),
+        )
+    with pytest.raises(ValueError):
+        sql.products_by_municipio(
+            "p.gold.gold_pevs_production",
+            value_column="not_a_value_column",
+            city_codes=("1500107",),
+        )

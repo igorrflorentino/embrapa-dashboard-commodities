@@ -473,6 +473,56 @@ def production_by_municipio_yearly(
     return sql, params
 
 
+def products_by_municipio(
+    table: str,
+    *,
+    code_column: str = "product_code",
+    name_column: str = "product_description",
+    year_start: int | None = None,
+    year_end: int | None = None,
+    product_codes: Sequence[str] = (),
+    city_codes: Sequence[str] = (),
+    value_column: str = "val_real_ipca_brl",
+    visibility_predicate: str = "",
+) -> tuple[str, list]:
+    """Per-PRODUCT ranking WITHIN a município selection — what the território profile
+    needs to answer "o que este município produz".
+
+    This is to :func:`production_by_municipio_yearly` what :func:`products_by_uf` is to
+    :func:`production_by_uf`: the município cube GROUPs BY city and sums products away,
+    so it can plot a place's trajectory but can never name the products behind it.
+
+    Reads Gold directly for the same reason the município cube does (finest grain, no
+    mart), and carries the SAME cost control: ``city_codes`` is required by the caller,
+    so this only ever scans the selected cities. Quantities stay split by ``family`` —
+    they are only summable WITHIN a family.
+    """
+    code_column = _validate_column(code_column, ALLOWED_PRODUCT_COLUMNS, "product column")
+    name_column = _validate_column(name_column, ALLOWED_PRODUCT_COLUMNS, "product column")
+    value_column = _validate_column(value_column, ALLOWED_VALUE_COLUMNS, "value_column")
+    conditions: list[str] = []
+    params: list = []
+    _year_bounds(conditions, params, year_start, year_end)
+    _in_array(conditions, params, code_column, "product_codes", product_codes)
+    _in_array(conditions, params, "city_code", "city_codes", city_codes)
+    if visibility_predicate:
+        conditions.append(visibility_predicate)
+    sql = f"""
+        select
+            {code_column}                                        as product_code,
+            any_value({name_column})                             as product_name,
+            sum({value_column})                                  as total_value,
+            sum(case when family = 'massa'    then qty_base end) as q_mass,
+            sum(case when family = 'volume'   then qty_base end) as q_vol,
+            sum(case when family = 'contagem' then qty_base end) as q_count
+        from `{table}`
+        {_where(conditions)}
+        group by {code_column}
+        order by total_value desc
+    """
+    return sql, params
+
+
 def geo_municipio_mesh(table: str) -> tuple[str, list]:
     """The full IBGE municipal territorial mesh (``dim_geo_municipio``) — every
     município with its UF + grande região AND BOTH sub-UF divisions (classic

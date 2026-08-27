@@ -636,6 +636,40 @@ def geo_municipio_yearly(
         return None
 
 
+def products_by_municipio(
+    banco_id: str, conv: dict, summary: dict | None = None
+) -> pd.DataFrame | None:
+    """Per-product ranking WITHIN the selected municípios — "o que este lugar produz".
+
+    The território profile's counterpart to :func:`products_by_uf`. The município cube
+    (:func:`geo_municipio_yearly`) sums products away, so it can plot a city's
+    trajectory but never name the products behind it; this fills exactly that gap.
+
+    Same value column as the cube so the two agree, and the same ``cityCodes`` cost
+    control — no city scope means nothing to fetch, never a full grid scan. ``None``
+    for a banco with no município grain (COMEX is UF-origin, COMTRADE international),
+    which the serializer turns into ``{"products": []}``."""
+    banco = banco_by_id(banco_id)
+    if banco_id not in _LIVE_SOURCES or not banco or "geo" not in banco.provides:
+        return None
+    value_col, _ = effective_value_column(banco, conv)
+    city_codes = tuple((summary or {}).get("cityCodes") or ())
+    y0, y1 = _years_from_summary(summary)
+    try:
+        return gateway.fetch_products_by_municipio(
+            year_start=y0,
+            year_end=y1,
+            product_codes=_basket(summary),
+            city_codes=city_codes,
+            value_column=value_col,
+            source=banco_id,
+        )
+    except NotFound:
+        # gold_<source>_production not built → documented None (→ {"products": []}),
+        # not a 500. Other errors still propagate.
+        return None
+
+
 def productivity(banco_id: str, crop: str | None, summary: dict | None = None) -> dict | None:
     """Área × rendimento for one crop (backs ViewProductivity).
 

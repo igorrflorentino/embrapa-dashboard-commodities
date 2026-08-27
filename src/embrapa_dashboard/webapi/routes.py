@@ -732,6 +732,34 @@ def countries():
     return jsonify(serializers.serialize_countries(seam.comtrade_countries()))
 
 
+def _city_codes_or_400() -> tuple[list[str], tuple | None]:
+    """The município code set from the JSON body, or a 400 response.
+
+    Shared by every município-grained reader: the cube (/municipio-yearly) and the
+    per-product breakdown (/products-by-municipio) enforce the SAME contract, so the
+    validation lives once. A NON-EMPTY list is required — the client only calls these
+    once a narrowing resolves to a city set, so an absent one is a bug, not a request
+    to scan the whole ~146k-row município grid."""
+    body = _json_object()
+    raw_codes = body.get("cityCodes")
+    # Must be a LIST: a bare string would otherwise char-split into bogus single-char
+    # codes (e.g. "3550308" → ['3','5',...]); a non-list is a clean 400, not a silent
+    # mis-parse (mirrors _parse_table_filters' type discipline).
+    if not isinstance(raw_codes, list):
+        return [], (jsonify(error="cityCodes deve ser uma lista não vazia."), 400)
+    city = [str(c) for c in raw_codes if c]  # drop blanks; codes bind as STRING
+    if not city:
+        return [], (jsonify(error="cityCodes (lista não vazia) é obrigatório."), 400)
+    # Cap the IN-list so a pathological request can't build a giant query/param payload
+    # (the maximum_bytes_billed guard bounds the SCAN, not the parse/param overhead).
+    if len(city) > _MAX_MUNICIPIO_CODES:
+        return [], (
+            jsonify(error=f"cityCodes excede o limite de {_MAX_MUNICIPIO_CODES} municípios."),
+            400,
+        )
+    return city, None
+
+
 @api.post("/municipio-yearly")
 def municipio_yearly():
     """Basket-scoped per-(município, year) cube — the FINEST geography grain, backing
@@ -752,22 +780,9 @@ def municipio_yearly():
     conv, err = _conversion_or_400()
     if err:
         return err
-    body = _json_object()
-    raw_codes = body.get("cityCodes")
-    # Must be a LIST: a bare string would otherwise char-split into bogus single-char
-    # codes (e.g. "3550308" → ['3','5',...]); a non-list is a clean 400, not a silent
-    # mis-parse (mirrors _parse_table_filters' type discipline).
-    if not isinstance(raw_codes, list):
-        return jsonify(error="cityCodes deve ser uma lista não vazia."), 400
-    city = [str(c) for c in raw_codes if c]  # drop blanks; codes bind as STRING
-    if not city:
-        return jsonify(error="cityCodes (lista não vazia) é obrigatório."), 400
-    # Cap the IN-list so a pathological request can't build a giant query/param payload
-    # (the maximum_bytes_billed guard bounds the SCAN, not the parse/param overhead).
-    if len(city) > _MAX_MUNICIPIO_CODES:
-        return jsonify(
-            error=f"cityCodes excede o limite de {_MAX_MUNICIPIO_CODES} municípios."
-        ), 400
+    city, err = _city_codes_or_400()
+    if err:
+        return err
     codes = request.args.get("codes")
     summary: dict = {"cityCodes": city}
     if codes:
@@ -781,6 +796,43 @@ def municipio_yearly():
         summary["endDate"] = y1
     df = seam.geo_municipio_yearly(banco, conv, summary)
     return jsonify(serializers.serialize_municipio_yearly(df))
+
+
+@api.post("/products-by-municipio")
+def products_by_municipio():
+    """Per-product ranking WITHIN the selected municípios — "o que este lugar produz",
+    the território profile's município counterpart to /products-by-uf.
+
+    The município cube (/municipio-yearly) GROUPs BY city and sums the products away,
+    so it can draw a place's trajectory but can never name what is behind it. This
+    fills exactly that gap, over the SAME city scope and value basis so the two agree.
+
+    **POST, not GET**, and a non-empty ``cityCodes`` body is REQUIRED — identical
+    contract to /municipio-yearly (see :func:`_city_codes_or_400`), for the identical
+    reason: it reads Gold directly, so the city scope IS the cost control.
+    ``{ products: [] }`` when the banco has no município grain (COMEX is UF-origin,
+    COMTRADE international)."""
+    banco = request.args.get("banco", "")
+    conv, err = _conversion_or_400()
+    if err:
+        return err
+    city, err = _city_codes_or_400()
+    if err:
+        return err
+    summary: dict = {"cityCodes": city}
+    codes = request.args.get("codes")
+    if codes:
+        summary["basket"] = _csv_param(codes)  # blank-strip + cap (SEC-1)
+    # startDate/endDate is the shape _years_from_summary reads (it slices the leading
+    # 4 digits, so a bare year works) — same contract as every other filtered reader.
+    y0, y1 = request.args.get("y0"), request.args.get("y1")
+    if y0:
+        summary["startDate"] = y0
+    if y1:
+        summary["endDate"] = y1
+    df = seam.products_by_municipio(banco, conv, summary)
+    # Same shape as the per-UF breakdown, so the view reuses one renderer.
+    return jsonify(serializers.serialize_products_by_uf(df))
 
 
 @api.get("/products-by-uf")
