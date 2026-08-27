@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.31.0] - 2026-08-27
+
+O modal "Citar painel" passa a oferecer **três níveis de detalhe** para a referência.
+
+### Added
+- **Seletor de nível de detalhe** (radiogroup) acima do bloco da referência ABNT NBR
+  6023:2025, com o texto atualizando reativamente:
+
+  - **Ferramenta geral** — cita o dashboard como ferramenta, sem banco e sem filtros.
+  - **Por banco de dados** — acrescenta a fonte consultada após dois-pontos
+    (`…produtos agrícolas: IBGE PEVS.`).
+  - **Consulta detalhada** — o comportamento anterior, inalterado: banco, perspectiva,
+    recorte, produtos, UFs, qualidade, faixa de valor e convenções métricas.
+
+  A referência era uma string única que concatenava o banco **e** todos os filtros
+  ativos. Essa é a citação certa para "analisei exatamente este recorte" e a errada para
+  "usei esta ferramenta" — uma seção de métodos não deveria mandar o leitor percorrer
+  uma lista de UFs.
+
+  Os três níveis compartilham a mesma autoria e o mesmo rodapé de publicação
+  (`Brasília, DF: Embrapa, [ANO]. Disponível em: [LINK]. Acesso em: [DATA_ACESSO].`), de
+  modo que só possam diferir onde devem: em quanto do painel descrevem.
+
+  **O padrão é "Consulta detalhada"** — quem abrir o modal e copiar recebe o mesmo de
+  antes; os níveis mais curtos são opt-in, não uma mudança silenciosa na referência de
+  todo mundo.
+
+- Numa perspectiva **cruzada** não há banco único, então o nível "Por banco de dados"
+  nomeia as fontes que ela cruza. Omiti-las tornaria o nível do meio idêntico ao geral e
+  descartaria em silêncio aquilo sobre o que o painel é construído.
+
+### Changed
+- **A citação no texto passa a grafar a entidade em caixa alta:** `(EMBRAPA, 2026)`.
+  O ano continua derivado da data corrente.
+
+  Registro honesto da mudança: o código trazia a forma `(Embrapa, …)` com um comentário
+  justificando-a pela regra de inicial maiúscula da ABNT NBR 10520:2023 para autores, e
+  havia um teste fixando-a. A caixa alta foi solicitada por consistência com o cabeçalho
+  da referência e com o padrão editorial da Embrapa; comentário e teste foram atualizados
+  para registrar a decisão, em vez de deixá-los contradizendo o código.
+
+- **O botão "Copiar referência" copia o nível selecionado**, não mais a versão detalhada
+  fixa.
+
+---
+
 ## [1.30.1] - 2026-08-27
 
 ### Fixed
