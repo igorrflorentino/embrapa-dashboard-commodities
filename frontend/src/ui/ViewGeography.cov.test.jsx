@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 
 // Captured props from the stubbed chart widgets, so we can assert what each branch fed.
-let regionBarsProps, choroProps, tileMapProps, heatmapProps, barChartCalls, productsByUfCalls;
+let regionBarsProps, choroProps, tileMapProps, heatmapProps, barChartCalls, productsByUfCalls, muniMapProps;
 
 function stubGlobals(filtered, opts = {}) {
   const {
@@ -83,6 +83,7 @@ function stubGlobals(filtered, opts = {}) {
     </div>
   );
   window.RegionBars = (props) => { regionBarsProps = props; return <div className="regionbars" />; };
+  window.MunicipioChoropleth = (props) => { muniMapProps = props; return <div className="munimap" />; };
   window.BrazilChoropleth = (props) => { choroProps = props; return <div className="choro" />; };
   window.BrazilTileMap = (props) => { tileMapProps = props; return <div className="tilemap" />; };
   window.Heatmap = (props) => { heatmapProps = props; return <div className="heatmap" />; };
@@ -92,7 +93,7 @@ function stubGlobals(filtered, opts = {}) {
 let ViewGeography;
 
 beforeEach(async () => {
-  regionBarsProps = choroProps = tileMapProps = heatmapProps = undefined;
+  regionBarsProps = choroProps = tileMapProps = heatmapProps = muniMapProps = undefined;
   barChartCalls = [];
   productsByUfCalls = [];
   globalThis.React = React;
@@ -244,7 +245,33 @@ describe('ViewGeography — smoke + main branches', () => {
     expect(container.textContent).not.toContain('Top 10');
   });
 
+  // EST-4: the point of the vendored municipal meshes — a sub-UF selection must finally
+  // reach the MAP. Before, narrowing to a mesorregião left the UF choropleth shading the
+  // whole state, so the recorte was invisible.
+  it('the "Município" granularity draws the municipal choropleth when the rows resolve to ONE UF', () => {
+    stubGlobals(fullFixture({
+      topMunis: [
+        { cityCode: '1500107', city: 'Abaetetuba', uf: 'PA', value: 40 },
+        { cityCode: '1500131', city: 'Abel Figueiredo', uf: 'PA', value: 12 },
+      ],
+      subUfActive: true, subUfLoaded: true,
+    }), { geoLevel: 'municipio' });
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+    );
+    fireEvent.click([...container.querySelectorAll('.seg-opt')].find((b) => b.textContent === 'Município'));
+    expect(muniMapProps).toBeTruthy();
+    expect(muniMapProps.uf).toBe('PA');
+    expect(muniMapProps.data.map((m) => m.cityCode)).toEqual(['1500107', '1500131']);
+    // A sub-UF facet is narrowing → the un-shaded municípios are OUTSIDE the selection,
+    // not municípios without production, and the map must say so.
+    expect(muniMapProps.narrowed).toBe(true);
+  });
+
   it('the "Município" granularity lists the top municípios when rows exist', () => {
+    // Belém/PA + Santos/SP straddle two states, and the vendored geometry is one file
+    // per UF — there is no single mesh to load, so the ranking (grain-correct at any
+    // breadth) is what renders.
     stubGlobals(fullFixture(), { geoLevel: 'municipio' });
     const { container } = render(
       <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
@@ -252,6 +279,7 @@ describe('ViewGeography — smoke + main branches', () => {
     const muniBtn = [...container.querySelectorAll('.seg-opt')].find((b) => b.textContent === 'Município');
     expect(muniBtn).toBeTruthy();
     fireEvent.click(muniBtn);
+    expect(muniMapProps).toBeUndefined();
     expect(container.querySelector('.muni-list')).toBeTruthy();
     expect(container.textContent).toContain('Belém');
     expect(container.textContent).toContain('Santos');

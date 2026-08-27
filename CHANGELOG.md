@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.26.0] - 2026-08-27
+
+Fecha o passo 7 do `PLANS/geo_subregions.md`, aberto desde 2026-06: **o recorte sub-UF
+finalmente aparece no mapa**. Os cinco níveis de filtro abaixo da UF narravam os DADOS
+corretamente desde a v1.5.2, mas o coroplético continuava pintando o estado inteiro —
+o filtro mais fino do produto não tinha efeito visível nenhum.
+
+### Added
+- **Mapa municipal com polígonos reais.** Ao escolher a granularidade *Município* com a
+  seleção resolvida a uma única UF, o mapa passa a desenhar os municípios daquele estado,
+  coloridos pela métrica ativa. É a leitura que o grão UF escondia: a produção é
+  concentradíssima — medido em 2024, **os 100 maiores municípios de 5.570 respondem por
+  71% do valor nacional**, e o mapa por UF pintava o Pará inteiro de escuro por causa de
+  Portel e Prainha.
+
+  - Geometria vendorizada por `scripts/refresh_ibge_municipio_geojson.py`, a partir da API
+    de malhas v3 do IBGE (`intrarregiao=municipio&qualidade=minima`), em
+    `frontend/public/geo/municipios/<UF>.json` — 27 arquivos, ~2,9 MB, de 7 a 69 KB
+    gzipados por UF. O Vite copia `public/**` para `dist` e o Flask serve como estático,
+    então não há rota nova.
+  - **A chave de junção já existia dos dois lados**: o `codarea` do IBGE É o `city_code` de
+    7 dígitos que o projeto usa em `dim_geo_municipio`, no `/api/geo-mesh` e no cubo
+    `/api/municipio-yearly`. Nenhuma tabela de-para foi necessária.
+  - **Uma malha por UF, não uma do Brasil** — e isso é um limite deliberado, não um
+    primeiro incremento: a malha municipal do país inteiro tem ~836 KB gzipados (mais
+    pesada que o próprio maplibre) e 5.570 polígonos no zoom nacional são manchas de 2-3
+    px. Quando a seleção abrange mais de um estado, o ranking continua — ele é correto em
+    qualquer amplitude.
+  - Clicar num município filtra por ele; clicar de novo limpa. Alternador **Mapa/Ranking**
+    na granularidade Município.
+  - Vendorizada em vez de buscada do IBGE em runtime: o mapa é deliberadamente sem
+    basemap para funcionar offline, e depender de um host externo em tempo de leitura
+    abriria mão disso (mais uma entrada de CSP e um risco de disponibilidade) por um dado
+    que muda duas vezes por década.
+
+- **Recorte de ano no cubo municipal.** `/api/municipio-yearly` passa a aceitar `y0`/`y1`.
+  O `sqlbuild` sempre aceitou os limites — só a rota e o seam nunca os repassavam, então
+  toda requisição trazia os ~39 anos. Medido sobre os 5.570 municípios: **153.634 linhas /
+  16,9 MB / 28 s** sem limite. A view agora pede apenas a janela do filtro do pesquisador.
+
+### Fixed
+- **`fillColorExpression` fixava a propriedade `uf`.** O mapa municipal compilava uma
+  expressão `match` perfeitamente válida que **não casava com nada** — todo município caía
+  no fallback e o estado inteiro pintava cinza de "sem dado", sem erro nenhum para
+  explicar. A propriedade agora é parâmetro (`codarea` no caso municipal); o padrão segue
+  `uf`, então o mapa por UF não muda.
+- **A escala por quantil degenerava com poucas unidades.** Com uma única UF selecionada
+  (o caso que o próprio clique-no-mapa da v1.25.0 cria), `rank/n` colocava o único valor
+  na posição 0 — a faixa **mais clara** — para um número que é simultaneamente o menor e o
+  maior. Abaixo do número de faixas, os valores passam a ocupar as faixas mais **escuras**.
+- **O corte de top-100 dos municípios era um limite de exibição vivendo no motor de
+  dados.** Assim que o mapa passou a desenhar a partir dessas linhas, virou erro de dado:
+  todo município da posição 101 em diante não tinha linha para casar, então o mapa o
+  pintava como "sem produção registrada" e o contava na tarja cinza — no Pará, um falso
+  "44 municípios sem produção" para uma UF de 144. O `dataFilters` devolve o conjunto
+  completo; quem corta é a view, e só o ranking.
+- **A tarja cinza afirmava o que o dado não dizia.** Com um recorte sub-UF ativo, os
+  municípios sem cor estão **fora do recorte**, não sem produção. As duas situações agora
+  têm textos distintos.
+- **Rótulos por código em vez de nome.** A malha do IBGE (`/api/geo-mesh`) só era buscada
+  no caminho de fallback de UF única, então o caminho do recorte sub-UF ficava sem nomes —
+  o popup do mapa e as linhas do mapa de calor mostravam `1503606 · PA` em vez de
+  `Itaituba · PA`.
+
+### Notes
+- `MunicipioChoropleth` compartilha `choroplethScale.js` com o mapa por UF, então as duas
+  leituras usam a mesma classificação e a mesma legenda.
+- O bundle principal cresceu **7 KB** (523 → 530 KB) — a geometria não entra nele.
+
+---
+
 ## [1.25.0] - 2026-08-26
 
 Auditoria completa da perspectiva **Geografia** (23 achados verificados no build de

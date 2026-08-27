@@ -172,7 +172,15 @@ window.comtradeCountries = function comtradeCountries() {
 // the client can roll it up to whichever sub-UF level is active (via geoMesh). No
 // flow (production bancos have none). Returns null until loaded; an empty array for a
 // banco with no município grain (COMEX/COMTRADE → the BFF returns []).
-window.municipioYearly = function municipioYearly(bancoId, summary, cityCodes) {
+// `years` (optional) narrows the cube to a closed [y0, y1] window. The city set is
+// the primary cost control, but it stops helping exactly where the municipal
+// choropleth needs it most: a whole-UF map is ONE year over hundreds of cities. Left
+// out, that request pulls every year (measured over all 5570: 153.634 rows / 16,9 MB
+// / 28 s, against ~3.400 rows for a single year). Absent = full history, so the
+// existing sub-UF callers — which DO want the whole series for the heatmap — are
+// unchanged. It is part of the cache key, so the one-year map and the full-history
+// heatmap coexist instead of evicting each other.
+window.municipioYearly = function municipioYearly(bancoId, summary, cityCodes, years) {
   const b = window.bancoById && window.bancoById(bancoId);
   if (!b || !(b.provides || []).includes('geo')) return null;
   const conv = window.dataStore && window.dataStore.conv
@@ -193,13 +201,17 @@ window.municipioYearly = function municipioYearly(bancoId, summary, cityCodes) {
   // would overflow gunicorn's request-line limit (~4 KB → HTTP 414) for a broad sub-UF
   // selection. The cache key still carries the full list (an in-memory Map key, not a
   // URL → no length limit), so distinct selections never collide.
-  const key = `municipioYearly:${bancoId}:${conv.currency}|${conv.correction}:${codes ?? '*'}:${cityCodes.join(',')}`;
+  const y0 = years && years[0] != null ? years[0] : undefined;
+  const y1 = years && years[1] != null ? years[1] : undefined;
+  const key = `municipioYearly:${bancoId}:${conv.currency}|${conv.correction}:${codes ?? '*'}:${y0 ?? '*'}-${y1 ?? '*'}:${cityCodes.join(',')}`;
   ensure(key, () => [
     `${API}/municipio-yearly?${qs({
       banco: bancoId,
       codes,
       currency: conv.currency,
       correction: conv.correction,
+      y0,
+      y1,
     })}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cityCodes }) },
   ]);

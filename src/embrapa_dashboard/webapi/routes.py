@@ -736,8 +736,12 @@ def municipio_yearly():
     client only calls this once a sub-UF/município narrowing resolves to a city set, so
     an absent/empty one is a 400, and the backend never scans the full ~146k-row
     município grid. currency+correction pick the deflated value column server-side;
-    ``codes`` (URL query) pushes the active product basket down. { municipioYearly: [] }
-    when the banco has no município grain (COMEX/COMTRADE)."""
+    ``codes`` (URL query) pushes the active product basket down, and ``y0``/``y1``
+    (URL query, optional) bound the year window — the second cost control, and the
+    one that matters for a whole-UF municipal choropleth, which needs ONE year over
+    many cities rather than every year (unbounded over all 5570: 153.634 rows /
+    16,9 MB / 28 s; one year: ~3.400 rows). Absent = the full history, unchanged.
+    { municipioYearly: [] } when the banco has no município grain (COMEX/COMTRADE)."""
     banco = request.args.get("banco", "")
     conv, err = _conversion_or_400()
     if err:
@@ -762,6 +766,13 @@ def municipio_yearly():
     summary: dict = {"cityCodes": city}
     if codes:
         summary["basket"] = _csv_param(codes)  # blank-strip + cap (SEC-1)
+    # startDate/endDate is the shape _years_from_summary reads (it slices the leading
+    # 4 digits, so a bare year works) — same contract as every other filtered reader.
+    y0, y1 = request.args.get("y0"), request.args.get("y1")
+    if y0:
+        summary["startDate"] = y0
+    if y1:
+        summary["endDate"] = y1
     df = seam.geo_municipio_yearly(banco, conv, summary)
     return jsonify(serializers.serialize_municipio_yearly(df))
 

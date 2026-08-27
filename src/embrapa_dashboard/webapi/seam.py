@@ -596,9 +596,21 @@ def geo_municipio_yearly(
     # set (via the cached mesh) and sends it as cityCodes, so a narrowed selection
     # scans only those cities — never the whole ~5570-município grid.
     city_codes = tuple((summary or {}).get("cityCodes") or ())
+    # The year window is the OTHER cost control, and it matters most exactly where
+    # city_codes stops helping: a whole-UF municipal choropleth needs one YEAR over
+    # many cities, and without this it fetched all ~39 of them. Measured on the full
+    # 5570-city set: 153.634 rows / 16,9 MB / 28 s unbounded, against ~3.400 rows for
+    # a single year. sqlbuild.production_by_municipio_yearly already took the bounds;
+    # only this call site (and the route feeding it) never passed them through.
+    y0, y1 = _years_from_summary(summary)
     try:
         return gateway.fetch_production_by_municipio_yearly(
-            product_codes=codes, city_codes=city_codes, value_column=value_col, source=banco_id
+            year_start=y0,
+            year_end=y1,
+            product_codes=codes,
+            city_codes=city_codes,
+            value_column=value_col,
+            source=banco_id,
         )
     except NotFound:
         # gold_<source>_production not built → documented None (serialize_municipio_yearly

@@ -212,6 +212,34 @@ def test_geo_municipio_yearly_threads_basket_to_gateway(monkeypatch):
     assert tuple(captured["city_codes"]) == ("1500602", "1500701")
 
 
+def test_geo_municipio_yearly_threads_year_window_to_gateway(monkeypatch):
+    """The year window must reach the gateway. It is the second cost control and the
+    decisive one for a whole-UF municipal choropleth: that needs ONE year over many
+    cities, where city_codes no longer narrows anything. sqlbuild always accepted the
+    bounds — this seam just never read them off the summary, so the map's request
+    pulled all ~39 years (measured over the full 5570-city set: 153.634 rows / 28 s).
+    A summary with no dates must still send None/None (full history)."""
+    seam = _seam()
+    captured = {}
+
+    def fake(**k):
+        captured.update(k)
+        return pd.DataFrame()
+
+    monkeypatch.setattr(seam.gateway, "fetch_production_by_municipio_yearly", fake)
+    conv = {"currency": "BRL", "correction": "IPCA"}
+    seam.geo_municipio_yearly(
+        "ibge_pevs",
+        conv,
+        {"cityCodes": ["1500602"], "startDate": "2024-01-01", "endDate": "2024-12-01"},
+    )
+    assert (captured["year_start"], captured["year_end"]) == (2024, 2024)
+
+    captured.clear()
+    seam.geo_municipio_yearly("ibge_pevs", conv, {"cityCodes": ["1500602"]})
+    assert (captured["year_start"], captured["year_end"]) == (None, None)
+
+
 def test_geo_municipio_yearly_none_for_non_geo_banco():
     seam = _seam()
     # COMTRADE is international (no UF/município grain) → the seam returns None before
