@@ -3852,3 +3852,29 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
   gap: 6px;
   height: 32px;
 }
+
+/* Reference detail level (Citar painel). Three readings of the SAME reference, so a
+   radiogroup rather than a segmented control: "pick one of these", not "switch view".
+   The native input stays in the DOM for keyboard + screen readers and is visually
+   replaced by the pill, so arrow-key navigation and the group semantics come free. */
+.cite-levels { display: flex; flex-wrap: wrap; gap: 6px; }
+.cite-level {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 500 12px var(--font-body);
+  color: var(--fg-2);
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.cite-level input { position: absolute; opacity: 0; width: 0; height: 0; }
+.cite-level:hover { background: var(--bg-surface-2); }
+.cite-level.on {
+  color: var(--embrapa-green-darker);
+  border-color: var(--embrapa-green);
+  background: var(--bg-surface-2);
+  font-weight: 600;
+}
+/* Keyboard focus must stay visible even though the input itself is hidden. */
+.cite-level:focus-within { outline: 2px solid var(--embrapa-green); outline-offset: 2px; }

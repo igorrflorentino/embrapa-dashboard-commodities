@@ -80,6 +80,11 @@ function AppShell({
   mode = 'single', setMode,
 }) {
   const [citeOpen, setCiteOpen] = React.useState(false);
+  // Which reference detail level the modal shows. Defaults to 'tool': citing the
+  // dashboard AS A TOOL is the common case in a methods section, and it is the level a
+  // reader can act on without a filtered permalink in front of them. The detailed level
+  // stays one click away for "I analysed exactly this slice".
+  const [citeLevel, setCiteLevel] = React.useState('tool');
   const [shared,   setShared]   = React.useState(false);
   const [navOpen,  setNavOpen]  = React.useState(false);
   const [sideNavOpen, setSideNavOpen] = React.useState(false); // mobile (≤768px) sidebar drawer
@@ -249,28 +254,71 @@ function AppShell({
   if ((summary?.valueMin != null || summary?.valueMax != null) && summary.valueRange) scopeBits.push(`Faixa de valor: ${summary.valueRange}`);
   const scopeStr = scopeBits.length ? `${scopeBits.join('. ')}. ` : '';
 
+  // ── Reference detail levels (ABNT NBR 6023:2025) ──────────────────────────
+  // The reference used to be one fixed string that concatenated the banco AND every
+  // active filter. That is the right citation for "I analysed exactly this slice", and
+  // the wrong one for "I used this tool" — a researcher citing the dashboard in a
+  // methods section does not want the reader's eye to travel through a UF list.
+  //
+  //   'tool'   the dashboard itself: no banco, no filters
+  //   'banco'  the dashboard and the data source it was read from
+  //   'query'  the exact consulted slice — the previous behaviour, unchanged
+  //
+  // Shared head/tail so the three levels can only differ where they are meant to.
+  const CITE_AUTHOR = 'EMPRESA BRASILEIRA DE PESQUISA AGROPECU\u00c1RIA (EMBRAPA).';
+  // ONE title for all three levels. The detailed level used to carry a title-cased
+  // variant of its own, so the three references disagreed on the name of the work they
+  // cite. Sentence case is also the ABNT NBR 6023:2025 form.
+  const CITE_TITLE = 'Dashboard de an\u00e1lise hist\u00f3rica de produtos agr\u00edcolas';
+  const citeTail = `Bras\u00edlia, DF: Embrapa, ${editoraYear}. ${dispoStr}Acesso em: ${accessedOn}.`;
+  // The data source at the 'banco' level. A cross perspective has no single banco, so
+  // it names the sources it actually crosses — omitting them would make the middle
+  // level identical to the general one and quietly drop what the panel is built on.
+  const citeSourceName = isCrossView
+    ? (crossSourcesLabel || (isPickerCite ? crossLabel() : ''))
+    : (activeBanco?.short || database);
+
   const citation = isCrossView
     ? (isPickerCite
-        ? `EMPRESA BRASILEIRA DE PESQUISA AGROPECU\u00c1RIA (EMBRAPA). ` +
-          `Dashboard de An\u00e1lise Hist\u00f3rica de Produtos Agr\u00edcolas \u2014 Cruzamento entre fontes \u2014 ` +
+        ? `${CITE_AUTHOR} ` +
+          `${CITE_TITLE} \u2014 Cruzamento entre fontes \u2014 ` +
           `${crossLabel()}. Recorte: ${period}. Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ` +
           `Bras\u00edlia, DF: Embrapa, ${editoraYear}. ${dispoStr}Acesso em: ${accessedOn}.`
-        : `EMPRESA BRASILEIRA DE PESQUISA AGROPECU\u00c1RIA (EMBRAPA). ` +
-          `Dashboard de An\u00e1lise Hist\u00f3rica de Produtos Agr\u00edcolas \u2014 An\u00e1lise cruzada \u2014 ` +
+        : `${CITE_AUTHOR} ` +
+          `${CITE_TITLE} \u2014 An\u00e1lise cruzada \u2014 ` +
           `${VIEW_LABEL[view] || view}${crossSourcesLabel ? ` (fontes: ${crossSourcesLabel})` : ''}. ` +
           `Recorte: ${period}. Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ` +
           `Bras\u00edlia, DF: Embrapa, ${editoraYear}. ${dispoStr}Acesso em: ${accessedOn}.`)
-    : `EMPRESA BRASILEIRA DE PESQUISA AGROPECU\u00c1RIA (EMBRAPA). ` +
-      `Dashboard de An\u00e1lise Hist\u00f3rica de Produtos Agr\u00edcolas \u2014 ` +
+    : `${CITE_AUTHOR} ` +
+      `${CITE_TITLE} \u2014 ` +
       `${bancoCiteLabel} \u2014 ${VIEW_LABEL[view] || view}. ` +
       `Recorte: ${period}. ${scopeStr}Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ` +
       `Bras\u00edlia, DF: Embrapa, ${editoraYear}. ${dispoStr}Acesso em: ${accessedOn}.`;
 
+  const citationTool = `${CITE_AUTHOR} ${CITE_TITLE}. ${citeTail}`;
+  const citationBanco = citeSourceName
+    ? `${CITE_AUTHOR} ${CITE_TITLE}: ${citeSourceName}. ${citeTail}`
+    : citationTool;
+  const CITE_LEVELS = [
+    { id: 'tool', label: 'Ferramenta geral', text: citationTool,
+      hint: 'Cita o dashboard como ferramenta \u2014 sem banco e sem filtros.' },
+    { id: 'banco', label: 'Por banco de dados', text: citationBanco,
+      hint: 'Acrescenta a fonte de dados consultada.' },
+    { id: 'query', label: 'Consulta detalhada', text: citation,
+      hint: 'Descreve o recorte exato: banco, per\u00edodo, produtos, UFs e conven\u00e7\u00f5es.' },
+  ];
+  const activeCite = CITE_LEVELS.find((l) => l.id === citeLevel) || CITE_LEVELS[0];
+
   // ABNT NBR 10520:2023 in-text citation (chamada autor-data) \u2014 what you insert in
-  // the running text. The 2023 revision renders the author in the parenthetical
-  // with only an initial capital (e.g. "(Embrapa, 2026)"), UNLIKE the reference
-  // body above, which keeps the entity in ALL CAPS per NBR 6023:2025. The two
-  // norms are complementary: 10520 = the in-text call; 6023 = the full reference.
+  // the running text. The 2023 revision renders the author in the parenthetical with
+  // only an initial capital ("(Embrapa, 2026)"), UNLIKE the reference body above, which
+  // keeps the entity in ALL CAPS per NBR 6023:2025. The two norms are complementary:
+  // 10520 = the in-text call; 6023 = the full reference.
+  //
+  // The mixed case is NOT an inconsistency with the reference head, and it looks like
+  // one: this was switched to "(EMBRAPA, ...)" in v1.31.0 for that apparent symmetry and
+  // reverted in v1.31.1 as non-compliant. If it looks wrong again, the two norms
+  // genuinely differ \u2014 check 10520:2023 before "fixing" it a third time.
   const inTextCite = `(Embrapa, ${editoraYear})`;
 
   const onCite = () => setCiteOpen(true);
@@ -293,7 +341,9 @@ function AppShell({
     setTimeout(() => setShared(false), 1800);
   };
   const onCopyCite = async () => {
-    try { await navigator.clipboard.writeText(citation); } catch {}
+    // The SELECTED level, not the detailed one: the button under a chosen radio has to
+    // copy what the box above it shows.
+    try { await navigator.clipboard.writeText(activeCite.text); } catch {}
   };
   const onCopyInText = async () => {
     try { await navigator.clipboard.writeText(inTextCite); } catch {}
@@ -614,10 +664,11 @@ function AppShell({
                 <div className="overline">Citação acadêmica</div>
                 <h2 id="cite-title">Citar painel</h2>
                 <p className="caption">
-                  Do painel exatamente como exibido — banco, perspectiva, recorte temporal,
-                  produtos, UFs, filtros e convenções métricas — com o link permanente que
-                  reproduz a seleção. A <strong>citação no texto</strong> segue a ABNT NBR
-                  10520:2023; a <strong>referência</strong> completa segue a ABNT NBR 6023:2025.
+                  Escolha <strong>quanto do painel</strong> a referência deve descrever — desde
+                  o dashboard como ferramenta até o recorte exato consultado — sempre com o link
+                  permanente que reproduz a seleção. A <strong>citação no texto</strong> segue a
+                  ABNT NBR 10520:2023; a <strong>referência</strong> completa segue a ABNT NBR
+                  6023:2025.
                 </p>
               </div>
               <button className="fm-close" onClick={() => setCiteOpen(false)} aria-label="Fechar">
@@ -642,8 +693,25 @@ function AppShell({
                     <window.Icon name="content_copy" size={13}/> Copiar
                   </button>
                 </div>
-                <pre className="cite-text">{citation}</pre>
-                <p className="caption cite-hint">Para a lista de referências ao final do trabalho.</p>
+                {/* Detail level. A radiogroup rather than a segmented control: these are
+                    three readings of the same reference, and a radio says "pick one of
+                    these" where a toggle would suggest a view switch. */}
+                <div className="cite-levels" role="radiogroup" aria-label="Nível de detalhe da referência">
+                  {CITE_LEVELS.map((lv) => (
+                    <label key={lv.id} className={'cite-level ' + (citeLevel === lv.id ? 'on' : '')}>
+                      <input
+                        type="radio"
+                        name="cite-level"
+                        value={lv.id}
+                        checked={citeLevel === lv.id}
+                        onChange={() => setCiteLevel(lv.id)}
+                      />
+                      <span>{lv.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <pre className="cite-text">{activeCite.text}</pre>
+                <p className="caption cite-hint">{activeCite.hint} Para a lista de referências ao final do trabalho.</p>
               </div>
               <div className="cite-actions">
                 <button className="btn-secondary" onClick={() => setCiteOpen(false)}>Fechar</button>

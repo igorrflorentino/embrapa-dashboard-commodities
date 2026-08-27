@@ -385,8 +385,13 @@ describe('AppShell — citation modal', () => {
     const { container } = render(<AppShell {...props} />);
     fireEvent.click([...container.querySelectorAll('.util-action')].find((b) => b.textContent.includes('Citar painel')));
     expect(container.querySelector('.cite-modal')).toBeTruthy();
-    // In-text ABNT 10520 call + full reference both present.
+    // In-text ABNT 10520 call + full reference both present. The in-text call uses an
+    // INITIAL CAPITAL while the reference head is ALL CAPS — that is 10520:2023 and
+    // 6023:2025 respectively, not an inconsistency. Briefly "unified" to caps in
+    // v1.31.0 and reverted in v1.31.1; this assertion is the guard against a third
+    // round trip.
     expect(container.textContent).toContain('(Embrapa,');
+    expect(container.textContent).not.toContain('(EMBRAPA,');
     expect(container.textContent).toContain('EMPRESA BRASILEIRA DE PESQUISA AGROPECUÁRIA');
     // Disponível em: present because urlEncodeState is stubbed.
     expect(container.textContent).toContain('Disponível em:');
@@ -568,5 +573,115 @@ describe('AppShell — mobile topbar: mode toggle relocated to the drawer', () =
     expect(props.setMode).toHaveBeenCalledWith('multi');
     fireEvent.click(opts[0]); // Banco único
     expect(props.setMode).toHaveBeenCalledWith('single');
+  });
+});
+
+// ── Reference detail levels (ABNT NBR 6023:2025) ─────────────────────────────
+//
+// The reference was one fixed string concatenating the banco AND every active filter.
+// That is right for "I analysed exactly this slice" and wrong for "I used this tool":
+// a methods section citing the dashboard should not send the reader through a UF list.
+
+describe('AppShell — reference detail levels', () => {
+  const openCite = (container) => {
+    fireEvent.click([...container.querySelectorAll('.util-action')]
+      .find((b) => b.textContent.includes('Citar painel')));
+  };
+  const pick = (container, label) => {
+    const lv = [...container.querySelectorAll('.cite-level')].find((l) => l.textContent.includes(label));
+    fireEvent.click(lv.querySelector('input'));
+    return lv;
+  };
+  const refText = (container) =>
+    [...container.querySelectorAll('.cite-text')].find((n) => !n.classList.contains('cite-text-inline')).textContent;
+
+  it('offers exactly three levels, in a radiogroup', () => {
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    const group = container.querySelector('[role="radiogroup"]');
+    expect(group).toBeTruthy();
+    expect([...group.querySelectorAll('input[type="radio"]')]).toHaveLength(3);
+  });
+
+  it('defaults to the general-tool level', () => {
+    // Citing the dashboard AS A TOOL is the common case in a methods section, and the
+    // one a reader can act on without a filtered permalink in front of them.
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    const on = container.querySelector('.cite-level.on');
+    expect(on.textContent).toContain('Ferramenta geral');
+    expect(refText(container)).not.toContain('Recorte:');
+  });
+
+  it('gives all three levels the SAME title of the work', () => {
+    // The detailed level used to carry a title-cased variant of its own, so the three
+    // references disagreed on the name of the thing they cite. Sentence case is also
+    // the NBR 6023:2025 form.
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    for (const label of ['Ferramenta geral', 'Por banco de dados', 'Consulta detalhada']) {
+      pick(container, label);
+      const txt = refText(container);
+      expect(txt).toContain('Dashboard de análise histórica de produtos agrícolas');
+      expect(txt).not.toContain('Dashboard de Análise Histórica');
+    }
+  });
+
+  it('"Ferramenta geral" drops the banco AND every filter', () => {
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    pick(container, 'Ferramenta geral');
+    const txt = refText(container);
+    expect(txt).toContain('EMPRESA BRASILEIRA DE PESQUISA AGROPECUÁRIA (EMBRAPA).');
+    expect(txt).toContain('Dashboard de análise histórica de produtos agrícolas.');
+    // The whole point of this level: no source, no scope.
+    expect(txt).not.toContain('IBGE PEVS');
+    expect(txt).not.toContain('Recorte:');
+    expect(txt).not.toContain('Convenções métricas:');
+    // The publication tail survives — it is what makes it a reference at all.
+    expect(txt).toContain('Brasília, DF: Embrapa,');
+    expect(txt).toContain('Acesso em:');
+  });
+
+  it('"Por banco de dados" names the source and nothing else', () => {
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    pick(container, 'Por banco de dados');
+    const txt = refText(container);
+    // Subtitle after a colon, per the requested format.
+    expect(txt).toContain('Dashboard de análise histórica de produtos agrícolas: IBGE PEVS.');
+    expect(txt).not.toContain('Recorte:');
+    expect(txt).not.toContain('Convenções métricas:');
+  });
+
+  it('copies the SELECTED level, not the detailed one', () => {
+    // The requirement that ties the feature together: the button under a chosen radio
+    // has to copy what the box above it shows.
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    pick(container, 'Ferramenta geral');
+    navigator.clipboard.writeText.mockClear();
+    fireEvent.click([...container.querySelectorAll('.btn-primary')]
+      .find((b) => b.textContent.includes('Copiar referência')));
+    const copied = navigator.clipboard.writeText.mock.calls.at(-1)[0];
+    expect(copied).toBe(refText(container));
+    expect(copied).not.toContain('Recorte:');
+  });
+
+  it('keeps the three levels on one author and one publication tail', () => {
+    // They may differ ONLY in how much of the panel they describe; a divergent author
+    // or access date between levels would be three different references.
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    const seen = ['Ferramenta geral', 'Por banco de dados', 'Consulta detalhada'].map((l) => {
+      pick(container, l);
+      return refText(container);
+    });
+    for (const txt of seen) {
+      expect(txt.startsWith('EMPRESA BRASILEIRA DE PESQUISA AGROPECUÁRIA (EMBRAPA).')).toBe(true);
+      expect(txt).toContain('Brasília, DF: Embrapa,');
+      expect(txt).toContain('Acesso em:');
+    }
+    expect(new Set(seen).size).toBe(3);   // and they really are three different texts
   });
 });
