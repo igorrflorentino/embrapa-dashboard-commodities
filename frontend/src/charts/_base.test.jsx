@@ -4,12 +4,17 @@
 // drive Plotly.react to succeed or throw on demand; ResizeObserver is stubbed
 // (jsdom has none).
 
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 
 // vi.hoisted so the mock factory can reach this mutable impl (vi.mock is hoisted
 // above imports). Each test swaps reactState.impl to choose success/throw.
 const { reactState } = vi.hoisted(() => ({ reactState: { impl: () => {} } }));
+// Plots.resize is recorded and its return value is swappable, so the ResizeObserver
+// guard (and the rejection handling) can be driven deliberately.
+const { resizeState } = vi.hoisted(() => ({
+  resizeState: { calls: [], ret: () => undefined },
+}));
 
 // Stand-in for Plotly's graph-div event API: real Plotly augments the element
 // with .on/.removeListener/.emit. The default impl wires a tiny listener
@@ -19,7 +24,9 @@ vi.mock('./plotlyBundle', () => ({
   default: {
     react: (...args) => reactState.impl(...args),
     purge: () => {},
-    Plots: { resize: () => {} },
+    Plots: {
+      resize: (el) => { resizeState.calls.push(el); return resizeState.ret(); },
+    },
   },
 }));
 
@@ -37,7 +44,11 @@ function wirePlotlyEvents(el) {
 import { Plot, baseLayout, ptBrLinearAxis, ptBrMagnitude, ptBrValueTicks, seriesMax, yearAxis } from './_base.jsx';
 
 beforeAll(() => {
+  // Capture the callback so a resize can be SIMULATED — jsdom has no layout, so the
+  // real observer would never fire and the guard under test would never run.
+  globalThis.__roCallbacks = [];
   globalThis.ResizeObserver = class {
+    constructor(cb) { globalThis.__roCallbacks.push(cb); }
     observe() {}
     unobserve() {}
     disconnect() {}
@@ -203,5 +214,76 @@ describe('baseLayout hover tooltip (audit HOVER-1 — solid, never transparent)'
   it('lets a caller override the whole layout hoverlabel via `over`', () => {
     const lay = baseLayout({ hoverlabel: { bgcolor: '#222' } });
     expect(lay.hoverlabel.bgcolor).toBe('#222');
+  });
+});
+
+// ── The ResizeObserver must not fire a resize Plotly will refuse ─────────────
+//
+// Plotly.Plots.resize REJECTS A PROMISE when the div is hidden — from
+// plotly.js/src/plots/plots.js:
+//
+//     plots.resize = function(gd) {
+//         var p = new Promise(function(resolve, reject) {
+//             if(!gd || Lib.isHidden(gd)) {
+//                 reject(new Error('Resize must be passed a displayed plot div element.'));
+//
+// A synchronous try/catch around the call cannot see that rejection, so it escapes as
+// an "Uncaught (in promise)". A ResizeObserver fires exactly when an element collapses
+// — a perspective torn down, a card hidden — so the reject path is reachable in normal
+// use, and the console it pollutes is the cheapest regression detector the project has.
+
+describe('Plot — the resize guard', () => {
+  const fireResize = () => globalThis.__roCallbacks.forEach((cb) => cb());
+
+  beforeEach(() => {
+    globalThis.__roCallbacks = [];
+    resizeState.calls = [];
+    resizeState.ret = () => undefined;
+    reactState.impl = (el) => wirePlotlyEvents(el);
+  });
+
+  it('resizes a displayed plot', () => {
+    render(<Plot traces={[]} layout={{}} />);
+    fireResize();
+    expect(resizeState.calls).toHaveLength(1);
+  });
+
+  it('skips a HIDDEN plot — mirroring Plotly\'s own Lib.isHidden', () => {
+    // Lib.isHidden is `getComputedStyle(gd).display` empty or 'none'; skipping exactly
+    // that means never issuing the call Plotly is going to refuse.
+    // Set it on the OBSERVED div itself: jsdom's getComputedStyle does not cascade an
+    // ancestor's display, and the guard reads the same element Plotly would.
+    // firstChild.firstChild is the REF'D div. `querySelector('div > div')` matches the
+    // outer wrapper first (container is itself a div), so it hid the wrong element.
+    const { container } = render(<Plot traces={[]} layout={{}} />);
+    container.firstChild.firstChild.style.display = 'none';
+    fireResize();
+    expect(resizeState.calls).toHaveLength(0);
+  });
+
+  it('skips a DISCONNECTED plot', () => {
+    const { container, unmount } = render(<Plot traces={[]} layout={{}} />);
+    const el = container.firstChild.firstChild;
+    unmount();
+    expect(el.isConnected).toBe(false);
+    fireResize();
+    expect(resizeState.calls).toHaveLength(0);
+  });
+
+  it('attaches a rejection handler, so a refused resize cannot escape', () => {
+    // THE point of the fix: the pre-existing try/catch is synchronous and can never
+    // catch a rejected promise. Without a .catch the refusal surfaces as an unhandled
+    // rejection in every browser console.
+    const caught = vi.fn();
+    resizeState.ret = () => ({ catch: caught });
+    render(<Plot traces={[]} layout={{}} />);
+    fireResize();
+    expect(caught).toHaveBeenCalled();
+  });
+
+  it('survives a resize implementation that throws synchronously', () => {
+    resizeState.ret = () => { throw new Error('detached mid-resize'); };
+    render(<Plot traces={[]} layout={{}} />);
+    expect(() => fireResize()).not.toThrow();
   });
 });
