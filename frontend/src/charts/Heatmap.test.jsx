@@ -88,12 +88,35 @@ describe('Heatmap — the colorbar adapts to a short plot', () => {
     render(<Heatmap rows={oneRow} valueKey="v" valueLabel="R$" />);
     const cb = trace().colorbar;
     expect(cb.orientation).toBe('h');
-    expect(cb.y).toBeLessThan(0);        // below the plot, not beside it
+    // Pinned to the CONTAINER's bottom, not to the plotting area: on a one-row heatmap
+    // that area is ~16px tall, so a paper-relative offset moved the bar a few pixels and
+    // dropped the unit onto the year labels.
+    expect(cb.yref).toBe('container');
+    expect(cb.yanchor).toBe('bottom');
   });
 
   it('stays vertical once the plot is tall enough to hold it', () => {
     render(<Heatmap rows={manyRows} valueKey="v" valueLabel="R$" />);
-    expect(trace().colorbar.orientation).toBeUndefined();  // Plotly's vertical default
+    // Declared EXPLICITLY, not left to Plotly's default: react() keeps an omitted
+    // nested attribute at its previous value, so a key set in one branch and missing
+    // from the other survives an orientation flip and places the bar half-stale.
+    expect(trace().colorbar.orientation).toBe('v');
+  });
+
+  it('declares the same key set in both orientations', () => {
+    render(<Heatmap rows={manyRows} valueKey="v" valueLabel="R$" />);
+    const tall = Object.keys(trace().colorbar).sort();
+    cleanup();
+    render(<Heatmap rows={oneRow} valueKey="v" valueLabel="R$" />);
+    expect(Object.keys(trace().colorbar).sort()).toEqual(tall);
+  });
+
+  it('spans the full extent in whichever direction has room', () => {
+    render(<Heatmap rows={oneRow} valueKey="v" valueLabel="R$" />);
+    expect(trace().colorbar.len).toBe(1);          // full plot WIDTH when horizontal
+    cleanup();
+    render(<Heatmap rows={manyRows} valueKey="v" valueLabel="R$" />);
+    expect(trace().colorbar.len).toBe(1);          // full plot HEIGHT when vertical
   });
 
   it('keeps the pt-BR tick ladder in BOTH orientations', () => {
@@ -111,7 +134,7 @@ describe('Heatmap — the colorbar adapts to a short plot', () => {
     // An explicit height means the caller sized the plot on purpose; second-guessing it
     // would move someone else's chart.
     render(<Heatmap rows={oneRow} valueKey="v" valueLabel="R$" height={400} />);
-    expect(trace().colorbar.orientation).toBeUndefined();
+    expect(trace().colorbar.orientation).toBe('v');
   });
 });
 
@@ -153,5 +176,61 @@ describe('Heatmap — an orientation flip gets a fresh plot element', () => {
     const first = reactState.els.at(-1);
     rerender(<Heatmap rows={rowsFor(12)} valueKey="v" valueLabel="R$" />);
     expect(reactState.els.at(-1)).toBe(first);
+  });
+});
+
+// ── The legend must answer "what does the darkest colour mean?" ──────────────
+//
+// The old ticks were nice ROUND values over the data range, which is right for an axis
+// and wrong for a legend: on a scale ending at ~134 mi they emitted 0 / 50 mi / 100 mi,
+// landing at 0%, 37% and 75% of the bar with NOTHING marking the top — the one value a
+// reader most wants from a gradient.
+
+describe('Heatmap — colorbar anchors', () => {
+  const rows = [{
+    id: 'PA', label: 'PA',
+    values: [{ y: 2019, v: 20e6 }, { y: 2020, v: 134e6 }, { y: 2021, v: 60e6 }],
+  }];
+
+  it('anchors at the low end, the midpoint and the high end — always those three', () => {
+    render(<Heatmap rows={rows} valueKey="v" valueLabel="R$" />);
+    const cb = trace().colorbar;
+    expect(cb.tickvals).toEqual([20e6, 77e6, 134e6]);
+    // Labels stay on the pt-BR ladder, so the legend and the KPI cards read alike.
+    expect(cb.ticktext).toEqual(['20 mi', '77 mi', '134 mi']);
+  });
+
+  it('pins zmin/zmax so the bar ENDS and its labels describe the same numbers', () => {
+    render(<Heatmap rows={rows} valueKey="v" valueLabel="R$" />);
+    const t = trace();
+    expect(t.zmin).toBe(20e6);
+    expect(t.zmax).toBe(134e6);
+    expect(t.colorbar.tickvals[0]).toBe(t.zmin);
+    expect(t.colorbar.tickvals.at(-1)).toBe(t.zmax);
+  });
+
+  it('places the unit where it cannot be read as a value, per orientation', () => {
+    // Vertical: above the bar. Beside it, Plotly rotates the title 90° and "R$" landed
+    // sideways in the gradient, between two tick labels, looking like one of them.
+    const tall = Array.from({ length: 8 }, (_, i) => ({
+      id: `U${i}`, label: `U${i}`, values: [{ y: 2019, v: i + 1 }],
+    }));
+    render(<Heatmap rows={tall} valueKey="v" valueLabel="R$" />);
+    expect(trace().colorbar.title).toEqual({ text: 'R$', side: 'top', font: { size: 11 } });
+    cleanup();
+    // Horizontal: 'bottom', which measurement (not intuition) shows renders the unit
+    // just above the bar, clear of the year labels and the tick labels. 'top' is
+    // measured from the colorbar GROUP, which on a container-anchored bar stretches up
+    // into the plot — it drew "R$" over the heatmap band itself.
+    render(<Heatmap rows={rows} valueKey="v" valueLabel="R$" />);
+    expect(trace().colorbar.title.side).toBe('bottom');
+  });
+
+  it('falls back to Plotly ticks on a degenerate (single-value) scale', () => {
+    // Every cell equal ⇒ there is no range to anchor; inventing three identical labels
+    // would dress a non-existent gradient up as a scale.
+    render(<Heatmap rows={[{ id: 'X', label: 'X', values: [{ y: 2019, v: 5 }, { y: 2020, v: 5 }] }]}
+                    valueKey="v" valueLabel="R$" />);
+    expect(trace().colorbar.tickvals).toBeUndefined();
   });
 });

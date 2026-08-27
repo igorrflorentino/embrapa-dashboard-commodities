@@ -85,6 +85,25 @@ export function ptBrValueTicks(max, count = 4) {
   return { tickvals, ticktext: tickvals.map(ptBrMagnitude) };
 }
 
+/** Colorbar tick anchors: the LOW end, the midpoint and the HIGH end — always those
+ *  three, always at 0%, 50% and 100% of the bar.
+ *
+ *  A colorbar is a LEGEND, not an axis, and the two want opposite things.
+ *  `ptBrValueTicks` picks nice round steps and lets the axis extend past the data,
+ *  which is right for an axis and wrong here: over a scale ending at ~134 mi it
+ *  emitted 0 / 50 mi / 100 mi, so the labels sat at 0%, 37% and 75% of the bar and
+ *  NOTHING marked the top. The reader's first question about a gradient is "what does
+ *  the darkest colour mean?", and that was the one value the legend never showed.
+ *
+ *  Fixed anchors trade round numbers for answerable ones. Labels still go through
+ *  ptBrMagnitude, so they read "134 mi" in the same ladder as every other figure.
+ *  Returns null for a degenerate range (max <= min), leaving Plotly's own ticks. */
+export function colorbarAnchors(min, max) {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+  const tickvals = [min, (min + max) / 2, max];
+  return { tickmode: 'array', tickvals, ticktext: tickvals.map(ptBrMagnitude) };
+}
+
 /** The value-axis tick props to spread onto ANY chart's y/x value axis, so every
  *  value axis in the app reads pt-BR magnitude words ("15 bi") instead of d3's SI
  *  letters ("15G") — the single contract that kills the "15G vs 15 bi" mismatch
