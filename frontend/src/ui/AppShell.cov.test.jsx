@@ -18,7 +18,7 @@
 //   • share + cite copy + the window.openFeedback global + the Reportar trigger
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 
 const BANCOS = [
   { id: 'ibge_pevs', short: 'IBGE PEVS', label: 'Produção · Extração vegetal', maturity: 'estavel', status: 'live' },
@@ -685,3 +685,119 @@ describe('AppShell — reference detail levels', () => {
     expect(new Set(seen).size).toBe(3);   // and they really are three different texts
   });
 });
+
+// ── The title is bold, the subtitle is not (ABNT NBR 6023:2025) ──────────────
+//
+// The norm highlights the TÍTULO of the work and NOT its subtítulo. That distinction is
+// why the reference is built as head/title/rest parts instead of one string: a single
+// string could only be re-split by guessing where the title ends.
+
+describe('AppShell — bold title in the reference', () => {
+  const openCite = (container) => {
+    fireEvent.click([...container.querySelectorAll('.util-action')]
+      .find((b) => b.textContent.includes('Citar painel')));
+  };
+  const pick = (container, label) => {
+    [...container.querySelectorAll('.cite-level')]
+      .find((l) => l.textContent.includes(label)).querySelector('input').click();
+  };
+  const refBox = (container) =>
+    [...container.querySelectorAll('.cite-text')].find((n) => !n.classList.contains('cite-text-inline'));
+
+  it('bolds exactly the title — not the author, not the tail', () => {
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    const strongs = [...refBox(container).querySelectorAll('strong')];
+    expect(strongs).toHaveLength(1);
+    expect(strongs[0].textContent).toBe('Dashboard de análise histórica de produtos agrícolas');
+  });
+
+  it('leaves the SUBTITLE outside the bold on "Por banco de dados"', () => {
+    // The source comes after a colon, so it is a subtítulo — highlighting it would be
+    // the one thing 6023 explicitly does not do.
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    pick(container, 'Por banco de dados');
+    const box = refBox(container);
+    expect(box.querySelector('strong').textContent).not.toContain('IBGE PEVS');
+    expect(box.textContent).toContain(': IBGE PEVS.');
+  });
+
+  it('keeps the rendered text character-identical to what gets copied', () => {
+    // Splitting the string into parts must not introduce or drop a space; the box and
+    // the clipboard have to agree exactly.
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    navigator.clipboard.writeText.mockClear();
+    fireEvent.click([...container.querySelectorAll('.btn-primary')]
+      .find((b) => b.textContent.includes('Copiar referência')));
+    expect(navigator.clipboard.writeText.mock.calls.at(-1)[0]).toBe(refBox(container).textContent);
+  });
+});
+
+describe('AppShell — rich clipboard for the reference', () => {
+  const openCite = (container) => {
+    fireEvent.click([...container.querySelectorAll('.util-action')]
+      .find((b) => b.textContent.includes('Citar painel')));
+  };
+  const copy = (container) => {
+    fireEvent.click([...container.querySelectorAll('.btn-primary')]
+      .find((b) => b.textContent.includes('Copiar referência')));
+  };
+
+  afterEach(() => { delete globalThis.ClipboardItem; delete navigator.clipboard.write; });
+
+  it('writes text/html with the title bolded, plus a plain-text twin', async () => {
+    // A word processor takes the formatted run; a .bib or a terminal still gets the same
+    // characters. Without this the researcher re-bolds the title by hand every time.
+    const items = [];
+    globalThis.ClipboardItem = function ClipboardItemStub(payload) { this.payload = payload; };
+    navigator.clipboard.write = vi.fn((arr) => { items.push(arr[0].payload); return Promise.resolve(); });
+
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    navigator.clipboard.writeText.mockClear();
+    copy(container);
+    await Promise.resolve();
+
+    expect(navigator.clipboard.write).toHaveBeenCalled();
+    const payload = items.at(-1);
+    expect(Object.keys(payload).sort()).toEqual(['text/html', 'text/plain']);
+    // writeText must NOT also fire — a double write can leave the two formats disagreeing.
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+  });
+
+  it('escapes the permalink ampersands so the pasted URL stays followable', async () => {
+    // The reference carries a query string full of `&`; unescaped, the paste target
+    // parses them as entities and silently corrupts the link a reader is meant to open.
+    let html = '';
+    globalThis.ClipboardItem = function ClipboardItemStub(payload) { this.payload = payload; };
+    navigator.clipboard.write = vi.fn(async (arr) => {
+      html = await arr[0].payload['text/html'].text();
+    });
+
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    pick2(container, 'Consulta detalhada');
+    copy(container);
+    // Blob.text() is async — a couple of microtasks are not enough to read it back.
+    await waitFor(() => expect(html).not.toBe(''));
+
+    expect(html).toContain('<b>Dashboard de análise histórica de produtos agrícolas</b>');
+    if (html.includes('Disponível em:')) expect(html).not.toMatch(/[^&]&(?!amp;|lt;|gt;)/);
+  });
+
+  it('falls back to plain text where ClipboardItem is unavailable', () => {
+    // A reference without bold beats no reference.
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    navigator.clipboard.writeText.mockClear();
+    copy(container);
+    expect(navigator.clipboard.writeText).toHaveBeenCalled();
+  });
+});
+
+function pick2(container, label) {
+  [...container.querySelectorAll('.cite-level')]
+    .find((l) => l.textContent.includes(label)).querySelector('input').click();
+}
