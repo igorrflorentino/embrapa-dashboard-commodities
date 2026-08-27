@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.30.0] - 2026-08-27
+
+A barra de cor dos mapas de calor reconstruída como **legenda**, não como eixo.
+
+### Changed
+- **Âncoras fixas em vez de números redondos soltos.** Os ticks vinham do gerador de
+  eixo (`ptBrValueTicks`), que escolhe passos redondos e deixa o eixo passar do dado —
+  correto para um eixo, errado para uma legenda. Sobre uma escala terminando em ~134 mi
+  ele emitia `0 / 50 mi / 100 mi`, que caíam em 0%, 37% e 75% da barra, **sem nada
+  marcando o topo**. A primeira pergunta de quem olha um degradê é "o que significa a
+  cor mais escura?", e era exatamente o valor que a legenda nunca mostrava.
+
+  Novo helper `colorbarAnchors(min, max)` em `_base.jsx`: sempre três âncoras — limite
+  inferior, centro e limite superior — em 0%, 50% e 100%. Os rótulos continuam passando
+  por `ptBrMagnitude`, então leem "134 mi" na mesma escada de todo o resto.
+
+- **A barra ocupa a extensão inteira na direção que tem espaço** (`len: 1`): a altura do
+  gráfico quando vertical, a **largura** quando horizontal. Uma barra atarracada boiando
+  num card largo lê como sobra, não como chave das cores.
+
+- **A unidade sai do meio do gradiente.** Ao lado de uma barra vertical o Plotly rotaciona
+  o título 90°, e "R$" ficava deitado entre dois ticks, parecendo mais um deles. Agora
+  vai acima na vertical e, na horizontal, logo acima da barra.
+
+- **A barra horizontal é ancorada ao CONTÊINER**, não à área de plotagem. Num mapa de
+  calor de uma linha essa área tem ~16px de altura, então um deslocamento relativo a ela
+  movia a barra 7px — direto para cima dos rótulos de ano, com a unidade caindo sobre
+  "2005". Medido: título em `t:72-85`, barra em `t:92-104`, rótulos de ano em `t:33-46`,
+  sem colisão.
+
+- **`zmin`/`zmax` fixados explicitamente** na trace. Deixados para o Plotly inferir, as
+  pontas da barra e os rótulos que as descrevem eram derivados por caminhos diferentes;
+  agora são provadamente os mesmos números.
+
+- **`MonthYearHeatmap` (Sazonalidade) recebeu o mesmo tratamento** — tinha os dois
+  defeitos reportados para o outro: unidade rotacionada no meio do gradiente e nenhuma
+  âncora, então as pontas da escala nunca eram rotuladas e os ticks caíam nas letras SI
+  inglesas do Plotly ("14B" ao lado do "14 bi" do próprio app).
+
+---
+
 ## [1.29.5] - 2026-08-27
 
 ### Fixed

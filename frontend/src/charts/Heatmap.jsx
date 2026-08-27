@@ -3,7 +3,7 @@
 // unchanged — now with zoom/pan/hover (the point of the Plotly migration).
 //   rows: [{ id, label, values: [{ y, v }] }]
 
-import { Plot, baseLayout, ptBrValueTicks, resolveColor, yearAxis } from './_base';
+import { Plot, baseLayout, colorbarAnchors, resolveColor, yearAxis } from './_base';
 
 // The design-system heat ramp (--heat-1…--heat-7), resolved to concrete colors
 // and mapped onto a Plotly colorscale (normalized stops 0→1).
@@ -36,14 +36,18 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
     return x.map((yr) => (byYear.has(yr) ? byYear.get(yr) : null));
   });
 
-  // MAPA-5: the colorbar used Plotly's default SI tick format ("14B"/"12B"/"8B"),
-  // the SAME English-letter mismatch ptBrLinearAxis already fixes on every OTHER
-  // value axis in the app ("15G" next to "15 bi" for the same R$ series — FINDING
-  // #9) — it just never reached this ONE colorbar. Reuses the identical pt-BR
-  // magnitude ladder; falls back to Plotly's own ticks when the data can't
-  // support "nice" ones (ptBrValueTicks returns null for that — see _base.jsx).
-  const zMax = Math.max(0, ...z.flat().filter((v) => v != null));
-  const zTicks = ptBrValueTicks(zMax);
+  // The colour scale's REAL ends, pinned explicitly onto the trace below. Left to
+  // Plotly they are inferred from the data and the legend can only guess at them; set
+  // here, the bar's ends and its labels provably describe the same numbers.
+  //
+  // Labels keep going through the pt-BR magnitude ladder (MAPA-5 / FINDING #9): this
+  // colorbar is the one place that used to show Plotly's SI letters, so "14B" sat next
+  // to "14 bi" for the same R$ series. colorbarAnchors formats with ptBrMagnitude, and
+  // returns null for a degenerate range, leaving Plotly's own ticks.
+  const zVals = z.flat().filter((v) => v != null);
+  const zMin = zVals.length ? Math.min(...zVals) : 0;
+  const zMax = zVals.length ? Math.max(...zVals) : 0;
+  const zTicks = colorbarAnchors(zMin, zMax);
   // Row-count-aware height, and whether that leaves the vertical colorbar enough room.
   // Three rows at 24px + chrome is about where a right-side title stops fitting.
   const autoHeight = 22 + rows.length * 24 + 22;
@@ -57,6 +61,8 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
       z,
       colorscale: heatColorscale(),
       showscale: true,
+      zmin: zMin,
+      zmax: zMax,
       // Sparse/ragged rows set missing cells to null (drawn as gaps). Suppress hover on
       // those gaps so a null cell doesn't pop a tooltip with a blank "%{z:,.2f}" value.
       hoverongaps: false,
@@ -65,27 +71,56 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
       // is ~68px and the unit collided with the values into an unreadable smudge.
       // Below the threshold the bar goes HORIZONTAL, under the plot, where width is the
       // one thing a one-row heatmap has plenty of.
-      colorbar: shortPlot
-        ? {
-            orientation: 'h',
-            title: { text: valueLabel, side: 'right', font: { size: 11 } },
-            thickness: 10,
-            len: 0.55,
-            x: 0,
-            xanchor: 'left',
-            y: -0.35,
-            yanchor: 'top',
-            ...(zTicks
-              ? { tickmode: 'array', tickvals: zTicks.tickvals, ticktext: zTicks.ticktext }
-              : {}),
-          }
-        : {
-            title: { text: valueLabel, side: 'right', font: { size: 11 } },
-            thickness: 12,
-            ...(zTicks
-              ? { tickmode: 'array', tickvals: zTicks.tickvals, ticktext: zTicks.ticktext }
-              : {}),
-          },
+      // Both branches declare the SAME keys. Plotly.react leaves an omitted nested
+      // attribute at its previous value, so a key present in one branch and absent from
+      // the other would survive an orientation flip and place the bar by half-stale
+      // geometry.
+      colorbar: {
+        // Full span in the direction that has room: the height of the plot when
+        // vertical, the width of it when horizontal. A stubby bar floating in a wide
+        // card reads as a leftover, not as the key to the colours.
+        len: 1,
+        lenmode: 'fraction',
+        thickness: 12,
+        thicknessmode: 'pixels',
+        // The unit label, placed where it cannot be mistaken for a value.
+        //   vertical   → above the bar. Beside it, Plotly rotates the text 90°, which
+        //                landed "R$" sideways in the middle of the gradient, between two
+        //                tick labels, reading as if it were one of them.
+        //   horizontal → 'bottom'. Counter-intuitive, and measured rather than assumed:
+        //                it renders the unit just ABOVE the bar (title 72-85px, bar
+        //                92-104px), clear of both the year labels above and the tick
+        //                labels below. 'top' is measured from the colorbar GROUP, which
+        //                on a container-anchored bar stretches up into the plot, so it
+        //                drew "R$" over the heatmap band itself at y=10.
+        title: {
+          text: valueLabel,
+          side: shortPlot ? 'bottom' : 'top',
+          font: { size: 11 },
+        },
+        outlinewidth: 0,
+        ticks: 'outside',
+        ticklen: 4,
+        tickfont: { size: 10 },
+        ...(zTicks || {}),
+        // Horizontal: x/len stay on 'paper' so the bar spans exactly the heatmap band,
+        // but y is anchored to the CONTAINER. A paper-relative y is a fraction of the
+        // PLOTTING AREA, which on a one-row heatmap is ~16px tall — so y:-0.42 moved the
+        // bar 7px, straight into the year labels, and the unit landed on top of "2005".
+        // Against the container the placement is the same handful of pixels from the
+        // card's bottom edge no matter how short the band above it is.
+        ...(shortPlot
+          ? {
+              orientation: 'h',
+              x: 0.5, xanchor: 'center', xref: 'paper',
+              y: 0, yanchor: 'bottom', yref: 'container',
+            }
+          : {
+              orientation: 'v',
+              x: 1.02, xanchor: 'left', xref: 'paper',
+              y: 0.5, yanchor: 'middle', yref: 'paper',
+            }),
+      },
       hovertemplate: `<b>%{y}</b> · %{x}<br>%{z:,.2f} ${valueLabel}<extra></extra>`,
     },
   ];
@@ -93,7 +128,10 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
   const layout = baseLayout({
     // A horizontal colorbar lives BELOW the plot, so it needs bottom room the
     // vertical one never did.
-    margin: { l: 120, r: 16, t: 8, b: shortPlot ? 76 : 36 },
+    // Room for the colorbar in whichever direction it sits: to the right when
+    // vertical (bar + tick labels + the unit above it), below when horizontal. Too
+    // tight and Plotly clips the labels, which is how a legend stops being one.
+    margin: { l: 120, r: shortPlot ? 16 : 92, t: shortPlot ? 8 : 22, b: shortPlot ? 108 : 36 },
     hovermode: 'closest',
     // x = a LINEAR year axis (not category): the years are contiguous integers, so a
     // numeric axis renders the heatmap cells identically (centred on each year, width
@@ -121,7 +159,7 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
       key={shortPlot ? 'cb-h' : 'cb-v'}
       traces={traces}
       layout={layout}
-      height={height || (shortPlot ? autoHeight + 52 : autoHeight)}
+      height={height || (shortPlot ? autoHeight + 64 : autoHeight)}
     />
   );
 }
