@@ -107,7 +107,23 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
   // Fall back to a row-count-aware height when none is supplied.
   // The extra height on a short plot is the horizontal colorbar's strip, not taller
   // cells — the data band keeps its 24px row.
-  return <Plot traces={traces} layout={layout} height={height || (shortPlot ? autoHeight + 52 : autoHeight)} />;
+  //
+  // The `key` forces a REMOUNT when the orientation flips, and it is load-bearing.
+  // Plotly.react reuses the existing `.colorbar` SVG group across an orientation change:
+  // gd.data and gd._fullData both end up correct (orientation 'v', x 1.02, len 1) while
+  // the drawn group keeps the HORIZONTAL geometry — measured at x=309 w=297 inside a
+  // 937px plot, i.e. a bar stranded across the middle of the heatmap. Selecting a UF and
+  // then deselecting it walked straight into that. Remounting gives Plotly a clean
+  // element, which is the only reliable way to make it lay the bar out again; the flip
+  // only happens on a deliberate selection change, so the cost is one re-plot.
+  return (
+    <Plot
+      key={shortPlot ? 'cb-h' : 'cb-v'}
+      traces={traces}
+      layout={layout}
+      height={height || (shortPlot ? autoHeight + 52 : autoHeight)}
+    />
+  );
 }
 
 window.Heatmap = Heatmap;
