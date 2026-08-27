@@ -542,6 +542,12 @@
       // guessing from an empty array alone.
       muniYearlySeries: (subUfLoaded && Array.isArray(muniCube)) ? muniCube : [],
       subUfActive, subUfLoaded,
+      // The município code set the active sub-UF/município facets resolve to (null when
+      // no facet narrows). Exported because a view that lets the researcher FOCUS on one
+      // território has to offer only territories the filter actually allows — otherwise
+      // it profiles a place the filter excluded, which is the no-invisible-filtering
+      // violation in its purest form.
+      scopedCityCodes: narrowedCities,
       _shares: { productShare, valueShare, flagShare, yearShare, stateShare },
     };
   };

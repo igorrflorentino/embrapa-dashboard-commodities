@@ -401,7 +401,17 @@ function Dashboard() {
   useEffect(() => {
     window.patchFilter = (patch) => setSummary((s) => ({ ...s, ...patch }));
     window.openFilterMenu = () => setFilterOpen(true);
-    return () => { delete window.patchFilter; delete window.openFilterMenu; };
+    // Perspective-to-perspective navigation, for the one case where two views are
+    // halves of the same question: Geografia shows how the activity spreads ACROSS
+    // territories and offers "Ver raio-x" to open the selected place in Perfil do
+    // território, which shows what happens INSIDE it. Registered here for the same
+    // reason as the two above — `setView` is a stable setState setter, and threading a
+    // navigation prop through the shared view contract would touch ~20 other views for
+    // one interaction.
+    window.goToView = (id) => setView(id);
+    return () => {
+      delete window.patchFilter; delete window.openFilterMenu; delete window.goToView;
+    };
   }, []);
 
   // Flow → data layer bridge: fluxo (export/import) is the ONE server-side FILTER

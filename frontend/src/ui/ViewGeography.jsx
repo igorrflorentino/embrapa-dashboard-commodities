@@ -235,6 +235,13 @@ function ViewGeography({ families, conventions, summary, database }) {
     if (!code || !window.patchFilter) return;
     window.patchFilter({ munis: selectedSingleCity === code ? null : [code] });
   };
+  // What the "Ver raio-x" shortcut would open, named so the button is a promise rather
+  // than a leap. Empty when nothing is narrowed: the profile then opens on its own
+  // default and the button should not claim otherwise.
+  const xrayScope = selectedSingleCity
+    ? ((mesh || []).find((m) => String(m.cityCode) === String(selectedSingleCity)) || {}).cityName
+      || null
+    : (selectedSingleUf || null);
   const muniVizToggle = (
     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
       <div className="seg" role="group" aria-label="Visualização por município">
@@ -476,6 +483,23 @@ function ViewGeography({ families, conventions, summary, database }) {
         <window.SectionHeader
           overline={`${distKind} · ${activeDim.label} · ${displayUnit} · ${mapYearTag}`}
           title={distTitle}
+          // Geografia and Perfil do território are two halves of one question: this view
+          // shows how the activity spreads ACROSS places, that one what happens INSIDE a
+          // place. The shortcut makes the pair discoverable without touching the map's
+          // click, which stays a cheap reversible filter toggle. It carries no place of
+          // its own — the profile reads the SAME geography filter this view writes, so
+          // whatever is selected here is what opens there.
+          action={window.goToView ? (
+            <button
+              className="seg-opt"
+              onClick={() => window.goToView('territory_profile')}
+              title={xrayScope
+                ? `Abrir o perfil de ${xrayScope} em Perfil do território`
+                : 'Abrir Perfil do território'}
+            >
+              Ver raio-x{xrayScope ? ` de ${xrayScope}` : ''}
+            </button>
+          ) : null}
         />
         {scope === 'region' && <window.RegionBars data={regScaled.data} valueKey={valueKey} label={regScaled.label} height={280} />}
         {scope === 'uf' && (

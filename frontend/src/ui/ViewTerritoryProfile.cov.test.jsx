@@ -206,3 +206,103 @@ describe('ViewTerritoryProfile — empty state', () => {
     expect(container.querySelector('.empty-card').textContent).toContain('Nenhum território');
   });
 });
+
+// ── The filter is the UNIVERSE; the picker is the FOCUS inside it ────────────
+//
+// Shipped the other way round in v1.29.0: the picker listed all 27 UFs regardless of
+// the geography filter, so a session filtered to AM+SP cheerfully profiled Pará —
+// a displayed value computed over a set the researcher had explicitly excluded.
+
+describe('ViewTerritoryProfile — the picker never leaves the filter', () => {
+  it('offers only the UFs the state filter admits', () => {
+    stubGlobals(BASE);
+    const { container } = render(
+      <View summary={{ states: ['SP'] }} database="ibge_pevs" conventions={CONV} />,
+    );
+    const opts = [...container.querySelector('select[aria-label="UF do território"]').options]
+      .map((o) => o.value);
+    expect(opts).toEqual(['SP']);          // PA is filtered out and must not be offered
+    expect(container.textContent).toContain('São Paulo');
+    expect(container.textContent).not.toContain('Pará');
+  });
+
+  it('offers the UFs a sub-UF narrowing resolves to, not every UF', () => {
+    // A mesorregião/município facet resolves to a city set; the UFs those cities live
+    // in are the admitted ones. Without this the picker would jump outside the facet.
+    stubGlobals(
+      { ...BASE, scopedCityCodes: ['3550308'], subUfActive: true },
+      { mesh: [
+        { cityCode: '1500107', cityName: 'Abaetetuba', uf: 'PA' },
+        { cityCode: '3550308', cityName: 'São Paulo', uf: 'SP' },
+      ] },
+    );
+    const { container } = render(<View summary={{}} database="ibge_pevs" conventions={CONV} />);
+    const opts = [...container.querySelector('select[aria-label="UF do território"]').options]
+      .map((o) => o.value);
+    expect(opts).toEqual(['SP']);
+  });
+
+  it('refuses to invent a share when a sub-UF narrowing removes the denominator', () => {
+    // ufYearlySeries is a ROLLUP OF THE SELECTED CITIES under a sub-UF facet, so summing
+    // it yields the selection's own total. Dividing by that prints ~100% and calls it
+    // "participação no país" — a confident wrong number, worse than an honest dash.
+    stubGlobals(
+      { ...BASE, scopedCityCodes: ['3550308'], subUfActive: true },
+      { mesh: [{ cityCode: '3550308', cityName: 'São Paulo', uf: 'SP' }] },
+    );
+    const { container } = render(<View summary={{}} database="ibge_pevs" conventions={CONV} />);
+    expect(kpi(container, 'Participação').querySelector('.kpi-value').textContent).toBe('—');
+    expect(kpi(container, 'Participação').querySelector('.kpi-sub').textContent)
+      .toContain('indisponível');
+    expect(kpi(container, 'Posição').querySelector('.kpi-value').textContent).toBe('—');
+  });
+
+  it('ranks within the COUNTRY, not within the filtered subset', () => {
+    // "1º de 1 UF na seleção" is honest and useless. The state filter does not narrow
+    // ufYearlySeries, so the country-wide ordering stays computable — use it.
+    stubGlobals(BASE);
+    const { container } = render(
+      <View summary={{ states: ['SP'] }} database="ibge_pevs" conventions={CONV} />,
+    );
+    expect(kpi(container, 'Posição').querySelector('.kpi-value').textContent).toBe('2º');
+    expect(kpi(container, 'Posição').querySelector('.kpi-sub').textContent).toContain('de 2 UFs');
+  });
+});
+
+describe('ViewTerritoryProfile — combining territories', () => {
+  it('offers the filter selection as one profileable território, and defaults to it', () => {
+    // The researcher asked for that SET, so the set is the honest first answer;
+    // drilling into one member is one click away.
+    stubGlobals(BASE);
+    const { container } = render(
+      <View summary={{ states: ['PA', 'SP'] }} database="ibge_pevs" conventions={CONV} />,
+    );
+    const sel = container.querySelector('select[aria-label="UF do território"]');
+    expect([...sel.options].map((o) => o.textContent)).toContain('Seleção atual (2 UFs somadas)');
+    expect(sel.value).toBe('__combinado__');
+    // The trajectory is the SUM: 200 (2019) + 300 (2020) + 500 (2021) = 3 points.
+    expect(container.querySelector('.line-chart').getAttribute('data-points')).toBe('3');
+    // A sum of territories has no position in a ranking, and says so.
+    expect(kpi(container, 'Posição').querySelector('.kpi-value').textContent).toBe('—');
+    expect(kpi(container, 'Posição').querySelector('.kpi-sub').textContent).toContain('não tem posição');
+  });
+
+  it('asks the breakdown reader for every UF in the combination at once', () => {
+    const productsByUf = vi.fn(() => ({ products: [], loadError: null }));
+    stubGlobals(BASE, { productsByUf });
+    render(<View summary={{ states: ['PA', 'SP'] }} database="ibge_pevs" conventions={CONV} />);
+    // One query over the set — the reader takes an array, so a combination needs no
+    // special case and cannot drift from the single-território path.
+    expect(productsByUf.mock.calls.at(-1)[1].states).toEqual(['PA', 'SP']);
+  });
+
+  it('does NOT offer a combination when nothing narrows — that would just be Brasil', () => {
+    // "Seleção atual (27 UFs)" is the country, which is Visão geral's job. A território
+    // profile of the whole country profiles nothing.
+    stubGlobals(BASE);
+    const { container } = render(<View summary={{}} database="ibge_pevs" conventions={CONV} />);
+    const sel = container.querySelector('select[aria-label="UF do território"]');
+    expect([...sel.options].map((o) => o.value)).toEqual(['PA', 'SP']);
+    expect(sel.value).toBe('PA'); // the value-ranked default, not a combination
+  });
+});
