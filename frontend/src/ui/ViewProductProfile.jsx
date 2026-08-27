@@ -34,6 +34,11 @@ function ViewProductProfile({ families, summary, database, conventions }) {
   // /api/product-uf (Gold grouped by product × UF, already in the active currency,
   // honouring the year filter). Hooks sit ABOVE the early-return so hook order is
   // stable across renders (Rules of Hooks).
+  // Stable primitive for the fetch effect's deps: the states ARRAY is a new
+  // identity every render, so depending on it directly would refetch forever.
+  // `null` (no UF filter) is kept distinct from '' (explicitly none selected) —
+  // the same null-vs-empty contract the other producers honour.
+  const ufScopeKey = summary?.states == null ? null : summary.states.join(',');
   const [ufRank, setUfRank] = usePPState({ rows: null, loading: true });
   React.useEffect(() => {
     // Only fetch when the UF card will actually render (hasGeo) — skip the needless
@@ -49,6 +54,11 @@ function ViewProductProfile({ families, summary, database, conventions }) {
     });
     if (summary?.startDate) qs.set('startDate', summary.startDate);
     if (summary?.endDate) qs.set('endDate', summary.endDate);
+    // The UF filter reaches this reader now. Without it the ranking/map showed all 27
+    // states while the rest of the screen was narrowed to the researcher's selection.
+    // Read from ufScopeKey (not summary.states) so the effect depends ONLY on the
+    // stable primitive that is in its deps array.
+    if (ufScopeKey != null) qs.set('states', ufScopeKey);
     fetch(`/api/product-uf?${qs}`)
       // Distinguish a LOAD FAILURE (network/500/IAP-expired) from a legitimately empty
       // ranking: throwing on non-ok routes both into the error state, so the view shows an
@@ -64,7 +74,10 @@ function ViewProductProfile({ families, summary, database, conventions }) {
     return () => {
       alive = false;
     };
-  }, [database, activeCode, hasGeo, conv.currency, conv.correction, summary?.startDate, summary?.endDate, setUfRank]);
+    // `states` joined, not the array: a fresh array identity every render would
+    // refetch on every render, while omitting it entirely would never refetch when
+    // the researcher changes the UF filter — the ranking would keep the old scope.
+  }, [database, activeCode, hasGeo, conv.currency, conv.correction, summary?.startDate, summary?.endDate, ufScopeKey, setUfRank]);
 
   if (!activeCode) {
     return (

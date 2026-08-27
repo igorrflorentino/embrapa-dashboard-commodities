@@ -58,7 +58,14 @@ function ViewExportCoef() {
   // incompatible here) — the user lands on a working indicator, not a fallback note.
   const massProds = window.agrupamentoCatalog().filter(p => p.family === 'mass');
   const effProduct = product || (massProds[0] && massProds[0].code) || null;
-  const data = window.exportCoefficient(effProduct);
+  // Per-UF scoping ('' = Brasil), the same in-view control ViewPriceSpread uses.
+  // NOT the global state filter: the cross-banco perspectives deliberately hide the
+  // filter bar (they have no single-banco filter surface), so honouring it here would
+  // narrow the map for a reason invisible on this screen. Both sides of the ratio —
+  // PEVS production and COMEX exports — are scoped together server-side; narrowing
+  // only production would divide a state's output by the whole country's exports.
+  const [uf, setUf] = useMSState('');
+  const data = window.exportCoefficient(effProduct, uf ? [uf] : undefined);
   const ranked = data.byUf.filter(u => u.production > 0).sort((a, b) => b.coefPct - a.coefPct);
   const top = ranked[0], bottom = ranked[ranked.length - 1];
   // Real coverage window from the series itself — never the hardcoded "1997–2024".
@@ -89,10 +96,11 @@ function ViewExportCoef() {
   return (
     <>
       <CrossProductPicker value={effProduct} onChange={setProduct} families={['mass']} />
+      <window.UfScopePicker value={uf} onChange={setUf} />
       <window.LoadErrorNote error={data.loadError} />
 
       <div className="kpi-row">
-        <window.KpiCardSpark label="Coeficiente nacional" value={data.national.coefPct == null ? '—' : msPct(data.national.coefPct)} sub={`acumulado ${coefWindow} · do produzido vai p/ exportação`} />
+        <window.KpiCardSpark label={uf ? `Coeficiente · ${uf}` : 'Coeficiente nacional'} value={data.national.coefPct == null ? '—' : msPct(data.national.coefPct)} sub={`acumulado ${coefWindow} · do produzido vai p/ exportação`} />
         <window.KpiCardSpark label="UF mais exportadora" value={top?.uf || '—'} sub={top ? `${msPct(top.coefPct)} da produção` : '—'} />
         {ranked.length > 1
           ? <window.KpiCardSpark label="UF mais interna" value={bottom?.uf || '—'} sub={`${msPct(bottom?.coefPct || 0)} exportado`} />
@@ -113,7 +121,7 @@ function ViewExportCoef() {
       </div>
 
       <div className="card">
-        <window.SectionHeader overline="Coeficiente nacional no tempo" title="Evolução da orientação exportadora"
+        <window.SectionHeader overline={uf ? `Coeficiente de ${uf} no tempo` : 'Coeficiente nacional no tempo'} title="Evolução da orientação exportadora"
           action={<span className="caption">{coefWindow} · IBGE × MDIC</span>} />
         <window.LineChart data={data.timeseries} valueKey="v" label="%" color="var(--embrapa-green)" height={260} />
       </div>

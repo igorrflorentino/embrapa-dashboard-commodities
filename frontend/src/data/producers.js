@@ -323,10 +323,13 @@ const crossAnalytic = (name, path, shell) =>
 // the raw crossAnalytic producer so the decoration is applied to BOTH the resolved
 // payload and the loading shell (no-op on []), keeping the contract's `byUf` key.
 const _exportCoefRaw = crossAnalytic('export-coef', 'export-coef', {
-  preview: false, unit: 'mil t', byUf: [], national: {}, timeseries: [],
+  preview: false, unit: 'mil t', byUf: [], national: {}, timeseries: [], states: [],
 });
-window.exportCoefficient = function exportCoefficient(agrupamentoId) {
-  const data = _exportCoefRaw(agrupamentoId);
+// `states` scopes BOTH sides of the ratio server-side (PEVS production AND COMEX
+// exports) — narrowing only one would divide a state's output by the whole
+// country's exports and silently deflate the coefficient.
+window.exportCoefficient = function exportCoefficient(agrupamentoId, states) {
+  const data = _exportCoefRaw(agrupamentoId, states);
   return { ...data, byUf: decorateUfRows(data.byUf) };
 };
 window.marketShare = crossAnalytic('market-share', 'market-share', {
@@ -486,14 +489,19 @@ window.productivityData = function productivityData(bancoId, crop, summary) {
   // that honestly via `notApplicable` instead of silently ignoring it.
   const y0 = filterYear(summary && summary.startDate);
   const y1 = filterYear(summary && summary.endDate);
+  const states = filterStates(summary);
   const basketActive = !!(summary && summary.basket != null);
   const notApplicable = basketActive
     ? { basket: 'A cesta de produtos não se aplica aqui — escolha a lavoura no seletor acima.' }
     : undefined;
-  const key = `productivity:${bancoId}:${crop || 'default'}:${y0 ?? ''}|${y1 ?? ''}`;
+  // `states` DOES apply here (unlike the basket): the PAM mart is UF-grained. It is
+  // part of the key because it changes the numbers — yield is a ratio, so the
+  // "national" series returned is the SELECTED states' series, and the view relabels
+  // it from the `states` the payload echoes back.
+  const key = `productivity:${bancoId}:${crop || 'default'}:${y0 ?? ''}|${y1 ?? ''}|${states ?? '*'}`;
   ensure(
     key,
-    () => `${API}/productivity?${qs({ banco: bancoId, crop: crop || undefined, y0, y1 })}`,
+    () => `${API}/productivity?${qs({ banco: bancoId, crop: crop || undefined, y0, y1, states })}`,
   );
   const data = get(key);
   if (!data) {
@@ -507,6 +515,7 @@ window.productivityData = function productivityData(bancoId, crop, summary) {
       areaUnit: 'ha',
       series: [],
       national: { yieldCagr: 0 },
+      states: [],
       byUF: [],
     };
   }

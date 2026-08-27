@@ -37,6 +37,11 @@ function ViewRebanho({ summary, conventions, database }) {
 
   // REAL per-UF headcount for the focused species (Gold product×UF via /api/product-uf,
   // which now carries q_count). A value-less stock would rank all-zero by `value`.
+  // Stable primitive for the fetch effect's deps: the states ARRAY is a new
+  // identity every render, so depending on it directly would refetch forever.
+  // `null` (no UF filter) is kept distinct from '' (explicitly none selected) —
+  // the same null-vs-empty contract the other producers honour.
+  const ufScopeKey = summary?.states == null ? null : summary.states.join(',');
   const [ufRank, setUfRank] = useRbState({ rows: null, loading: true });
   useRbEffect(() => {
     if (!activeFocus || !hasGeo) return undefined;
@@ -47,6 +52,11 @@ function ViewRebanho({ summary, conventions, database }) {
     });
     if (summary?.startDate) qs.set('startDate', summary.startDate);
     if (summary?.endDate) qs.set('endDate', summary.endDate);
+    // The UF filter reaches this reader now. Without it the ranking/map showed all 27
+    // states while the rest of the screen was narrowed to the researcher's selection.
+    // Read from ufScopeKey (not summary.states) so the effect depends ONLY on the
+    // stable primitive that is in its deps array.
+    if (ufScopeKey != null) qs.set('states', ufScopeKey);
     fetch(`/api/product-uf?${qs}`)
       // Distinguish a LOAD FAILURE from a legitimately empty ranking (else "Sem dados por UF
       // para esta espécie" would read as a false claim when the fetch merely failed).
@@ -54,7 +64,10 @@ function ViewRebanho({ summary, conventions, database }) {
       .then(d => { if (alive) setUfRank({ rows: (d && d.uf) || [], loading: false, error: false }); })
       .catch(() => { if (alive) setUfRank({ rows: null, loading: false, error: true }); });
     return () => { alive = false; };
-  }, [database, activeFocus, hasGeo, conv.currency, conv.correction, summary?.startDate, summary?.endDate]);
+    // `states` joined, not the array: a fresh array identity every render would
+    // refetch on every render, while omitting it entirely would never refetch when
+    // the researcher changes the UF filter — the map would keep the old scope.
+  }, [database, activeFocus, hasGeo, conv.currency, conv.correction, summary?.startDate, summary?.endDate, ufScopeKey]);
 
   if (!available.length) {
     return (

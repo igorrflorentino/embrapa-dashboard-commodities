@@ -14,6 +14,11 @@ const { useState: useProdState } = React;
 function ViewProductivity({ summary, conventions, database }) {
   const [crop, setCrop] = useProdState(null);
   const data = window.productivityData(database, crop, summary);
+  // The UF filter now reaches this reader, and yield is a RATIO — so the aggregate
+  // becomes the SELECTED states' yield, not a smaller slice of a national one.
+  // Labelling it "nacional" would then be a wrong number, so the scope word follows
+  // the filter (the payload echoes `states` back from the seam).
+  const scopeWord = window.geoScopeLabel ? window.geoScopeLabel(data && data.states) : 'nacional';
 
   if (!data) {
     return (
@@ -71,7 +76,7 @@ function ViewProductivity({ summary, conventions, database }) {
       {/* KPI strip */}
       <div className="kpi-row">
         <window.KpiCardSpark
-          label={<>Rendimento nacional · <window.UnitFamilyTag family="rendimento" conv={conventions}/></>}
+          label={<>Rendimento {scopeWord} · <window.UnitFamilyTag family="rendimento" conv={conventions}/></>}
           value={fmtY(last.yieldKgHa)}
           delta={window.fmtSigned(yDelta)}
           deltaPositive={yDelta >= 0}
@@ -113,7 +118,7 @@ function ViewProductivity({ summary, conventions, database }) {
         <div className="card">
           <window.SectionHeader
             overline={`Rendimento médio · ${yUnit}`}
-            title={`${data.crop.name} · produtividade nacional`}
+            title={`${data.crop.name} · produtividade ${scopeWord}`}
           />
           <window.LineChart
             data={series.map(d => ({ y: d.y, v: Math.round(d.yieldKgHa) }))}

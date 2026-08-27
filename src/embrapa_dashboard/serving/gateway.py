@@ -200,6 +200,7 @@ def fetch_production_by_uf(
     year_start: int | None = None,
     year_end: int | None = None,
     product_codes: Sequence[str] = (),
+    uf_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     source: str = "ibge_pevs",
     latest_year_only: bool = True,
@@ -208,7 +209,7 @@ def fetch_production_by_uf(
 
     ``latest_year_only`` (default True) pins the choropleth to the latest year in
     the active window; the export-coefficient by-UF reader passes False for the
-    window-cumulative sum it needs.
+    window-cumulative sum it needs. ``uf_codes`` narrows to the selected states.
     """
     settings = get_settings()
     table = sqlbuild.table_ref(settings, "bq_serving_dataset", _production_mart(source))
@@ -217,6 +218,7 @@ def fetch_production_by_uf(
         year_start=year_start,
         year_end=year_end,
         product_codes=tuple(product_codes),
+        uf_codes=tuple(uf_codes),
         value_column=value_column,
         latest_year_only=latest_year_only,
         has_measure_kind=source in _MEASURE_KIND_SOURCES,
@@ -308,6 +310,7 @@ def fetch_productivity(
     source: str = "ibge_pam",
     year_start: int | None = None,
     year_end: int | None = None,
+    uf_codes: Sequence[str] = (),
 ):
     """Production + harvested/planted area by (year, UF) for one crop, from a
     PAM-shaped mart (backs ViewProductivity). Yield is recomputed downstream.
@@ -315,7 +318,11 @@ def fetch_productivity(
     settings = get_settings()
     table = sqlbuild.table_ref(settings, "bq_serving_dataset", _production_mart(source))
     sql, params = sqlbuild.productivity(
-        table, product_code=product_code, year_start=year_start, year_end=year_end
+        table,
+        product_code=product_code,
+        year_start=year_start,
+        year_end=year_end,
+        uf_codes=tuple(uf_codes),
     )
     return run_query(sql, params)
 
@@ -473,6 +480,7 @@ def fetch_comex_by_uf(
     year_start: int | None = None,
     year_end: int | None = None,
     ncm_codes: Sequence[str] = (),
+    uf_codes: Sequence[str] = (),
     flow: str | None = None,
     value_column: str = "val_yearfx_usd",
     latest_year_only: bool = True,
@@ -484,7 +492,7 @@ def fetch_comex_by_uf(
     present for export_coefficient regardless of which value column is summed.
     ``latest_year_only`` (default True) pins the choropleth to the latest year in
     the active window; the export-coefficient by-UF reader passes False for the
-    window-cumulative sum it needs.
+    window-cumulative sum it needs. ``uf_codes`` narrows to the selected origin UFs.
     """
     settings = get_settings()
     table = sqlbuild.table_ref(settings, "bq_serving_dataset", "serving_comex_annual")
@@ -493,6 +501,7 @@ def fetch_comex_by_uf(
         year_start=year_start,
         year_end=year_end,
         ncm_codes=tuple(ncm_codes),
+        uf_codes=tuple(uf_codes),
         flow=flow,
         value_column=value_column,
         latest_year_only=latest_year_only,

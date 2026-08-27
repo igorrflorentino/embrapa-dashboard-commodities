@@ -153,9 +153,9 @@ def _exp_price_cross_points(y0: int, y1: int, uf_codes: tuple = ()) -> list[dict
     ]
 
 
-def _pevs_mass_by_year(pevs_codes: tuple) -> dict:
+def _pevs_mass_by_year(pevs_codes: tuple, uf_codes: tuple = ()) -> dict:
     pts = gateway.fetch_product_timeseries(
-        "ibge_pevs", codes=pevs_codes, value_column="val_real_ipca_brl"
+        "ibge_pevs", codes=pevs_codes, value_column="val_real_ipca_brl", uf_codes=uf_codes
     )
     if pts is None or pts.empty:
         return {}
@@ -304,8 +304,29 @@ def market_share(agrupamento_id: str | None) -> dict:
     return {"unit": "US$ bi", "series": series, "by_product": by_product}
 
 
-def export_coefficient(agrupamento_id: str | None) -> dict:
-    """Share of each UF's production (PEVS, mass) that is exported (COMEX weight)."""
+def _empty_export_coef(uf_codes: tuple) -> dict:
+    """The no-data export-coefficient payload, echoing the active UF scope back."""
+    return {
+        "unit": "mil t",
+        "by_uf": [],
+        "national": {},
+        "timeseries": [],
+        "states": list(uf_codes),
+    }
+
+
+def export_coefficient(agrupamento_id: str | None, uf_codes: tuple = ()) -> dict:
+    """Share of each UF's production (PEVS, mass) that is exported (COMEX weight).
+
+    ``uf_codes`` narrows every side of the ratio to the selected origin UFs — the
+    per-UF rows, the timeseries AND the aggregate. It did not before, so this view
+    showed all 27 states (and a country-wide coefficient) while the rest of the
+    session was narrowed. Both sides must be narrowed together: scoping only the
+    production half would divide the selected states' output by the whole country's
+    exports and silently deflate the coefficient. ``states`` is echoed back so the
+    view relabels its "nacional" figures — a coefficient over a subset is a
+    different ratio, not a smaller one.
+    """
     if not _is_mass_basis(agrupamento_id):
         # Volume commodity (m³) or mixed basket: exported-kg ÷ produced-m³ is not a
         # share. Refuse rather than print a dimensionless-nonsense percentage.
@@ -315,35 +336,41 @@ def export_coefficient(agrupamento_id: str | None) -> dict:
             "by_uf": [],
             "national": {},
             "timeseries": [],
+            "states": list(uf_codes),
         }
     pevs_codes = seam_base._codes(agrupamento_id, "pevs")
     ncms = seam_base._codes(agrupamento_id, "comex")
     if agrupamento_id and not (pevs_codes and ncms):
         # Commodity has no codes for a needed source: empty payload, never the
         # unscoped ALL-commodities totals (empty codes mean "no filter").
-        return {"unit": "mil t", "by_uf": [], "national": {}, "timeseries": []}
-    pevs_mass = _pevs_mass_by_year(pevs_codes)
-    exp_mass = {y: v / 1e6 for y, v in seam_base._xyear("mdic_comex:exp_weight", ncms).items()}
+        return _empty_export_coef(uf_codes)
+    pevs_mass = _pevs_mass_by_year(pevs_codes, uf_codes)
+    exp_mass = {
+        y: v / 1e6 for y, v in seam_base._xyear("mdic_comex:exp_weight", ncms, uf_codes).items()
+    }
     ts = sorted(set(pevs_mass) & set(exp_mass))
     timeseries = [
         {"y": y, "v": (exp_mass[y] / pevs_mass[y] * 100) if pevs_mass[y] else 0} for y in ts
     ]
     if not ts:
-        return {"unit": "mil t", "by_uf": [], "national": {}, "timeseries": []}
+        return _empty_export_coef(uf_codes)
     # The by-UF/national ratios must compare the SAME window on both sides:
     # PEVS starts in 1986 but COMEX only in 1997, so unbounded cumulative sums
     # would systematically understate coefPct (and disagree with the timeseries,
     # which already intersects the two sources' years).
-    by_uf = _export_coef_by_uf(pevs_codes, ncms, ts[0], ts[-1])
+    by_uf = _export_coef_by_uf(pevs_codes, ncms, ts[0], ts[-1], uf_codes)
     return {
         "unit": "mil t",
         "by_uf": by_uf,
         "national": _export_coef_national(by_uf),
         "timeseries": timeseries,
+        "states": list(uf_codes),
     }
 
 
-def _export_coef_by_uf(pevs_codes: tuple, ncms: tuple, y0: int, y1: int) -> list[dict]:
+def _export_coef_by_uf(
+    pevs_codes: tuple, ncms: tuple, y0: int, y1: int, uf_codes: tuple = ()
+) -> list[dict]:
     """Per-UF production (mil t) vs exported weight (mil t) and their coefficient.
 
     Both readers are window-CUMULATIVE (``latest_year_only=False``): the coefficient
@@ -357,10 +384,16 @@ def _export_coef_by_uf(pevs_codes: tuple, ncms: tuple, y0: int, y1: int) -> list
         year_end=y1,
         value_column="qty_base",
         product_codes=pevs_codes,
+        uf_codes=uf_codes,
         latest_year_only=False,
     )
     exp = gateway.fetch_comex_by_uf(
-        year_start=y0, year_end=y1, ncm_codes=ncms, flow="export", latest_year_only=False
+        year_start=y0,
+        year_end=y1,
+        ncm_codes=ncms,
+        uf_codes=uf_codes,
+        flow="export",
+        latest_year_only=False,
     )
     exp_by_uf = {r.state_acronym: float(r.total_weight_kg or 0) / 1e6 for r in exp.itertuples()}
     prod_by_uf = {

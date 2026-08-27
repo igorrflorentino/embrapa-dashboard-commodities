@@ -48,8 +48,26 @@ export function tileSelectHandler(summary) {
   return onUf ? (row) => onUf(row && row.uf) : null;
 }
 
+/** The word a view should use where it would otherwise say "nacional".
+ *
+ *  Readers that aggregate a RATIO (productivity's kg/ha, the export coefficient)
+ *  do not merely return less data under a UF filter — they return a DIFFERENT
+ *  number. Keeping the word "nacional" over it would assert something false, so
+ *  each such view derives its scope word from the `states` the payload echoes back:
+ *
+ *      'nacional'  no UF filter (or none reported)
+ *      'no PA'     exactly one state
+ *      'em 3 UFs'  several
+ */
+export function geoScopeLabel(states) {
+  if (!Array.isArray(states) || states.length === 0) return 'nacional';
+  if (states.length === 1) return `no ${states[0]}`;
+  return `em ${states.length} UFs`;
+}
+
 if (typeof window !== 'undefined') {
   window.selectedSingleUf = selectedSingleUf;
   window.ufClickHandler = ufClickHandler;
   window.tileSelectHandler = tileSelectHandler;
+  window.geoScopeLabel = geoScopeLabel;
 }
