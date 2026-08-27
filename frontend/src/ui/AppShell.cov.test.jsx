@@ -801,3 +801,54 @@ function pick2(container, label) {
   [...container.querySelectorAll('.cite-level')]
     .find((l) => l.textContent.includes(label)).querySelector('input').click();
 }
+
+// ── "Por banco de dados" on the cross-source PICKER ──────────────────────────
+//
+// The picker view has no fixed `sources` — the researcher assembles the series — so the
+// bancos must be derived from that choice. Reading the series label here instead named
+// the METRICS under a level called "por banco de dados": "Valor da produção (IBGE PEVS)
+// × Valor exportado (FOB) (MDIC COMEX)". The metric detail belongs to the detailed
+// level, where it already appears.
+
+describe('AppShell — the banco level on a cross-source picker', () => {
+  const pickerProps = () => {
+    const props = baseProps();
+    props.mode = 'multi';               // the cross branch only applies in multi-fonte
+    props.view = 'cross_source';
+    props.crossState = {
+      series: [
+        { b: 'ibge_pevs', m: 'prod_value' },
+        { b: 'comex', m: 'exp_value' },
+        { b: 'ibge_pevs', m: 'prod_mass' },   // same banco twice → must dedupe
+      ],
+      mode: 'overlay', y0: '2010', y1: '2024',
+    };
+    return props;
+  };
+  const openAndPick = (container, label) => {
+    fireEvent.click([...container.querySelectorAll('.util-action')]
+      .find((b) => b.textContent.includes('Citar painel')));
+    [...container.querySelectorAll('.cite-level')]
+      .find((l) => l.textContent.includes(label)).querySelector('input').click();
+    return [...container.querySelectorAll('.cite-text')]
+      .find((n) => !n.classList.contains('cite-text-inline')).textContent;
+  };
+
+  it('names the BANCOS behind the chosen series, deduped — not the metrics', () => {
+    const { container } = render(<AppShell {...pickerProps()} />);
+    const txt = openAndPick(container, 'Por banco de dados');
+    expect(txt).toContain(': IBGE PEVS · COMEX.');
+    // The metric names are the detailed level's job (the harness labels them
+    // "métrica <id>"), so they must not leak into this level.
+    expect(txt).not.toContain('métrica');
+    // Two series from IBGE PEVS must not list it twice.
+    expect(txt.match(/IBGE PEVS/g)).toHaveLength(1);
+  });
+
+  it('still spells the metrics out at the detailed level', () => {
+    const { container } = render(<AppShell {...pickerProps()} />);
+    const txt = openAndPick(container, 'Consulta detalhada');
+    expect(txt).toContain('Cruzamento entre fontes');
+    expect(txt).toContain('métrica prod_value');
+  });
+});

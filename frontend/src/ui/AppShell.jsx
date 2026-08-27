@@ -284,8 +284,19 @@ function AppShell({
   // The data source at the 'banco' level. A cross perspective has no single banco, so
   // it names the sources it actually crosses — omitting them would make the middle
   // level identical to the general one and quietly drop what the panel is built on.
+  // The picker view has no fixed `sources` — the researcher chooses the series — so the
+  // bancos have to be derived from that choice, DEDUPED (two metrics can come from one
+  // banco). Reading crossLabel() here instead named the METRICS ("Valor da produção
+  // (IBGE PEVS) × Valor exportado (FOB) (MDIC COMEX)") under a level called "por banco
+  // de dados": the metric detail belongs to the detailed level, where it already is.
+  const crossBancosLabel = () => {
+    const ids = [...new Set(((crossState && crossState.series) || []).map((r) => r.b))];
+    return ids
+      .map((id) => (window.bancoById ? window.bancoById(id)?.short : null) || id)
+      .join(' \u00b7 ');
+  };
   const citeSourceName = isCrossView
-    ? (crossSourcesLabel || (isPickerCite ? crossLabel() : ''))
+    ? (crossSourcesLabel || (isPickerCite ? crossBancosLabel() : ''))
     : (activeBanco?.short || database);
 
   // Each level is built as three PARTS rather than one string, because NBR 6023:2025
