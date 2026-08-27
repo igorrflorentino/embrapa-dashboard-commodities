@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.29.5] - 2026-08-27
+
+### Fixed
+- **A barra de cor do mapa de calor ficava atravessada no meio do gráfico ao voltar da
+  visão de uma UF para a nacional.** Regressão introduzida na v1.29.3, junto com a
+  própria barra adaptativa.
+
+  `Plotly.react` **reaproveita o grupo SVG `.colorbar`** quando a orientação muda.
+  Tanto `gd.data` quanto `gd._fullData` terminavam corretos (`orientation: 'v'`,
+  `x: 1.02`, `len: 1`) — medido — enquanto o grupo **desenhado** mantinha a geometria
+  horizontal: `x=309 w=297` dentro de um gráfico de 937px, ou seja, uma barra encalhada
+  no meio do mapa de calor. Selecionar uma UF e depois desmarcá-la caía exatamente
+  nisso.
+
+  A hipótese óbvia — de que o `react` não reseta atributos aninhados omitidos — estava
+  **errada**, e a medição foi o que mostrou: o estado resolvido estava certo o tempo
+  todo; quem não se redesenhava era o SVG. A correção é uma `key` de React no `<Plot>`,
+  de modo que cruzar o limiar entrega ao Plotly um elemento limpo. A remontagem só
+  acontece na virada de orientação, não em qualquer mudança de dado — um re-plot por
+  seleção deliberada, não por render.
+
+  Verificado ao vivo em três ciclos UF↔nacional: barra vertical em `x=869 w=60` (borda
+  direita) e horizontal em `x=120 w=442` (abaixo), estável em todas as idas e voltas.
+
+---
+
 ## [1.29.4] - 2026-08-27
 
 ### Changed

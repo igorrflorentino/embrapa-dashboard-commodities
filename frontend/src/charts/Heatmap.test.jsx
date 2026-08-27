@@ -7,11 +7,13 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 
-const { reactState } = vi.hoisted(() => ({ reactState: { lastTraces: null } }));
+const { reactState } = vi.hoisted(() => ({ reactState: { lastTraces: null, els: [] } }));
 
 vi.mock('./plotlyBundle', () => ({
   default: {
-    react: (_el, traces) => { reactState.lastTraces = traces; },
+    // `el` is recorded too: an orientation flip MUST land on a fresh element (see the
+    // remount test below), and the element identity is the only honest evidence of that.
+    react: (el, traces) => { reactState.lastTraces = traces; reactState.els.push(el); },
     purge: () => {},
     Plots: { resize: () => {} },
   },
@@ -27,7 +29,7 @@ beforeAll(() => {
   };
 });
 
-afterEach(() => { cleanup(); reactState.lastTraces = null; });
+afterEach(() => { cleanup(); reactState.lastTraces = null; reactState.els = []; });
 
 const trace = () => reactState.lastTraces?.[0];
 
@@ -110,5 +112,46 @@ describe('Heatmap — the colorbar adapts to a short plot', () => {
     // would move someone else's chart.
     render(<Heatmap rows={oneRow} valueKey="v" valueLabel="R$" height={400} />);
     expect(trace().colorbar.orientation).toBeUndefined();
+  });
+});
+
+// ── Crossing the orientation threshold must REMOUNT the plot ─────────────────
+//
+// Plotly.react reuses the existing `.colorbar` SVG group across an orientation change.
+// gd.data AND gd._fullData both end up correct (orientation 'v', x 1.02, len 1) while
+// the DRAWN group keeps the horizontal geometry — measured live at x=309 w=297 inside a
+// 937px plot, a bar stranded across the middle of the heatmap. Selecting a UF and then
+// deselecting it walked into exactly that, which is how it was reported.
+//
+// The fix is a React `key` on <Plot>, so the flip gives Plotly a clean element. The
+// element identity is the only honest evidence, so that is what this asserts.
+
+describe('Heatmap — an orientation flip gets a fresh plot element', () => {
+  const rowsFor = (n) => Array.from({ length: n }, (_, i) => ({
+    id: `U${i}`, label: `U${i}`, values: [{ y: 2019, v: i + 1 }, { y: 2020, v: i + 2 }],
+  }));
+
+  it('remounts when going from many rows to one, and back', () => {
+    const { rerender } = render(<Heatmap rows={rowsFor(8)} valueKey="v" valueLabel="R$" />);
+    const tall = reactState.els.at(-1);
+
+    rerender(<Heatmap rows={rowsFor(1)} valueKey="v" valueLabel="R$" />);
+    const short = reactState.els.at(-1);
+    expect(short).not.toBe(tall);          // horizontal bar drawn on a clean element
+
+    rerender(<Heatmap rows={rowsFor(8)} valueKey="v" valueLabel="R$" />);
+    const backToTall = reactState.els.at(-1);
+    // The return trip is the one that was broken: without a remount the vertical bar
+    // inherited the horizontal geometry and landed mid-plot.
+    expect(backToTall).not.toBe(short);
+  });
+
+  it('does NOT remount for a row change that stays on the same side of the threshold', () => {
+    // A remount is a full re-plot; paying for it on every ordinary data change would
+    // trade one bug for a jank.
+    const { rerender } = render(<Heatmap rows={rowsFor(8)} valueKey="v" valueLabel="R$" />);
+    const first = reactState.els.at(-1);
+    rerender(<Heatmap rows={rowsFor(12)} valueKey="v" valueLabel="R$" />);
+    expect(reactState.els.at(-1)).toBe(first);
   });
 });
