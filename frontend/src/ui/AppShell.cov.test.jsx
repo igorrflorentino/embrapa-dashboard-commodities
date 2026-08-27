@@ -385,11 +385,13 @@ describe('AppShell — citation modal', () => {
     const { container } = render(<AppShell {...props} />);
     fireEvent.click([...container.querySelectorAll('.util-action')].find((b) => b.textContent.includes('Citar painel')));
     expect(container.querySelector('.cite-modal')).toBeTruthy();
-    // In-text ABNT 10520 call + full reference both present. The entity is ALL CAPS
-    // by project decision: this asserted "(Embrapa," until v1.31.0, on 10520:2023's
-    // initial-capital rule for authors, and was changed for consistency with the
-    // reference head and Embrapa's house style.
-    expect(container.textContent).toContain('(EMBRAPA,');
+    // In-text ABNT 10520 call + full reference both present. The in-text call uses an
+    // INITIAL CAPITAL while the reference head is ALL CAPS — that is 10520:2023 and
+    // 6023:2025 respectively, not an inconsistency. Briefly "unified" to caps in
+    // v1.31.0 and reverted in v1.31.1; this assertion is the guard against a third
+    // round trip.
+    expect(container.textContent).toContain('(Embrapa,');
+    expect(container.textContent).not.toContain('(EMBRAPA,');
     expect(container.textContent).toContain('EMPRESA BRASILEIRA DE PESQUISA AGROPECUÁRIA');
     // Disponível em: present because urlEncodeState is stubbed.
     expect(container.textContent).toContain('Disponível em:');
@@ -601,14 +603,28 @@ describe('AppShell — reference detail levels', () => {
     expect([...group.querySelectorAll('input[type="radio"]')]).toHaveLength(3);
   });
 
-  it('defaults to the detailed level — the behaviour that shipped before the choice', () => {
-    // Anyone who opens the modal and copies must get what they got yesterday; the two
-    // shorter levels are opt-in, not a silent change to everyone's reference.
+  it('defaults to the general-tool level', () => {
+    // Citing the dashboard AS A TOOL is the common case in a methods section, and the
+    // one a reader can act on without a filtered permalink in front of them.
     const { container } = render(<AppShell {...baseProps()} />);
     openCite(container);
     const on = container.querySelector('.cite-level.on');
-    expect(on.textContent).toContain('Consulta detalhada');
-    expect(refText(container)).toContain('Recorte:');
+    expect(on.textContent).toContain('Ferramenta geral');
+    expect(refText(container)).not.toContain('Recorte:');
+  });
+
+  it('gives all three levels the SAME title of the work', () => {
+    // The detailed level used to carry a title-cased variant of its own, so the three
+    // references disagreed on the name of the thing they cite. Sentence case is also
+    // the NBR 6023:2025 form.
+    const { container } = render(<AppShell {...baseProps()} />);
+    openCite(container);
+    for (const label of ['Ferramenta geral', 'Por banco de dados', 'Consulta detalhada']) {
+      pick(container, label);
+      const txt = refText(container);
+      expect(txt).toContain('Dashboard de análise histórica de produtos agrícolas');
+      expect(txt).not.toContain('Dashboard de Análise Histórica');
+    }
   });
 
   it('"Ferramenta geral" drops the banco AND every filter', () => {

@@ -80,10 +80,11 @@ function AppShell({
   mode = 'single', setMode,
 }) {
   const [citeOpen, setCiteOpen] = React.useState(false);
-  // Which reference detail level the modal shows. Defaults to 'query' — the level the
-  // modal produced before there was a choice — so anyone who opens it and copies gets
-  // what they got yesterday; the two shorter levels are opt-in.
-  const [citeLevel, setCiteLevel] = React.useState('query');
+  // Which reference detail level the modal shows. Defaults to 'tool': citing the
+  // dashboard AS A TOOL is the common case in a methods section, and it is the level a
+  // reader can act on without a filtered permalink in front of them. The detailed level
+  // stays one click away for "I analysed exactly this slice".
+  const [citeLevel, setCiteLevel] = React.useState('tool');
   const [shared,   setShared]   = React.useState(false);
   const [navOpen,  setNavOpen]  = React.useState(false);
   const [sideNavOpen, setSideNavOpen] = React.useState(false); // mobile (≤768px) sidebar drawer
@@ -265,6 +266,9 @@ function AppShell({
   //
   // Shared head/tail so the three levels can only differ where they are meant to.
   const CITE_AUTHOR = 'EMPRESA BRASILEIRA DE PESQUISA AGROPECU\u00c1RIA (EMBRAPA).';
+  // ONE title for all three levels. The detailed level used to carry a title-cased
+  // variant of its own, so the three references disagreed on the name of the work they
+  // cite. Sentence case is also the ABNT NBR 6023:2025 form.
   const CITE_TITLE = 'Dashboard de an\u00e1lise hist\u00f3rica de produtos agr\u00edcolas';
   const citeTail = `Bras\u00edlia, DF: Embrapa, ${editoraYear}. ${dispoStr}Acesso em: ${accessedOn}.`;
   // The data source at the 'banco' level. A cross perspective has no single banco, so
@@ -276,17 +280,17 @@ function AppShell({
 
   const citation = isCrossView
     ? (isPickerCite
-        ? `EMPRESA BRASILEIRA DE PESQUISA AGROPECU\u00c1RIA (EMBRAPA). ` +
-          `Dashboard de An\u00e1lise Hist\u00f3rica de Produtos Agr\u00edcolas \u2014 Cruzamento entre fontes \u2014 ` +
+        ? `${CITE_AUTHOR} ` +
+          `${CITE_TITLE} \u2014 Cruzamento entre fontes \u2014 ` +
           `${crossLabel()}. Recorte: ${period}. Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ` +
           `Bras\u00edlia, DF: Embrapa, ${editoraYear}. ${dispoStr}Acesso em: ${accessedOn}.`
-        : `EMPRESA BRASILEIRA DE PESQUISA AGROPECU\u00c1RIA (EMBRAPA). ` +
-          `Dashboard de An\u00e1lise Hist\u00f3rica de Produtos Agr\u00edcolas \u2014 An\u00e1lise cruzada \u2014 ` +
+        : `${CITE_AUTHOR} ` +
+          `${CITE_TITLE} \u2014 An\u00e1lise cruzada \u2014 ` +
           `${VIEW_LABEL[view] || view}${crossSourcesLabel ? ` (fontes: ${crossSourcesLabel})` : ''}. ` +
           `Recorte: ${period}. Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ` +
           `Bras\u00edlia, DF: Embrapa, ${editoraYear}. ${dispoStr}Acesso em: ${accessedOn}.`)
-    : `EMPRESA BRASILEIRA DE PESQUISA AGROPECU\u00c1RIA (EMBRAPA). ` +
-      `Dashboard de An\u00e1lise Hist\u00f3rica de Produtos Agr\u00edcolas \u2014 ` +
+    : `${CITE_AUTHOR} ` +
+      `${CITE_TITLE} \u2014 ` +
       `${bancoCiteLabel} \u2014 ${VIEW_LABEL[view] || view}. ` +
       `Recorte: ${period}. ${scopeStr}Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ` +
       `Bras\u00edlia, DF: Embrapa, ${editoraYear}. ${dispoStr}Acesso em: ${accessedOn}.`;
@@ -303,17 +307,19 @@ function AppShell({
     { id: 'query', label: 'Consulta detalhada', text: citation,
       hint: 'Descreve o recorte exato: banco, per\u00edodo, produtos, UFs e conven\u00e7\u00f5es.' },
   ];
-  const activeCite = CITE_LEVELS.find((l) => l.id === citeLevel) || CITE_LEVELS[2];
+  const activeCite = CITE_LEVELS.find((l) => l.id === citeLevel) || CITE_LEVELS[0];
 
   // ABNT NBR 10520:2023 in-text citation (chamada autor-data) \u2014 what you insert in
-  // the running text, complementary to the 6023 reference above (10520 = the call,
-  // 6023 = the full entry).
+  // the running text. The 2023 revision renders the author in the parenthetical with
+  // only an initial capital ("(Embrapa, 2026)"), UNLIKE the reference body above, which
+  // keeps the entity in ALL CAPS per NBR 6023:2025. The two norms are complementary:
+  // 10520 = the in-text call; 6023 = the full reference.
   //
-  // The entity is rendered in ALL CAPS by project decision. This file previously
-  // carried the opposite ("(Embrapa, ...)"), justified by 10520:2023's initial-capital
-  // rule for authors; the caps form was requested for consistency with the reference
-  // head and with Embrapa's own house style, and is what ships.
-  const inTextCite = `(EMBRAPA, ${editoraYear})`;
+  // The mixed case is NOT an inconsistency with the reference head, and it looks like
+  // one: this was switched to "(EMBRAPA, ...)" in v1.31.0 for that apparent symmetry and
+  // reverted in v1.31.1 as non-compliant. If it looks wrong again, the two norms
+  // genuinely differ \u2014 check 10520:2023 before "fixing" it a third time.
+  const inTextCite = `(Embrapa, ${editoraYear})`;
 
   const onCite = () => setCiteOpen(true);
   const onReport = () => { setReportPrefill(null); setReportOpen(true); };
@@ -658,10 +664,11 @@ function AppShell({
                 <div className="overline">Citação acadêmica</div>
                 <h2 id="cite-title">Citar painel</h2>
                 <p className="caption">
-                  Do painel exatamente como exibido — banco, perspectiva, recorte temporal,
-                  produtos, UFs, filtros e convenções métricas — com o link permanente que
-                  reproduz a seleção. A <strong>citação no texto</strong> segue a ABNT NBR
-                  10520:2023; a <strong>referência</strong> completa segue a ABNT NBR 6023:2025.
+                  Escolha <strong>quanto do painel</strong> a referência deve descrever — desde
+                  o dashboard como ferramenta até o recorte exato consultado — sempre com o link
+                  permanente que reproduz a seleção. A <strong>citação no texto</strong> segue a
+                  ABNT NBR 10520:2023; a <strong>referência</strong> completa segue a ABNT NBR
+                  6023:2025.
                 </p>
               </div>
               <button className="fm-close" onClick={() => setCiteOpen(false)} aria-label="Fechar">

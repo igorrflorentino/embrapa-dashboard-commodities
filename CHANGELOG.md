@@ -15,41 +15,43 @@ O modal "Citar painel" passa a oferecer **três níveis de detalhe** para a refe
 - **Seletor de nível de detalhe** (radiogroup) acima do bloco da referência ABNT NBR
   6023:2025, com o texto atualizando reativamente:
 
-  - **Ferramenta geral** — cita o dashboard como ferramenta, sem banco e sem filtros.
+  - **Ferramenta geral** *(padrão)* — cita o dashboard como ferramenta, sem banco e sem
+    filtros. É o caso comum numa seção de métodos, e o único que o leitor consegue usar
+    sem ter um permalink filtrado à frente.
   - **Por banco de dados** — acrescenta a fonte consultada após dois-pontos
     (`…produtos agrícolas: IBGE PEVS.`).
-  - **Consulta detalhada** — o comportamento anterior, inalterado: banco, perspectiva,
-    recorte, produtos, UFs, qualidade, faixa de valor e convenções métricas.
+  - **Consulta detalhada** — banco, perspectiva, recorte, produtos, UFs, qualidade,
+    faixa de valor e convenções métricas.
 
   A referência era uma string única que concatenava o banco **e** todos os filtros
   ativos. Essa é a citação certa para "analisei exatamente este recorte" e a errada para
   "usei esta ferramenta" — uma seção de métodos não deveria mandar o leitor percorrer
   uma lista de UFs.
 
-  Os três níveis compartilham a mesma autoria e o mesmo rodapé de publicação
-  (`Brasília, DF: Embrapa, [ANO]. Disponível em: [LINK]. Acesso em: [DATA_ACESSO].`), de
-  modo que só possam diferir onde devem: em quanto do painel descrevem.
-
-  **O padrão é "Consulta detalhada"** — quem abrir o modal e copiar recebe o mesmo de
-  antes; os níveis mais curtos são opt-in, não uma mudança silenciosa na referência de
-  todo mundo.
+  Os três compartilham autoria, título e rodapé de publicação, de modo que só possam
+  diferir onde devem: em quanto do painel descrevem.
 
 - Numa perspectiva **cruzada** não há banco único, então o nível "Por banco de dados"
-  nomeia as fontes que ela cruza. Omiti-las tornaria o nível do meio idêntico ao geral e
-  descartaria em silêncio aquilo sobre o que o painel é construído.
+  nomeia as fontes que ela cruza. Omiti-las tornaria o nível do meio idêntico ao geral.
 
 ### Changed
-- **A citação no texto passa a grafar a entidade em caixa alta:** `(EMBRAPA, 2026)`.
-  O ano continua derivado da data corrente.
+- **Título único, em caixa de sentença, nos três níveis.** A consulta detalhada trazia
+  uma variante em caixa de título (`Dashboard de Análise Histórica…`), então as
+  referências discordavam sobre o nome da obra que citam. Caixa de sentença é também a
+  forma da NBR 6023:2025. Autoria e título passaram a sair de constantes únicas, e não
+  de literais repetidos em três ramos.
+- **O botão "Copiar referência" copia o nível selecionado**, não mais a versão detalhada.
+- **A abertura do modal descreve a escolha**, em vez de prometer "o painel exatamente
+  como exibido" — o que passou a valer apenas para um dos três níveis.
 
-  Registro honesto da mudança: o código trazia a forma `(Embrapa, …)` com um comentário
-  justificando-a pela regra de inicial maiúscula da ABNT NBR 10520:2023 para autores, e
-  havia um teste fixando-a. A caixa alta foi solicitada por consistência com o cabeçalho
-  da referência e com o padrão editorial da Embrapa; comentário e teste foram atualizados
-  para registrar a decisão, em vez de deixá-los contradizendo o código.
-
-- **O botão "Copiar referência" copia o nível selecionado**, não mais a versão detalhada
-  fixa.
+### Unchanged
+- **A citação no texto continua `(Embrapa, [ANO])`.** A NBR 10520:2023 grafa o autor na
+  chamada com inicial maiúscula, enquanto a NBR 6023:2025 mantém a entidade em caixa alta
+  no corpo da referência — as duas normas são complementares, e a diferença de caixa
+  **não** é inconsistência. Registrado no código e em teste porque parece um erro à
+  primeira vista: foi "unificado" para caixa alta durante o desenvolvimento desta versão
+  e revertido em seguida.
+- **O `Disponível em:` segue sendo o permalink completo** nos três níveis.
 
 ---
 
