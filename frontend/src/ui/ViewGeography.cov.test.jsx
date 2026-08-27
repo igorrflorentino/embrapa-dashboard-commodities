@@ -482,3 +482,50 @@ describe('ViewGeography — empty geo + products-by-UF base table', () => {
     expect(heatmapProps.rows.length).toBe(2);
   });
 });
+
+// ── "Ver raio-x": the bridge to Perfil do território ─────────────────────────
+//
+// Geografia shows how the activity spreads ACROSS territories; Perfil do território
+// shows what happens INSIDE one. The shortcut makes that pair discoverable WITHOUT
+// touching the map's click, which stays a cheap reversible filter toggle — navigation
+// and filtering must not share a gesture.
+
+describe('ViewGeography — the Perfil do território shortcut', () => {
+  afterEach(() => { delete window.goToView; });
+
+  it('names the território it would open, so the button is a promise not a leap', () => {
+    stubGlobals(fullFixture({ ufYearlySeries: UF_YEARLY }));
+    window.goToView = vi.fn();
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={{ states: ['PA'] }}
+                     database="ibge_pevs" conventions={{ autoScale: true }} />,
+    );
+    const btn = [...container.querySelectorAll('button')].find((b) => /raio-x/i.test(b.textContent));
+    expect(btn.textContent).toContain('PA');
+    btn.click();
+    expect(window.goToView).toHaveBeenCalledWith('territory_profile');
+  });
+
+  it('stays unnamed when nothing is narrowed — it must not claim a place it lacks', () => {
+    stubGlobals(fullFixture({ ufYearlySeries: UF_YEARLY }));
+    window.goToView = vi.fn();
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={{}}
+                     database="ibge_pevs" conventions={{ autoScale: true }} />,
+    );
+    const btn = [...container.querySelectorAll('button')].find((b) => /raio-x/i.test(b.textContent));
+    // The profile will open on its own default; promising a specific place would lie.
+    expect(btn.textContent.trim()).toBe('Ver raio-x');
+  });
+
+  it('renders nothing when there is no navigation bridge, instead of a dead button', () => {
+    stubGlobals(fullFixture({ ufYearlySeries: UF_YEARLY }));
+    delete window.goToView;
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={{ states: ['PA'] }}
+                     database="ibge_pevs" conventions={{ autoScale: true }} />,
+    );
+    expect([...container.querySelectorAll('button')].some((b) => /raio-x/i.test(b.textContent)))
+      .toBe(false);
+  });
+});

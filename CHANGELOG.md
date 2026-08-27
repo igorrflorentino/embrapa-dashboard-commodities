@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.29.1] - 2026-08-27
+
+O seletor de território do "Perfil do território" **ignorava o filtro geográfico**.
+Uma sessão filtrada em AM+SP exibia alegremente o Pará — um valor calculado sobre um
+conjunto que o pesquisador havia excluído explicitamente.
+
+### Fixed
+- **O filtro define o universo; o seletor escolhe o foco dentro dele.** Os dois não
+  eram redundantes, eram **conflitantes**: o seletor listava as 27 UFs
+  independentemente do filtro. Agora oferece apenas territórios que o filtro admite —
+  a mesma regra que o "Perfil do produto" já seguia ao limitar seus chips à cesta.
+  Vale para o filtro de UF **e** para as facetas sub-UF (meso/micro/intermediária/
+  imediata/município), que resolvem para um conjunto de municípios; `applyFilters`
+  passou a exportar esse conjunto como `scopedCityCodes`.
+
+- **A participação deixa de ser inventada sob recorte sub-UF.** Nesse caso a série por
+  UF é um *rollup só das cidades selecionadas*, então somá-la dá o total da própria
+  seleção — dividir por ele imprimiria ~100% e chamaria isso de "participação no
+  país". Não há denominador nacional honesto nessa base (a grade não estreitada é
+  all-products, o que misturaria bases), então o KPI diz que não dá para calcular.
+
+- **A posição passa a ser no país, não dentro do subconjunto filtrado.** "1º de 1 UF
+  na seleção" é honesto e inútil. O ranking nacional continua computável sob filtro de
+  UF, porque a série por UF só é estreitada por facetas **sub**-UF.
+
+### Added
+- **Combinar territórios agora é uma pergunta que a perspectiva responde.** Quando o
+  filtro nomeia mais de um lugar, o seletor oferece **"Seleção atual (N somadas)"** e
+  passa a ser o padrão — o pesquisador pediu aquele conjunto, então o conjunto é a
+  primeira resposta honesta; entrar num membro é um clique. A trajetória é a soma
+  (legítima: mesma unidade, mesma base de deflação) e a composição é **uma** consulta
+  sobre o conjunto, porque os dois leitores já aceitam listas.
+
+  **Só quando o filtro estreita.** Sem filtro, "Seleção atual" seria o Brasil inteiro
+  — que é o trabalho da Visão geral; um perfil territorial do país não perfila nada.
+  Uma soma de territórios não tem posição em ranking, e o KPI diz isso.
+
+- **Atalho "Ver raio-x" no card do mapa da Geografia**, nomeando o território que
+  abriria ("Ver raio-x de PA"). As duas perspectivas são metades de uma pergunta:
+  Geografia mostra como a atividade se distribui **entre** lugares, o Perfil mostra o
+  que acontece **dentro** de um. O atalho não carrega lugar próprio — o perfil lê o
+  mesmo filtro que a Geografia escreve. Nova ponte `window.goToView`, registrada junto
+  de `patchFilter`/`openFilterMenu` e pelo mesmo motivo. **O clique no mapa segue
+  intocado**: filtro barato e reversível.
+
+---
+
 ## [1.29.0] - 2026-08-27
 
 Nova perspectiva **"Perfil do território"**: o raio-x de um lugar. Até agora o
