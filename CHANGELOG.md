@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.31.3] - 2026-08-27
+
+### Fixed
+- **O mapa de calor mantinha a geometria antiga ao reduzir o número de linhas.**
+  Selecionar uma única região na Geografia deixava o gráfico com o layout de cinco:
+  faixa de **105px para uma linha** dentro de um gráfico de 132px, e a barra de cor
+  **encalhada em y=-76**, acima do card e fora de vista — só o rótulo "R$" aparecia,
+  solto sobre a faixa.
+
+  `Plotly.react` **não refaz o layout quando a altura do contêiner muda**. A `key` de
+  remontagem introduzida na v1.29.5 cobria apenas a virada de orientação, e 5 regiões →
+  1 região permanece horizontal (o limiar é ≤ 5): a orientação não mudava, então não
+  havia remontagem, e o gráfico ficava com a geometria de cinco linhas.
+
+  A `key` passou a incluir a **altura resolvida**. Qualquer mudança na contagem de
+  linhas move a altura, então cobre o caso que a chave de orientação não enxerga. Os
+  dois gatilhos continuam sendo mudanças deliberadas de seleção, nunca um laço de
+  render — a garantia está fixada em teste: mesma geometria, mesmo elemento.
+
+  Verificado nas duas direções: 5 → 1 região (faixa 105px → 16px, barra y=-76 → y=92
+  com largura total) e 1 → 5 → 12 UFs, terminando na barra vertical à direita.
+
+### Nota
+- **O teste que deveria ter pego isso afirmava o contrário.** Ele dizia "não remonta
+  numa mudança de linhas do mesmo lado do limiar" — exatamente o comportamento que
+  produziu o bug. Foi reescrito para afirmar o oposto, com o motivo registrado, e a
+  garantia de "não remontar à toa" migrou para o caso que de fato importa: geometria
+  inalterada.
+
+---
+
 ## [1.31.2] - 2026-08-27
 
 ### Fixed
