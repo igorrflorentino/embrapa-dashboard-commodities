@@ -7,6 +7,171 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.25.0] - 2026-08-26
+
+Auditoria completa da perspectiva **Geografia** (23 achados verificados no build de
+produção contra o BigQuery real) e correção de todos eles. O denominador comum era o
+mesmo: **a perspectiva mostrava mais do que declarava** — um ano em três cartões e trinta
+e nove em um quarto, a cesta em três e todos os produtos no mapa de calor, cinco níveis de
+recorte no filtro e um só desenhado no mapa.
+
+### Fixed — confiabilidade do número
+
+- **O mapa de calor ano × UF ignorava a cesta de produtos.** O mapa, o Top 10 e as barras
+  por região passam a ler o cubo cesta×UF assim que ele carrega; `heatRows` nunca trocava
+  de fonte — lia `dataStore.get(banco).ufYearly`, que é **sempre todos os produtos**. Pior:
+  a nota honesta `notFilteredByBasket` era acionada por `basketActive && !useCube`, ou
+  seja, aparecia *antes* do cubo chegar e sumia exatamente quando mapa e heatmap passavam a
+  discordar. Medido com a cesta = Açaí (fruto), PA 2024: mapa **R$ 865 mi** (correto)
+  contra célula do heatmap **R$ 2.908 mi** (os 7 produtos) — razão de 3,4×, sem aviso
+  nenhum na tela. `applyFilters` já calculava a grade correta (`geoSource`) mas não a
+  devolvia; agora exporta `ufYearlySeries`/`muniYearlySeries` e o heatmap lê a MESMA fonte
+  que o mapa. Passa a existir uma só grade (UF × ano) nesta perspectiva.
+
+- **"Produtos do estado" somava 39 anos numa página onde todo o resto mostrava um ano.**
+  O cartão consome `/api/products-by-uf`, que faz `sum(value)` sobre a janela inteira, e
+  não carregava rótulo de período — enquanto os outros três cartões carregavam
+  `mapYearTag`. Na mesma tela: "Maiores estados produtores · **2024**" → PA R$ 2,9 bi, e
+  "Produtos do estado (PA)" → Madeira em tora **R$ 136 bi**. Agora o cartão pede o mesmo
+  `mapYear` do resto da perspectiva e o declara no overline.
+
+- **Pseudo-origens entravam nos cartões por UF e ficavam de fora do cartão por região.**
+  `ViewOverview` e `ViewConcentration` filtram por `isRealUf`; a Geografia não. A linha
+  `ND` (não declarado) do COMEX entrava em `top10ufs`, no `sharedMax` e no heatmap, e sumia
+  do `regionData` (não tem região) e do coroplético (não casa com polígono). Medido sem
+  filtro: soma das UFs **237.622** contra soma por região **234.888** — diferença de
+  **2.734**, exatamente a linha ND, sem nota nenhuma. Aplicado o mesmo guarda-corpo das
+  perspectivas irmãs.
+
+- **"Exportar CSV" exportava sempre a tabela por UF**, mesmo com a lista de municípios na
+  tela: `csvExport` decidia pelo id da perspectiva (`'geo'`), nunca pelo `scope`. Quem
+  recortava 14 municípios e clicava em exportar recebia a linha única do PA. Agora ramifica
+  por escopo (região / UF / município), mantendo as colunas `ano` e `escopo_produto` que já
+  carregavam os avisos da tela.
+
+### Fixed — motor da cascata geográfica
+
+- **Impureza de updater no `useGeoCascade`.** `reconcile` escrevia
+  `prevEligible.current[level] = ok` **dentro da função passada ao `setState`**. Updaters
+  precisam ser puros: o StrictMode do React os invoca duas vezes, e a segunda invocação
+  lia o ref já sobrescrito pela primeira, concluía que o nível "não estava seguindo" os
+  pais e desfazia o refill. Percurso "Estados → Limpar → marcar Pará": build de dev deixava
+  Mesorregiões **0/6** e Municípios **0/0**; o de produção acertava (**6/6**, **144/144**).
+  Não afetava o usuário final, mas quebrava a cascata para quem desenvolve e é exatamente
+  o tipo de coisa que reaparece sob renderização concorrente.
+
+- **Limpar uma coluna zerava as colunas abaixo dela — discordando do motor de dados.**
+  Um clique em "Limpar" nas Mesorregiões levava Microrregiões e Municípios a
+  `0/0 · Nenhum resultado`, porque `passes()` lia "0 selecionados" como "nada passa".
+  Mas o `dataFilters.js` **já** trata um facet vazio como "sem restrição" — a cascata e o
+  motor que aplica o filtro discordavam sobre a mesma seleção. Alinhados. (A assimetria
+  de *código em branco* entre os dois segue deliberada e documentada — é outro eixo.)
+
+### Fixed — leitura do mapa
+
+- **Rolar a página sobre o mapa dava zoom no mapa.** `scrollZoom` do maplibre ficava
+  ligado e não havia como voltar ao enquadramento: três rolagens reduziam o Brasil a um
+  terço do quadro e a página não se movia. Desligado (o zoom segue nos botões +/− e no
+  pinch), e adicionado um controle de **reenquadrar**.
+
+- **A escala do coroplético colapsava.** Linear sobre o máximo: com a distribuição real do
+  PEVS 2024, **23 das 25 UFs com produção caíam no nível mais claro** e 3 dos 6 níveis da
+  rampa nunca eram usados — Maranhão (386) e Sergipe (1) recebiam exatamente a mesma cor.
+  Trocada por classificação **por quantil** (`ufColorScaleQuantile`), que usa os 6 níveis.
+
+- **A visualização padrão não tinha legenda; a alternativa tinha.** "Blocos" trazia rampa
+  e faixa mín–máx, "Mapa" (o padrão) não trazia nada. Legenda adicionada ao coroplético,
+  reusando o mesmo markup, com os cortes de cada faixa no `title`.
+
+- **A barra de cor do mapa de calor falava inglês** (`14B · 12B · 8B`) enquanto o eixo do
+  gráfico ao lado lia `3 bi · 2 bi · 1 bi`. O projeto já tinha a função para isso
+  (`ptBrValueTicks`, escrita justamente para matar o "15G vs 15 bi") — ela só nunca havia
+  chegado a este colorbar.
+
+- **A lista de municípios usava um formato numérico que não existe em nenhum outro lugar
+  do painel**: `113.008.308,7 R$` (símbolo depois do número, uma casa decimal irrelevante
+  na casa dos milhões, sem magnitude compacta) enquanto as barras do mesmo cartão mostravam
+  "2,9 bi". Passa a usar o mesmo `autoScaleNum`.
+
+- **Cada linha de município reservava uma coluna que nunca tem conteúdo.** O cubo é
+  agregado por cesta, então `dataFilters` preenche `product: ''` — e o CSS mantinha a faixa
+  de `1.6fr` reservada, a segunda mais larga da linha. Era por isso que as barras começavam
+  tão à direita. Faixa removida, espaço devolvido à barra.
+
+- **Rótulos que não acompanhavam o escopo.** "Mapa de calor" encimava um gráfico de barras
+  em *Região* e uma lista em *Município*; "Top 10 · Maiores estados produtores" aparecia
+  sobre **uma** barra; "(1 maiores)" e "1 macrorregiões" quebravam a concordância. Todos
+  derivados do escopo/cardinalidade ativos agora.
+
+### Added — Geografia
+
+- **Clique no mapa filtra por UF.** Clicar num estado (no coroplético ou nos blocos) aplica
+  o filtro àquele estado e reenquadra o mapa nele; clicar de novo limpa. Elimina a ida ao
+  modal para o recorte mais comum de todos. `BrazilTileMap` já aceitava `onSelect` e
+  ninguém ligava essa entrada. A UF ativa ganha contorno destacado nas duas visualizações.
+
+- **"Granularidade" passa a reger a página inteira.** Antes trocava só o primeiro cartão —
+  o mapa de calor continuava em UF, o Top 10 continuava em UF. Agora o mapa de calor agrupa
+  por região/UF/município conforme a escolha, e os cartões redundantes com o grão ativo
+  somem (em *Região*, "Distribuição por região" e "Soma por região" eram o **mesmo gráfico,
+  os mesmos dados, duas vezes na mesma tela**).
+
+- **Município fica útil com uma UF selecionada.** Antes, a lista por município exigia
+  primeiro entrar numa mesorregião pelo filtro; com uma única UF selecionada, agora lista
+  direto os municípios daquele estado. Implementado **local à view** — uma primeira versão
+  estendeu a cascata compartilhada em `dataFilters.js` e isso colocou *todas* as outras
+  perspectivas em estado de carregamento sempre que uma UF única estivesse selecionada e a
+  malha do IBGE ainda não tivesse aquecido (regressão pega por `dataFilters.cov.test.js`).
+
+- **Estado vazio com ação.** "A lista por município aparece ao recortar a geografia…" era
+  um parágrafo instrucional sem nada para clicar; ganhou o botão **"Abrir filtro de
+  geografia"**, via o mesmo bridge (`window.patchFilter` / `window.openFilterMenu`) que o
+  clique no mapa usa — em vez de uma prop nova no contrato que ~20 outras views compartilham.
+
+### Changed — painel de filtros
+
+- **Os quatro níveis sub-UF + Município recolhidos atrás de "Refinar dentro da UF".** Eram
+  8 colunas paralelas sempre abertas (duas fileiras no desktop, oito roladores empilhados
+  no celular) mesmo antes de escolher qualquer UF. A seção abre em três colunas
+  (Nações · Regiões · Estados); o disclosure **expande sozinho** quando o filtro aplicado
+  já recorta um dos níveis, e mostra o selo "recorte ativo" quando colapsado — colapsar
+  nunca esconde um recorte vivo.
+
+- **As duas divisões do IBGE agora são apresentadas como divisões.** Agrupadas e rotuladas
+  ("Divisão clássica (1990)" / "Divisão atual (2017)") com uma frase explicando que
+  recortam o mesmo estado de formas **independentes** — antes toda essa semântica estava
+  codificada nos separadores da dica (`estado ▸ meso/microrregião · inter/imediata ▸
+  município`), e o resultado prático era "Municípios 14/14" convivendo com
+  "Reg. imediatas 21/21", que lido literalmente é impossível.
+
+- **O cabeçalho do modal contradizia o resumo da própria seção**: "1 nação(ões), **0 UF**,
+  **todos os municípios**" contra "… 0 UFs · **0 municípios**" logo abaixo — ambos saindo
+  de `filterSummary.js`, arquivo criado justamente para impedir que as duas versões
+  divergissem. Unificado o ramo de zero e reusada a pluralização correta que `geoChipText`
+  já tinha dez linhas abaixo.
+
+### Accessibility
+- Os três controles segmentados da Geografia (Métrica, Granularidade, Mapa/Blocos) ganharam
+  `role="group"` + `aria-pressed`, que o `FilterMenu` já usava em outro ponto.
+
+### Nota — deliberadamente NÃO feito
+- **Não dividir a Geografia em várias perspectivas.** O painel já tem **oito superfícies**
+  com mapa do Brasil ou ranking de UF (Visão geral, Geografia, Concentração, Perfil do
+  produto, Produtividade, Rebanho, Coeficiente de exportação, Fluxos/Parceiros). Mais
+  entradas de menu multiplicariam a navegação sem responder nada novo; o que a perspectiva
+  pedia era separação **interna** por pergunta, feita acima.
+- **Não fabricar o grão produto × UF × ano** para "consertar" o heatmap — é exatamente a
+  fabricação que a F1.5 removeu deste código. Ler o cubo quando existir e rotular
+  honestamente quando não existir.
+- **Não embutir a malha municipal completa no bundle** nem adicionar provedor de tiles
+  (custo fixo recorrente, contra a regra de scale-to-zero do projeto).
+- **Mapa municipal com polígonos reais** segue como a única lacuna de *capacidade* da
+  perspectiva (o recorte sub-UF ainda não estreita o mapa, que pinta a UF inteira —
+  ver `PLANS/geo_subregions.md`, passo 7). Exige uma fonte de geometria que o repositório
+  não tem; fica para avaliação própria.
+
+---
+
 ## [1.24.30] - 2026-08-20
 
 ### Removed

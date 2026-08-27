@@ -72,6 +72,11 @@ beforeEach(async () => {
 afterEach(() => {
   global.Blob = RealBlob;
   vi.restoreAllMocks();
+  // ViewGeography mirrors its local scope/município rows here (CONF-4) only while
+  // mounted; a test that sets them without cleanup would otherwise leak into the
+  // NEXT test, silently steering its 'geo' export through the wrong branch.
+  delete window.geoExportScope;
+  delete window.geoExportMunis;
 });
 
 // ── canExportView ────────────────────────────────────────────────────────────
@@ -272,6 +277,65 @@ describe('exportActiveTableCSV — geo snapshot', () => {
     const lines = lastCsv.replace('﻿', '').split('\n');
     // empty ano → leading semicolon
     expect(lines[1].startsWith(';PA;')).toBe(true);
+  });
+
+  // CONF-4: the export must follow ViewGeography's OWN active Granularidade
+  // (mirrored via window.geoExportScope/geoExportMunis), not always the per-UF
+  // table — a researcher who narrowed to Região or Município on screen used to
+  // download the per-UF table regardless.
+  it('exports the região table when geoExportScope=region', () => {
+    stubRegistry({
+      products: PRODUCTS,
+      ufData: baseUf,
+      regionData: [
+        { id: 'N', label: 'Norte', value: 6, q_mass: 1, q_vol: 2, q_count: 3 },
+        { id: 'S', label: 'Sul', value: 2, q_mass: 0.5, q_vol: 0, q_count: 0 },
+      ],
+      ufLatestYear: 2021,
+      ufYearPartial: false,
+      notFilteredByBasket: false,
+    });
+    window.geoExportScope = 'region';
+    window.exportActiveTableCSV({ view: 'geo', summary: {}, database: 'ibge_pevs' });
+    const lines = lastCsv.replace('﻿', '').split('\n');
+    expect(lines[0]).toBe('ano;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto');
+    expect(lines[1]).toBe('2021;Norte;6000000;1000;2000000;3000000;cesta selecionada');
+    expect(lines.length).toBe(3); // header + 2 regions, NOT the per-UF table
+  });
+
+  it('exports the município table (from geoExportMunis) when geoExportScope=municipio', () => {
+    stubRegistry({
+      products: PRODUCTS,
+      ufData: baseUf,
+      ufLatestYear: 2021,
+      ufYearPartial: false,
+      notFilteredByBasket: false,
+    });
+    window.geoExportScope = 'municipio';
+    window.geoExportMunis = [
+      { city: 'Belém', uf: 'PA', value: 4, q_mass: 1, q_vol: 0, q_count: 0 },
+      { city: 'Santos', uf: 'SP', value: 1, q_mass: 0, q_vol: 0.2, q_count: 0 },
+    ];
+    window.exportActiveTableCSV({ view: 'geo', summary: {}, database: 'ibge_pevs' });
+    const lines = lastCsv.replace('﻿', '').split('\n');
+    expect(lines[0]).toBe('ano;municipio;uf;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto');
+    expect(lines[1]).toBe('2021;Belém;PA;4000000;1000;0;0;cesta selecionada');
+    expect(lines[2]).toBe('2021;Santos;SP;1000000;0;200000;0;cesta selecionada');
+  });
+
+  it('falls back to the per-UF table when geoExportScope is absent (unchanged default)', () => {
+    stubRegistry({
+      products: PRODUCTS,
+      ufData: baseUf,
+      ufLatestYear: 2021,
+      ufYearPartial: false,
+      notFilteredByBasket: false,
+    });
+    // no window.geoExportScope set — export triggered before Geografia ever mounted.
+    window.exportActiveTableCSV({ view: 'geo', summary: {}, database: 'ibge_pevs' });
+    const lines = lastCsv.replace('﻿', '').split('\n');
+    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto');
+    expect(lines[1].startsWith('2021;PA;')).toBe(true);
   });
 });
 

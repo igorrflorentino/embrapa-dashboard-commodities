@@ -4,7 +4,7 @@
 // prototype's component. Same name + props (incl. onSelect for drill-down).
 //   data: [{ uf, col, row, region, [valueKey] }]  (col/row decorated client-side)
 
-function BrazilTileMap({ data = [], valueKey = 'value', label = 'R$ mi', height = 420, onSelect, compact = true }) {
+function BrazilTileMap({ data = [], valueKey = 'value', label = 'R$ mi', height = 420, onSelect, selectedUf, compact = true }) {
   const COLS = 8;
   const ROWS = 9;
   const CELL_W = 60;
@@ -72,10 +72,12 @@ function BrazilTileMap({ data = [], valueKey = 'value', label = 'R$ mi', height 
           const x = d.col * (CELL_W + GAP);
           const y = d.row * (CELL_H + GAP);
           const v = d[valueKey] || 0;
+          const selected = selectedUf && d.uf === selectedUf;
           return (
             <g
               key={d.uf}
               className="bmap-cell"
+              style={onSelect ? { cursor: 'pointer' } : undefined}
               onClick={onSelect ? () => onSelect(d) : undefined}
             >
               <rect
@@ -85,8 +87,8 @@ function BrazilTileMap({ data = [], valueKey = 'value', label = 'R$ mi', height 
                 height={CELL_H}
                 rx="6"
                 fill={color(v)}
-                stroke={REGION_BG[d.region]}
-                strokeWidth="2"
+                stroke={selected ? 'var(--embrapa-green-darker)' : REGION_BG[d.region]}
+                strokeWidth={selected ? 3 : 2}
               />
               <text
                 x={x + CELL_W / 2}

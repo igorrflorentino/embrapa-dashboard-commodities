@@ -2,16 +2,18 @@
 // shaded by the active metric. Real state shapes (vs the tile grid), with
 // pan/zoom/hover via maplibre-gl over our own GeoJSON (no basemap tiles, so it
 // works offline). Same call shape as BrazilTileMap: <BrazilChoropleth data
-// valueKey label/>, data = [{ uf, name, [valueKey] }] (uf = 2-letter sigla).
+// valueKey label onSelect selectedUf/>, data = [{ uf, name, [valueKey] }] (uf =
+// 2-letter sigla). `onSelect(uf)` fires on a state click (filter-by-click);
+// `selectedUf` highlights the active selection and re-frames the view to it.
 //
 // maplibre-gl (~250KB gz) is LAZY-loaded via dynamic import() on mount, so it's
 // fetched only when a researcher actually opens this map — not on first paint of
 // the app. Vite code-splits it into its own chunk.
 
-import { useRef, useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import brazilUfGeo from './brazilUfGeo';
-import { NODATA, fillColorExpression, ufColorScale } from './choroplethScale';
+import { NODATA, fillColorExpression, ufColorScaleQuantile } from './choroplethScale';
 import { sanitizeFeatureCollection } from './geoSanitize';
 
 // brazilUfGeo ships empty `[]` sub-polygons that crash maplibre's geojson-vt worker
@@ -23,7 +25,70 @@ const BRAZIL_BOUNDS = [
   [-33.5, 6.5],
 ];
 
-export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
+// Per-UF bounding box (computed once from the SAME sanitized GeoJSON the map
+// renders), so clicking a state can fit the view to it without a second data
+// source. Handles both Polygon and MultiPolygon coordinate nesting.
+function bboxOfFeature(feature) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const walk = (coords) => {
+    if (typeof coords[0] === 'number') {
+      const [x, y] = coords;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      return;
+    }
+    coords.forEach(walk);
+  };
+  walk(feature.geometry.coordinates);
+  return [[minX, minY], [maxX, maxY]];
+}
+const UF_BOUNDS = {};
+UF_GEO.features.forEach((f) => {
+  if (f.properties && f.properties.uf) UF_BOUNDS[f.properties.uf] = bboxOfFeature(f);
+});
+
+// Per-value compact magnitude (e.g. 2_900_918_362 → "2,9 bi") — shared by the
+// hover popup AND the legend, so both read the same format the tile map/legend
+// use elsewhere in Geografia.
+function fmtCompact(v) {
+  const mp = window.autoScaleNum && v ? window.autoScaleNum(v) : { factor: 1, suffix: '' };
+  const s = v / mp.factor;
+  const t = s.toLocaleString('pt-BR', { maximumFractionDigits: Math.abs(s) < 10 ? 1 : 0 });
+  return mp.suffix ? `${t} ${mp.suffix}` : t;
+}
+
+// A maplibre IControl (plain duck-typed interface — no maplibre import needed)
+// that re-frames the map to all of Brazil. maplibre's own NavigationControl only
+// offers +/-; without this, a researcher who scrolled or clicked into a single UF
+// had no button-driven way back to the national view.
+class ResetViewControl {
+  constructor(onClick) {
+    this._onClick = onClick;
+  }
+  onAdd() {
+    const div = document.createElement('div');
+    div.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'maplibregl-ctrl-icon';
+    btn.title = 'Ajustar ao Brasil';
+    btn.setAttribute('aria-label', 'Ajustar mapa ao Brasil');
+    btn.style.fontSize = '15px';
+    btn.style.lineHeight = '1';
+    btn.textContent = '⤢';
+    btn.addEventListener('click', () => this._onClick());
+    div.appendChild(btn);
+    this._container = div;
+    return div;
+  }
+  onRemove() {
+    if (this._container && this._container.parentNode) this._container.parentNode.removeChild(this._container);
+  }
+}
+
+export function BrazilChoropleth({ data, valueKey, label, height = 360, onSelect, selectedUf }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
   const [failed, setFailed] = useState(false);
@@ -36,6 +101,12 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
   // (The hover path already dodged the same stale closure via lookupRef.)
   const [layerReady, setLayerReady] = useState(false);
 
+  // MAPA-3: quantile bins instead of a linear share of the max — a linear scale
+  // collapses whenever a couple of UFs dominate the total (measured: 23 of 27
+  // states landing in the SAME lightest bucket for PEVS 2024). Computed once here
+  // so BOTH paint() and the legend render from the identical bucket assignment.
+  const scale = useMemo(() => ufColorScaleQuantile(data, valueKey), [data, valueKey]);
+
   // uf -> { name, value, label } for the hover popup, kept in a ref so the map's
   // event handlers always read the latest data without re-binding listeners.
   const lookupRef = useRef({});
@@ -46,6 +117,12 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
     });
     lookupRef.current = idx;
   }, [data, valueKey, label]);
+
+  // onSelect is a fresh closure every render (it captures the current filter
+  // state in ViewGeography); kept in a ref so the click handler registered ONCE
+  // on the map always calls the CURRENT one, never the one from first mount.
+  const onSelectRef = useRef(onSelect);
+  useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
 
   // Create the map once (lazy-loading maplibre). Guarded so an unmount mid-load
   // doesn't init a detached map or setState after teardown.
@@ -120,7 +197,14 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
         console.warn('[choropleth] maplibre error:', (e && e.error && e.error.message) || e);
       });
       map.touchZoomRotate.disableRotation();
+      // MAPA-1: scroll-zoom was ON by default, so scrolling the PAGE past the map
+      // zoomed the MAP instead — confirmed in the production build (three scrolls
+      // shrank Brazil to a third of the frame with no way back except the +/-
+      // buttons). Pinch-zoom (touch) and the +/- buttons still work; the
+      // ResetViewControl below is the way back to the national view.
+      map.scrollZoom.disable();
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+      map.addControl(new ResetViewControl(() => map.fitBounds(BRAZIL_BOUNDS, { padding: 24, duration: 400 })), 'top-right');
 
       popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 8 });
 
@@ -129,11 +213,20 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
         map.addSource('uf', { type: 'geojson', data: UF_GEO });
         map.addLayer({ id: 'uf-fill', type: 'fill', source: 'uf', paint: { 'fill-color': NODATA, 'fill-opacity': 0.9 } });
         map.addLayer({ id: 'uf-line', type: 'line', source: 'uf', paint: { 'line-color': '#ffffff', 'line-width': 0.8 } });
+        // A dedicated highlight layer for the active click-to-filter selection —
+        // starts filtered to nothing; the paint effect below sets its filter to the
+        // selected UF (or back to nothing) whenever `selectedUf` changes.
+        map.addLayer({
+          id: 'uf-selected', type: 'line', source: 'uf',
+          filter: ['==', ['get', 'uf'], '__none__'],
+          paint: { 'line-color': 'var(--embrapa-green-darker, #003c1d)', 'line-width': 2.5 },
+        });
         // Signal readiness rather than paint()ing here: this callback's `data` is frozen
         // at the first render (see layerReady).
         setLayerReady(true);
         map.on('mousemove', 'uf-fill', onMove);
         map.on('mouseleave', 'uf-fill', onLeave);
+        map.on('click', 'uf-fill', onClick);
       });
 
       function onMove(e) {
@@ -142,14 +235,6 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
         if (!f) return;
         const uf = f.properties.uf;
         const hit = lookupRef.current[uf];
-        // Compact per-value magnitude (e.g. "2,9 bi") — matches the tile-map + legend, so
-        // toggling Mapa/Blocos shows the same readable format instead of a long raw number.
-        const fmtCompact = (v) => {
-          const mp = window.autoScaleNum && v ? window.autoScaleNum(v) : { factor: 1, suffix: '' };
-          const s = v / mp.factor;
-          const t = s.toLocaleString('pt-BR', { maximumFractionDigits: Math.abs(s) < 10 ? 1 : 0 });
-          return mp.suffix ? `${t} ${mp.suffix}` : t;
-        };
         const val = hit ? fmtCompact(hit.value) : '—';
         const name = (hit && hit.name) || f.properties.name || uf;
         const unit = (hit && hit.label) || '';
@@ -168,6 +253,11 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
       function onLeave() {
         map.getCanvas().style.cursor = '';
         popup.remove();
+      }
+      function onClick(e) {
+        const f = e.features && e.features[0];
+        const uf = f && f.properties && f.properties.uf;
+        if (uf && onSelectRef.current) onSelectRef.current(uf);
       }
     })();
 
@@ -207,8 +297,10 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
       return;
     }
     try {
-      const { byUf } = ufColorScale(data, valueKey);
-      map.setPaintProperty('uf-fill', 'fill-color', fillColorExpression(byUf));
+      map.setPaintProperty('uf-fill', 'fill-color', fillColorExpression(scale.byUf));
+      if (typeof map.setFilter === 'function' && map.getLayer('uf-selected')) {
+        map.setFilter('uf-selected', ['==', ['get', 'uf'], selectedUf || '__none__']);
+      }
     } catch (err) {
       console.error('[choropleth] paint failed; falling back to no-data fill:', err);
       try {
@@ -219,13 +311,24 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
     }
   }
   // `paint` is re-created every render, so it stays OUT of the dependency list (listing
-  // it would repaint on every render); the values it actually reads — data, valueKey and
-  // layerReady — are all here, which is what matters. layerReady is the one this effect
-  // was missing: without it the effect never re-ran after the layer appeared.
+  // it would repaint on every render); the values it actually reads — scale, selectedUf
+  // and layerReady — are all here, which is what matters. layerReady is the one this
+  // effect was missing: without it the effect never re-ran after the layer appeared.
   useEffect(() => {
     paint();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, valueKey, layerReady]);
+  }, [scale, selectedUf, layerReady]);
+
+  // Re-frame the viewport to the active selection (or back to all of Brazil once
+  // cleared). A no-op until the map has actually loaded; harmless to also fire once
+  // on mount with no selection — it re-asserts the SAME bounds the map already
+  // opened with, so there's nothing to visibly animate.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !layerReady || typeof map.fitBounds !== 'function') return;
+    const bounds = (selectedUf && UF_BOUNDS[selectedUf]) || BRAZIL_BOUNDS;
+    map.fitBounds(bounds, { padding: 32, duration: 500 });
+  }, [selectedUf, layerReady]);
 
   if (failed) {
     return (
@@ -236,9 +339,33 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360 }) {
       </div>
     );
   }
+  const legend = scale.thresholds;
+  const hasLegend = legend.some(Boolean);
   return (
-    <div className="br-choropleth" style={{ position: 'relative', width: '100%', height }}>
-      <div ref={ref} style={{ position: 'absolute', inset: 0, borderRadius: 8, overflow: 'hidden' }} />
+    <div className="bmap-wrap">
+      <div className="br-choropleth" style={{ position: 'relative', width: '100%', height }}>
+        <div ref={ref} style={{ position: 'absolute', inset: 0, borderRadius: 8, overflow: 'hidden' }} />
+      </div>
+      {/* MAPA-2: "Mapa" (this component) had no legend at all — "Blocos" (the tile
+          map) did. Reusing .bmap-legend/.bmap-scale gives both visualizations the
+          SAME legend chrome, so toggling between them doesn't lose the scale. */}
+      {hasLegend && (
+        <div className="bmap-legend">
+          <span className="caption">{label}</span>
+          <div className="bmap-scale">
+            {legend.map((t, i) => (
+              <span
+                key={i}
+                style={{ background: t ? t.color : NODATA }}
+                title={t ? `${fmtCompact(t.min)} – ${fmtCompact(t.max)}` : 'sem UF nesta faixa'}
+              />
+            ))}
+          </div>
+          <span className="caption tnum">
+            {fmtCompact(legend.find(Boolean)?.min ?? 0)} – {fmtCompact([...legend].reverse().find(Boolean)?.max ?? 0)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -516,6 +516,24 @@
       // (the product×UF cube is still loading) — the view shows a loading state
       // instead of a basket-dropped value. See geoComboPending above.
       geoComboPending,
+      // The FULL (UF × year) grid — every year, not just ufLatestYear — already
+      // scoped by basket + state + sub-UF narrowing exactly like `ufData` above (it
+      // IS `ufData`'s own source, pre-slice). CONF-1: the Geografia heatmap used to
+      // read the snapshot's always-all-products `ufYearly` directly instead of this,
+      // so a basket that had already narrowed the map/ranking (once its cube loaded)
+      // left the heatmap silently showing every product's total — a 3.4x divergence
+      // measured for a single-product PEVS basket, with no on-screen warning once
+      // `notFilteredByBasket` had cleared. Rows may omit `name`/`region` (the
+      // município rollup doesn't carry them); resolve labels from the UF registry.
+      ufYearlySeries: ufYearly,
+      // The RAW basket-scoped (município × year) cube — every year, every município
+      // that cleared the active sub-UF facets — for a município-scope temporal view.
+      // [] both when no sub-UF narrowing is active and while the fetch is pending;
+      // `subUfActive`/`subUfLoaded` distinguish "not narrowed" from "narrowed, still
+      // loading" so the view can render the right empty/loading state instead of
+      // guessing from an empty array alone.
+      muniYearlySeries: (subUfLoaded && Array.isArray(muniCube)) ? muniCube : [],
+      subUfActive, subUfLoaded,
       _shares: { productShare, valueShare, flagShare, yearShare, stateShare },
     };
   };

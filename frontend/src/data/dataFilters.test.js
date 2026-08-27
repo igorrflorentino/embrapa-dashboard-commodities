@@ -5,9 +5,23 @@
 // grain in the snapshot). The real state totals must pass through unchanged and
 // the honest `notFilteredByBasket` flag must be raised so the views can say so.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { decorateSnapshot } from './decorate.js';
+
+// Several describe blocks below stub window.geoMesh/municipioYearly inside
+// individual `it`s without resetting them afterwards — harmless as long as
+// nothing in a LATER describe block's tests happens to wake the sub-UF cascade.
+// applyFilters now also engages that cascade for a single selected UF (EST-5: a
+// município ranking shouldn't require first narrowing to a mesorregião), so a
+// leaked GEO_MESH/municipioYearly stub from an earlier block can silently steer a
+// later `states: ['PA']` test through the (unrelated) mesh-rollup path instead of
+// the plain state filter it means to exercise. Reset both after every test so
+// each one only ever sees the stubs it sets itself.
+afterEach(() => {
+  delete window.geoMesh;
+  delete window.municipioYearly;
+});
 
 // applyFilters reads the active banco's snapshot from window.dataStore.get and a
 // few registry globals. Stub the minimum so the IIFE runs in isolation (no full

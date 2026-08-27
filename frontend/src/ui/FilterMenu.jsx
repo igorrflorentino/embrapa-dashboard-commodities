@@ -645,6 +645,22 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
   const imediataItems = useMemo(
     () => eligibleImediatas.map(c => ({ code: c, name: imediataNames[c] || c })), [eligibleImediatas, imediataNames]);
 
+  // FILT-1: the sub-UF disclosure is collapsed by default; the geo-seed effect
+  // below sets this explicitly (true/false) from the APPLIED filter each time the
+  // menu opens, so a shared/deep-linked sub-UF selection is never hidden.
+  const [subUfExpanded, setSubUfExpanded] = useState(false);
+  // A facet counts as narrowing the SAME way dataFilters.js does: a PROPER,
+  // NON-EMPTY subset of its universe (0 selected = a cascade-emptied child = no
+  // constraint, same as "all"). Drives the "recorte ativo" badge on the collapsed
+  // toggle, so collapsing the panel never hides an active narrowing silently.
+  const isNarrowingFacet = (size, total) => size > 0 && size < total;
+  const subUfNarrowing =
+    isNarrowingFacet(mesos.size, Object.keys(mesoNames).length) ||
+    isNarrowingFacet(micros.size, Object.keys(microNames).length) ||
+    isNarrowingFacet(inters.size, Object.keys(interNames).length) ||
+    isNarrowingFacet(imediatas.size, Object.keys(imediataNames).length) ||
+    isNarrowingFacet(munis.size, MUNIS.length);
+
   // search strings, one per multi-select
   const [qProducts, setQProducts] = useState('');
   const [qFlags,    setQFlags]    = useState('');
@@ -750,6 +766,11 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
     setInters(   v.inters    != null ? new Set(v.inters)    : new Set(Object.keys(interNames)));
     setImediatas(v.imediatas != null ? new Set(v.imediatas) : new Set(Object.keys(imediataNames)));
     setMunis(    v.munis     != null ? new Set(v.munis)     : new Set(MUNIS.map(m => m.code)));
+    // Auto-expand the disclosure when the filter being restored already narrows a
+    // sub-UF facet — collapsed-by-default must never mean "silently discarded".
+    setSubUfExpanded(
+      v.mesos != null || v.micros != null || v.inters != null || v.imediatas != null || v.munis != null,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, geoReady]);
 
@@ -1259,7 +1280,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
               </div>
 
               <div className="fm-section-inner">
-              <div className={'fm-geo-grid' + (showMunis ? '' : ' cols-3')}>
+              <div className="fm-geo-grid cols-3">
                 <GeoColumn
                   title="Nações"
                   items={NATIONS}
@@ -1295,105 +1316,153 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
                   setSearch={setQStates}
                   disabledReason={eligibleRegions.length === 0 || regions.size === 0 ? 'Selecione ao menos uma região.' : null}
                 />
-                {/* Sub-UF: the TWO parallel IBGE divisions (classic meso/micro,
-                    2017 intermediária/imediata). They refine the UF independently;
-                    a município passes the cascade iff it clears every active facet.
-                    Only the município-grained bancos (PEVS/PAM/PPM) render them. */}
-                {showMunis && (<>
-                <GeoColumn
-                  title="Mesorregiões"
-                  items={mesoItems}
-                  keyAttr="code"
-                  displayAttr="name"
-                  getMeta={(x) => x.code}
-                  selected={mesos}
-                  setSelected={setMesos}
-                  search={qMesos}
-                  setSearch={setQMesos}
-                  disabledReason={
-                    !muniUniverseLive ? 'Carregando malha do IBGE…'
-                      : states.size === 0 ? 'Selecione ao menos um estado.' : null
-                  }
-                />
-                <GeoColumn
-                  title="Microrregiões"
-                  items={microItems}
-                  keyAttr="code"
-                  displayAttr="name"
-                  getMeta={(x) => x.code}
-                  selected={micros}
-                  setSelected={setMicros}
-                  search={qMicros}
-                  setSearch={setQMicros}
-                  disabledReason={
-                    !muniUniverseLive ? 'Carregando malha do IBGE…'
-                      : mesos.size === 0 ? 'Selecione ao menos uma mesorregião.' : null
-                  }
-                />
-                <GeoColumn
-                  title="Reg. intermediárias"
-                  items={interItems}
-                  keyAttr="code"
-                  displayAttr="name"
-                  getMeta={(x) => x.code}
-                  selected={inters}
-                  setSelected={setInters}
-                  search={qInters}
-                  setSearch={setQInters}
-                  disabledReason={
-                    !muniUniverseLive ? 'Carregando malha do IBGE…'
-                      : states.size === 0 ? 'Selecione ao menos um estado.' : null
-                  }
-                />
-                <GeoColumn
-                  title="Reg. imediatas"
-                  items={imediataItems}
-                  keyAttr="code"
-                  displayAttr="name"
-                  getMeta={(x) => x.code}
-                  selected={imediatas}
-                  setSelected={setImediatas}
-                  search={qImediatas}
-                  setSearch={setQImediatas}
-                  disabledReason={
-                    !muniUniverseLive ? 'Carregando malha do IBGE…'
-                      : inters.size === 0 ? 'Selecione ao menos uma região intermediária.' : null
-                  }
-                />
-                </>)}
-                {showMunis && (
-                <GeoColumn
-                  title="Municípios"
-                  items={eligibleMunis}
-                  keyAttr="code"
-                  displayAttr="name"
-                  getMeta={(x) => x.uf}
-                  selected={munis}
-                  setSelected={setMunis}
-                  search={qMunis}
-                  setSearch={setQMunis}
-                  // Município is LIVE via the IBGE mesh (code-keyed). Gate only while
-                  // the mesh loads, or when its parent UF level is empty.
-                  disabledReason={
-                    !muniUniverseLive
-                      ? 'Carregando malha do IBGE…'
-                      : eligibleStates.length === 0 || states.size === 0
-                        ? 'Selecione ao menos um estado.'
-                        : null
-                  }
-                />
-                )}
               </div>
 
+              {/* FILT-1: the 4 sub-UF levels + Município used to render as 4 MORE
+                  always-open columns (8 total, two rows on desktop, eight stacked
+                  scrollers on a phone) even though none of them mean anything before
+                  a UF is picked. Collapsed by default behind this disclosure — auto-
+                  expanded by the geo-seed effect above when the APPLIED filter already
+                  narrows one, so a shared/deep-linked sub-UF selection is never hidden
+                  from whoever opens the modal. */}
               {showMunis && (
-              <div className="fm-geo-foot">
-                <span className="fm-section-meta">
-                  {/* Footer: the IBGE mesh universe (full ~5570), driving the
-                      município + the two parallel sub-UF divisions. */}
-                  {muniUniverseLive
-                    ? `Malha IBGE: ${MUNIS.length} municípios · mesorregião/microrregião + região intermediária/imediata.`
-                    : 'Carregando a malha municipal do IBGE…'}
-                </span>
+              <div className="fm-subuf">
+                <button
+                  type="button"
+                  className="fm-subuf-toggle"
+                  aria-expanded={subUfExpanded}
+                  onClick={() => setSubUfExpanded(!subUfExpanded)}
+                >
+                  <span aria-hidden="true">{subUfExpanded ? '▾' : '▸'}</span>
+                  Refinar dentro da UF — mesorregião, microrregião, região intermediária/imediata, município
+                  {subUfNarrowing && <span className="fm-subuf-badge">recorte ativo</span>}
+                </button>
+
+                {subUfExpanded && (
+                <div className="fm-subuf-panel">
+                  {/* FILT-2: the two IBGE divisions are ALTERNATIVE ways to slice the
+                      same UF (not steps of one chain) — grouped + labelled so that
+                      isn't left to the cascade-hint pill alone to explain. A município
+                      passes iff it clears EVERY active facet across BOTH. */}
+                  <p className="fm-subuf-note">
+                    As duas divisões abaixo recortam o mesmo estado de formas
+                    independentes — clássica (mesorregião/microrregião) e atual
+                    (região intermediária/imediata). Um recorte em uma NÃO precisa de
+                    um recorte na outra; um município só entra na seleção se passar
+                    por todos os recortes ativos, nas duas.
+                  </p>
+
+                  <div className="fm-subuf-division">
+                    <div className="fm-subuf-division-head">Divisão clássica (1990)</div>
+                    <div className="fm-geo-grid cols-2">
+                      <GeoColumn
+                        title="Mesorregiões"
+                        items={mesoItems}
+                        keyAttr="code"
+                        displayAttr="name"
+                        getMeta={(x) => x.code}
+                        selected={mesos}
+                        setSelected={setMesos}
+                        search={qMesos}
+                        setSearch={setQMesos}
+                        emptyAllNote="Todas as mesorregiões (nenhum recorte)."
+                        disabledReason={
+                          !muniUniverseLive ? 'Carregando malha do IBGE…'
+                            : states.size === 0 ? 'Selecione ao menos um estado.' : null
+                        }
+                      />
+                      <GeoColumn
+                        title="Microrregiões"
+                        items={microItems}
+                        keyAttr="code"
+                        displayAttr="name"
+                        getMeta={(x) => x.code}
+                        selected={micros}
+                        setSelected={setMicros}
+                        search={qMicros}
+                        setSearch={setQMicros}
+                        emptyAllNote="Todas as microrregiões (nenhum recorte)."
+                        disabledReason={
+                          !muniUniverseLive ? 'Carregando malha do IBGE…'
+                            : states.size === 0 ? 'Selecione ao menos um estado.' : null
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="fm-subuf-division">
+                    <div className="fm-subuf-division-head">Divisão atual (2017)</div>
+                    <div className="fm-geo-grid cols-2">
+                      <GeoColumn
+                        title="Reg. intermediárias"
+                        items={interItems}
+                        keyAttr="code"
+                        displayAttr="name"
+                        getMeta={(x) => x.code}
+                        selected={inters}
+                        setSelected={setInters}
+                        search={qInters}
+                        setSearch={setQInters}
+                        emptyAllNote="Todas as regiões intermediárias (nenhum recorte)."
+                        disabledReason={
+                          !muniUniverseLive ? 'Carregando malha do IBGE…'
+                            : states.size === 0 ? 'Selecione ao menos um estado.' : null
+                        }
+                      />
+                      <GeoColumn
+                        title="Reg. imediatas"
+                        items={imediataItems}
+                        keyAttr="code"
+                        displayAttr="name"
+                        getMeta={(x) => x.code}
+                        selected={imediatas}
+                        setSelected={setImediatas}
+                        search={qImediatas}
+                        setSearch={setQImediatas}
+                        emptyAllNote="Todas as regiões imediatas (nenhum recorte)."
+                        disabledReason={
+                          !muniUniverseLive ? 'Carregando malha do IBGE…'
+                            : states.size === 0 ? 'Selecione ao menos um estado.' : null
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="fm-subuf-muni">
+                    <GeoColumn
+                      title="Municípios"
+                      items={eligibleMunis}
+                      keyAttr="code"
+                      displayAttr="name"
+                      getMeta={(x) => x.uf}
+                      selected={munis}
+                      setSelected={setMunis}
+                      search={qMunis}
+                      setSearch={setQMunis}
+                      emptyAllNote="Todos os municípios (nenhum recorte)."
+                      // Município is LIVE via the IBGE mesh (code-keyed). Gate only while
+                      // the mesh loads, or when its parent UF level is empty.
+                      disabledReason={
+                        !muniUniverseLive
+                          ? 'Carregando malha do IBGE…'
+                          : eligibleStates.length === 0 || states.size === 0
+                            ? 'Selecione ao menos um estado.'
+                            : null
+                      }
+                    />
+                  </div>
+
+                  <div className="fm-geo-foot">
+                    <span className="fm-section-meta">
+                      {/* Footer: the IBGE mesh universe (full ~5570), driving the
+                          município + the two parallel sub-UF divisions. */}
+                      {muniUniverseLive
+                        ? `Malha IBGE: ${MUNIS.length} municípios · mesorregião/microrregião + região intermediária/imediata.`
+                        : 'Carregando a malha municipal do IBGE…'}
+                    </span>
+                  </div>
+                </div>
+                )}
               </div>
               )}
               </div>

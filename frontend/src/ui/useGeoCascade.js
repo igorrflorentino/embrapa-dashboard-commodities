@@ -41,13 +41,27 @@ function useGeoCascade({ regionsUniverse, statesUniverse, munisUniverse }) {
     });
     return [...s];
   };
-  // A município passes a facet iff it has no code there ('' = unconstrained) or its
-  // code is currently selected. NOTE the deliberate asymmetry with dataFilters.js
-  // `muniPassesFacets` (GEO-3): here a BLANK-code município stays ELIGIBLE in the
-  // cascade (lenient), but the DATA rollup EXCLUDES it once that facet narrows (strict
-  // — a city belonging to no mesorregião shouldn't appear under a meso filter). The
-  // two encode opposite blank-code policies ON PURPOSE; don't "reconcile" them.
+  // A município passes a facet iff (a) the facet is EMPTY — cleared, meaning "no
+  // constraint", exactly the semantics dataFilters.js's own muniPassesFacets/`ok`
+  // already gives an emptied facet (FILT-3: before this, a cleared Mesorregiões
+  // left its own eligible set correctly relabelled but left MICRORREGIÕES/
+  // MUNICÍPIOS — everything downstream of it — cascading through the OLD "nothing
+  // selected → nothing passes" reading, collapsing their eligible sets to 0 even
+  // though the filter that would actually be APPLIED treats the empty mesos as
+  // unconstrained; the cascade and the data engine disagreed about the very same
+  // selection) — or (b) it has no code there at all ('' = unconstrained) — or (c)
+  // its code is currently selected.
+  //
+  // NOTE the deliberate asymmetry that remains with dataFilters.js's
+  // `muniPassesFacets` (GEO-3): here a BLANK-code município (case b) stays
+  // ELIGIBLE in the cascade (lenient) even once the facet genuinely narrows, but
+  // the DATA rollup EXCLUDES it in that case (strict — a city belonging to no
+  // mesorregião shouldn't appear under an ACTIVE meso filter). That is a SEPARATE
+  // axis from the empty-facet case (a) added here, which both layers already
+  // agreed on before this fix — only the cascade's OWN eligibility math was out of
+  // sync with it. Don't "reconcile" the blank-code asymmetry; it's intentional.
   const passes = (m, set, key) => {
+    if (set.size === 0) return true;
     const v = m[key] || '';
     return v === '' || set.has(v);
   };
@@ -128,12 +142,22 @@ function useGeoCascade({ regionsUniverse, statesUniverse, munisUniverse }) {
   //   • A user-NARROWED subset (selection ⊊ previous eligible) is pruned only — the
   //     user's explicit choice stands; new siblings are not auto-added.
   // Each effect returns the same Set reference when nothing changed → never loops.
+  //
+  // The updater passed to setFn must be PURE — React (StrictMode, dev only) invokes
+  // a functional setState updater TWICE to surface exactly this class of bug. `ok`
+  // and `prior` are read ONCE, here, before setFn runs, and the ref write happens
+  // right after — never inside the updater closure. The previous version wrote
+  // `prevEligible.current[level] = ok` from inside the updater: the first of the two
+  // StrictMode invocations mutated the ref, so the SECOND invocation read `prior` as
+  // its own about-to-be-written value instead of the true previous eligible set,
+  // miscomputed `following`, and returned an empty/pruned Set. Confirmed in dev only
+  // (prod's single invocation never showed it): "Estados → Limpar → marcar Pará" left
+  // Mesorregiões/Municípios at 0/0 in dev while the prod build correctly refilled them.
   const prevEligible = useRef({});
-  const reconcile = (level, setFn, okList, keyOf) =>
+  const reconcile = (level, setFn, okList, keyOf) => {
+    const ok = okList.map(keyOf);
+    const prior = prevEligible.current[level];
     setFn((prev) => {
-      const ok = okList.map(keyOf);
-      const prior = prevEligible.current[level];
-      prevEligible.current[level] = ok;
       const following = prior == null || (prior.length === prev.size && prior.every((k) => prev.has(k)));
       if (following) {
         if (ok.length === prev.size && ok.every((k) => prev.has(k))) return prev;
@@ -143,6 +167,8 @@ function useGeoCascade({ regionsUniverse, statesUniverse, munisUniverse }) {
       const next = new Set([...prev].filter((v) => okSet.has(v)));
       return next.size === prev.size ? prev : next;
     });
+    prevEligible.current[level] = ok;
+  };
   useEffect(() => reconcile('regions', setRegions, eligibleRegions, (r) => r.id), [eligibleRegions]);
   useEffect(() => reconcile('states', setStates, eligibleStates, (s) => s.uf), [eligibleStates]);
   useEffect(() => reconcile('mesos', setMesos, eligibleMesos, (v) => v), [eligibleMesos]);
