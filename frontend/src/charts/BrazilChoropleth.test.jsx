@@ -178,3 +178,38 @@ describe('BrazilChoropleth — maplibre worker wiring', () => {
     expect(workerUrl).toBeTruthy();
   });
 });
+
+// ── seamless: hiding the UF divisions inside a group ─────────────────────────
+//
+// The região grain paints every UF with its macrorregião's total, so the state lines
+// inside a block contradict the unit of analysis. `seamless` paints the outline in each
+// state's own fill colour: a border between two states of the same region disappears,
+// and the step between regions stays exactly where the colours already change. No
+// boundary is invented — one is hidden only where both sides are the same colour.
+
+describe('BrazilChoropleth — seamless outlines', () => {
+  const rows = [
+    { uf: 'PA', value: 10 }, { uf: 'AM', value: 10 }, { uf: 'SP', value: 3 },
+  ];
+  const lineColor = () => fakeMap.paintProps['uf-line.line-color'];
+
+  it('paints the outline with the FILL expression instead of white', async () => {
+    fakeMap = new FakeMap();
+    render(<BrazilChoropleth data={rows} valueKey="value" label="R$" seamless />);
+    await waitForMapInit();
+    await fakeMap.fireLoad();
+    await waitFor(() => expect(Array.isArray(fakeMap.fill)).toBe(true));
+    // Same match expression on both layers ⇒ a border between two same-coloured states
+    // is drawn in that colour, i.e. it vanishes.
+    expect(lineColor()).toEqual(fakeMap.fill);
+  });
+
+  it('keeps the white seam by default — the UF grain still needs its divisions', async () => {
+    fakeMap = new FakeMap();
+    render(<BrazilChoropleth data={rows} valueKey="value" label="R$" />);
+    await waitForMapInit();
+    await fakeMap.fireLoad();
+    await waitFor(() => expect(Array.isArray(fakeMap.fill)).toBe(true));
+    expect(lineColor()).toBe('#ffffff');
+  });
+});

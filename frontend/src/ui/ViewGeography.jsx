@@ -556,7 +556,8 @@ function ViewGeography({ families, conventions, summary, database }) {
             </div>
             {regViz === 'map'
               ? <window.BrazilChoropleth data={regionUfRows} valueKey={valueKey}
-                                         label={regScaled.label} onSelect={handleRegionClick} />
+                                         label={regScaled.label} onSelect={handleRegionClick}
+                                         seamless />
               : <window.RegionBars data={regScaled.data} valueKey={valueKey}
                                    label={regScaled.label} height={280} />}
           </>

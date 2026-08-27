@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.29.4] - 2026-08-27
+
+### Changed
+- **O mapa de região não desenha mais as divisas estaduais dentro de cada bloco.**
+  A unidade de análise ali é a macrorregião; mostrar os estados que a compõem
+  contradiz isso e faz o mapa parecer um mapa de UF mal pintado.
+
+  Nova prop `seamless` do `BrazilChoropleth`: o contorno passa a ser pintado com a
+  **cor de preenchimento de cada estado** em vez de branco. A divisa entre dois
+  estados da mesma região fica da mesma cor dos dois lados — some — enquanto o degrau
+  entre regiões continua exatamente onde as cores já mudam.
+
+  **Não é um dissolve de verdade**, e é de propósito: unir os polígonos exigiria uma
+  operação de topologia em tempo de execução e não compraria nada aqui. Também não se
+  desenha nada falso — nenhuma fronteira é inventada, apenas se esconde uma onde os
+  dois lados já têm a mesma cor. O grão de UF segue com a divisa branca, que ali é a
+  informação.
+
+---
+
 ## [1.29.3] - 2026-08-27
 
 Três ajustes de interface na Geografia, todos reportados por uso real.

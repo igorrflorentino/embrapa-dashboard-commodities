@@ -88,7 +88,18 @@ class ResetViewControl {
   }
 }
 
-export function BrazilChoropleth({ data, valueKey, label, height = 360, onSelect, selectedUf }) {
+// `seamless` dissolves the UF divisions VISUALLY: the outline is painted in each state's
+// own fill colour instead of white, so a border between two states of the same group
+// disappears while the step between groups stays exactly where the colours change. Used
+// by the região grain, where the UF divisions inside a macrorregião are noise — the unit
+// of analysis is the region, and drawing its members contradicts that.
+//
+// Deliberately NOT a real dissolve: merging the polygons would need a topology union at
+// runtime, and it would buy nothing here. Nothing fake is drawn either — no boundary is
+// invented, one is only hidden where both sides are the same colour anyway.
+export function BrazilChoropleth({
+  data, valueKey, label, height = 360, onSelect, selectedUf, seamless = false,
+}) {
   const ref = useRef(null);
   const mapRef = useRef(null);
   const [failed, setFailed] = useState(false);
@@ -297,7 +308,13 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360, onSelect
       return;
     }
     try {
-      map.setPaintProperty('uf-fill', 'fill-color', fillColorExpression(scale.byUf));
+      const fill = fillColorExpression(scale.byUf);
+      map.setPaintProperty('uf-fill', 'fill-color', fill);
+      // Repaint the outline every time too: `seamless` and the data can both change
+      // between paints, and a stale white seam would outlive the grain that wanted it.
+      if (map.getLayer('uf-line')) {
+        map.setPaintProperty('uf-line', 'line-color', seamless ? fill : '#ffffff');
+      }
       if (typeof map.setFilter === 'function' && map.getLayer('uf-selected')) {
         map.setFilter('uf-selected', ['==', ['get', 'uf'], selectedUf || '__none__']);
       }
@@ -317,7 +334,7 @@ export function BrazilChoropleth({ data, valueKey, label, height = 360, onSelect
   useEffect(() => {
     paint();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scale, selectedUf, layerReady]);
+  }, [scale, selectedUf, layerReady, seamless]);
 
   // Re-frame the viewport to the active selection (or back to all of Brazil once
   // cleared). A no-op until the map has actually loaded; harmless to also fire once
