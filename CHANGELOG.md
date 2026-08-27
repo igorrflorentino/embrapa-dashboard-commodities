@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.28.1] - 2026-08-27
+
+Higiene de dependências: o PR semanal do eslint 10 **não era instável, era impossível**.
+Ele reabria toda semana e queimava a matriz de CI inteira para morrer no `npm ci`.
+
+### Changed
+- **`.github/dependabot.yml`** passa a ignorar majors do **`eslint`** no updater do
+  frontend. O motivo não é risco de migração, é impossibilidade: o peer range do
+  `eslint-plugin-react` termina em `^9.7` e a **7.37.5 ainda é a última release**
+  publicada, então o `npm ci` aborta com `ERESOLVE` antes de rodar um único teste —
+  e nenhuma mudança de código ou config **deste** repositório levanta um limite de
+  peer dependency de terceiro. O agrupamento minor/patch (v1.24.x) já tinha tirado o
+  eslint 10 do PR agrupado, mas majors excluídos continuam chegando como PR
+  individual **por desenho**, então o #291 renascia sozinho: três execuções falhas
+  só em 2026-08-27.
+
+  O bloco de `ignore` segue o padrão que o arquivo já usa para `python`/`node`:
+  registra o **porquê** e a **condição de saída**. Quando o `eslint-plugin-react`
+  publicar uma release que aceite eslint 10, remover o bloco e subir os dois juntos
+  — o `eslint-plugin-react-hooks@7.1.1` já aceita `^10.0.0`. Bumps minor/patch do
+  eslint 9.x continuam fluindo normalmente.
+
+---
+
 ## [1.28.0] - 2026-08-27
 
 Os três leitores que **ignoravam o filtro de UF** passam a honrá-lo. Ficou registrado
