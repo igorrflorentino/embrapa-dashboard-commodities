@@ -36,28 +36,40 @@ describe('geoHeaderText (live header line, lowercase)', () => {
   it('only Brasil, all UFs, all munis → Brasil · todos os estados', () => {
     expect(geoHeaderText(BRASIL_ALL)).toBe('Brasil · todos os estados');
   });
-  it('partial + muni-sliceable → counts incl. municípios', () => {
+  it('partial + muni-sliceable → counts incl. municípios, pluralised', () => {
     expect(
       geoHeaderText({ ...ALL, nationsSize: 1, statesSize: 5, munisSize: 3 }),
-    ).toBe('1 nação(ões), 5 UF, 3 municípios');
+    ).toBe('1 nação(ões), 5 UFs, 3 municípios');
+    expect(
+      geoHeaderText({ ...ALL, nationsSize: 1, statesSize: 1, munisSize: 1 }),
+    ).toBe('1 nação(ões), 1 UF, 1 município');
     // all munis selected within a partial UF set → "todos os municípios"
     expect(geoHeaderText({ ...ALL, nationsSize: 1, statesSize: 5, munisSize: 10 })).toBe(
-      '1 nação(ões), 5 UF, todos os municípios',
+      '1 nação(ões), 5 UFs, todos os municípios',
     );
   });
-  it('partial + NOT muni-sliceable → no município segment', () => {
+  it('partial + NOT muni-sliceable → no município segment, pluralised', () => {
     expect(
       geoHeaderText({ ...ALL, nationsSize: 2, statesSize: 5, muniSliceable: false }),
-    ).toBe('2 nação(ões), 5 UF');
+    ).toBe('2 nação(ões), 5 UFs');
   });
   it('cleared municípios (0) = no narrowing → "todos os", never "0 municípios"', () => {
     // dataFilters treats an emptied geo facet as NO constraint (shows all), so the summary
     // must say "todos os municípios" — not "0 municípios" while every município is shown.
     expect(geoHeaderText({ ...ALL, nationsSize: 1, statesSize: 5, munisSize: 0 })).toBe(
-      '1 nação(ões), 5 UF, todos os municípios',
+      '1 nação(ões), 5 UFs, todos os municípios',
     );
     // everything else full + munis cleared → still the whole territory
     expect(geoHeaderText({ ...ALL, munisSize: 0 })).toBe('todo o território');
+  });
+  // FILT-4: with zero UFs selected, the header used to still claim "todos os
+  // municípios" — contradicting the section summary's own "0 municípios" built from
+  // the very same selection a few lines below in FilterMenu. No UF selected means no
+  // município segment at all, matching what geoChipText already did.
+  it('zero UFs selected → no município segment (never "todos os municípios")', () => {
+    expect(geoHeaderText({ ...ALL, nationsSize: 1, statesSize: 0, munisSize: 0 })).toBe(
+      '1 nação(ões), 0 UFs',
+    );
   });
 });
 

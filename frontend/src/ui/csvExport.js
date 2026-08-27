@@ -98,6 +98,40 @@
         // ("no invisible filtering"): an `ano` column (flagged parcial) + an escopo column.
         const ano = f.ufYearPartial ? `${f.ufLatestYear} (parcial)` : (f.ufLatestYear ?? '');
         const escopo = f.notFilteredByBasket ? 'todos os produtos' : 'cesta selecionada';
+        // CONF-4: this always exported the per-UF table even when the researcher had
+        // the Granularidade control set to Região or Município — a recorte of 14
+        // municípios on screen downloaded as a single PA row. ViewGeography mirrors
+        // its own local scope/rows here (window.geoExportScope/geoExportMunis) so the
+        // file matches what's actually on screen, exactly like the "no invisible
+        // filtering" rule this view already applies everywhere else. Absent/unknown
+        // scope (export triggered from elsewhere, or before the view ever mounted)
+        // falls back to the per-UF table — the original, always-available shape.
+        const geoScope = window.geoExportScope || 'uf';
+        if (geoScope === 'region') {
+          const headers = ['ano', 'regiao', `valor_${conv.currency}`, 'qtd_massa_t', 'qtd_volume_m3', 'qtd_contagem_un', 'escopo_produto'];
+          const rows = (f.regionData || []).map(r => [
+            ano, r.label || r.id,
+            Math.round(dispV(r.value * 1e6)),
+            Math.round((r.q_mass || 0) * 1e3),
+            Math.round((r.q_vol || 0) * 1e6),
+            Math.round((r.q_count || 0) * 1e6),
+            escopo,
+          ]);
+          return { headers, rows, subject: 'distribuicao_por_regiao' };
+        }
+        if (geoScope === 'municipio') {
+          const munis = Array.isArray(window.geoExportMunis) ? window.geoExportMunis : [];
+          const headers = ['ano', 'municipio', 'uf', `valor_${conv.currency}`, 'qtd_massa_t', 'qtd_volume_m3', 'qtd_contagem_un', 'escopo_produto'];
+          const rows = munis.map(m => [
+            ano, m.city, m.uf,
+            Math.round(dispV((m.value || 0) * 1e6)),
+            Math.round((m.q_mass || 0) * 1e3),
+            Math.round((m.q_vol || 0) * 1e6),
+            Math.round((m.q_count || 0) * 1e6),
+            escopo,
+          ]);
+          return { headers, rows, subject: 'distribuicao_por_municipio' };
+        }
         const headers = ['ano', 'uf', 'nome', 'regiao', `valor_${conv.currency}`, 'qtd_massa_t', 'qtd_volume_m3', 'qtd_contagem_un', 'escopo_produto'];
         const rows = f.ufData.map(u => [
           ano, u.uf, u.name, u.region,

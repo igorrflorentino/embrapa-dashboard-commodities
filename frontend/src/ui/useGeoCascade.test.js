@@ -131,16 +131,35 @@ describe('useGeoCascade — dual sub-UF divisions', () => {
 
   it('re-selecting a parent after "Limpar" REFILLS the following children', () => {
     const { result } = renderHook(() => useGeoCascade(MESH));
-    // "Limpar" the mesorregião column → its micros are pruned to empty.
+    // "Limpar" the mesorregião column → FILT-3: an emptied facet means "no
+    // constraint" (the same reading dataFilters.js's muniPassesFacets/`ok` already
+    // gives an empty facet) — so microrregiões must stay at its FULL universe, not
+    // collapse to 0. Before this fix, `passes()` read "0 selected" as "nothing
+    // passes", so clearing Mesorregiões cascaded Microrregiões/Municípios to a
+    // false "0 eligible" even though the filter that would actually be APPLIED
+    // (an empty mesos array) treats it as fully unconstrained.
     act(() => result.current.setMesos(new Set()));
-    expect(sorted(result.current.micros)).toEqual([]);
-    // Now pick ONE mesorregião → its microrregiões must REPOPULATE (follow the parent),
-    // not stay at 0 — the "Limpar + escolher um" UX fix.
+    expect(sorted(result.current.micros)).toEqual(['mi1', 'mi2', 'mi3', 'mi4']);
+    // Now pick ONE mesorregião → its microrregiões must NARROW to just M1's (still
+    // "following" the parent, from the full set down to the subset) — the "Limpar
+    // + escolher um" UX fix this test originally locked in.
     act(() => result.current.setMesos(new Set(['M1'])));
     expect(sorted(result.current.micros)).toEqual(['mi1', 'mi2']); // M1's micros restored
     // The multi-parent município leaf also refills (via the prev-eligible "following"
     // ref, after the micro parent settles): M1's municípios 1 + 2 are back.
     expect(result.current.munis.has('1') && result.current.munis.has('2')).toBe(true);
+  });
+
+  it('FILT-3: an emptied facet is unconstrained, not "nothing eligible" (both parallel divisions)', () => {
+    const { result } = renderHook(() => useGeoCascade(MESH));
+    act(() => result.current.setMesos(new Set()));
+    // Microrregiões (same classic branch) stays at its full universe…
+    expect(sorted(result.current.eligibleMicros)).toEqual(['mi1', 'mi2', 'mi3', 'mi4']);
+    // …and município (the shared leaf) is unaffected by the now-unconstrained meso
+    // facet — still gated only by the (untouched) 2017 branch + states.
+    expect(sorted(result.current.eligibleMunis.map((m) => m.code))).toEqual(['1', '2', '3', '4', '5']);
+    act(() => result.current.setInters(new Set()));
+    expect(sorted(result.current.eligibleImediatas)).toEqual(['im1', 'im2', 'im3', 'im4']);
   });
 
   it('clearing a level DIRECTLY does not refill it (the user choice stands)', () => {

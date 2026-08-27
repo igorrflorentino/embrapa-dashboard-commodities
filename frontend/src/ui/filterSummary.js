@@ -42,9 +42,20 @@ const filterSummary = {
     )
       return 'todo o território';
     if (hasOnlyBR && statesSize === statesTotal && muniFull) return 'Brasil · todos os estados';
-    if (muniSliceable)
-      return `${nationsSize} nação(ões), ${statesSize} UF, ${muniNarrowed ? munisSize : 'todos os'} municípios`;
-    return `${nationsSize} nação(ões), ${statesSize} UF`;
+    // FILT-4: this used to read "${statesSize} UF" unconditionally (never pluralized,
+    // so 14 UFs still read "14 UF") and mention "todos os municípios" even at
+    // statesSize=0 — contradicting the section summary's own "0 municípios" a few
+    // lines below in FilterMenu, both built from this same file to prevent exactly
+    // that drift. A município count only means something once at least one UF is
+    // selected, so it's included only then — same guard the chip already applied.
+    const ufLabel = `${statesSize} ${statesSize === 1 ? 'UF' : 'UFs'}`;
+    if (muniSliceable && statesSize > 0) {
+      const muniLabel = muniNarrowed
+        ? `${munisSize} ${munisSize === 1 ? 'município' : 'municípios'}`
+        : 'todos os municípios';
+      return `${nationsSize} nação(ões), ${ufLabel}, ${muniLabel}`;
+    }
+    return `${nationsSize} nação(ões), ${ufLabel}`;
   },
 
   // Apply-time chip (FilterMenu.buildChipSummary.geoChip). Title case + counts.

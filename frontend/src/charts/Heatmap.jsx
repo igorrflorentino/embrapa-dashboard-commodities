@@ -3,7 +3,7 @@
 // unchanged — now with zoom/pan/hover (the point of the Plotly migration).
 //   rows: [{ id, label, values: [{ y, v }] }]
 
-import { Plot, baseLayout, resolveColor, yearAxis } from './_base';
+import { Plot, baseLayout, ptBrValueTicks, resolveColor, yearAxis } from './_base';
 
 // The design-system heat ramp (--heat-1…--heat-7), resolved to concrete colors
 // and mapped onto a Plotly colorscale (normalized stops 0→1).
@@ -36,6 +36,15 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
     return x.map((yr) => (byYear.has(yr) ? byYear.get(yr) : null));
   });
 
+  // MAPA-5: the colorbar used Plotly's default SI tick format ("14B"/"12B"/"8B"),
+  // the SAME English-letter mismatch ptBrLinearAxis already fixes on every OTHER
+  // value axis in the app ("15G" next to "15 bi" for the same R$ series — FINDING
+  // #9) — it just never reached this ONE colorbar. Reuses the identical pt-BR
+  // magnitude ladder; falls back to Plotly's own ticks when the data can't
+  // support "nice" ones (ptBrValueTicks returns null for that — see _base.jsx).
+  const zMax = Math.max(0, ...z.flat().filter((v) => v != null));
+  const zTicks = ptBrValueTicks(zMax);
+
   const traces = [
     {
       type: 'heatmap',
@@ -47,7 +56,11 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
       // Sparse/ragged rows set missing cells to null (drawn as gaps). Suppress hover on
       // those gaps so a null cell doesn't pop a tooltip with a blank "%{z:,.2f}" value.
       hoverongaps: false,
-      colorbar: { title: { text: valueLabel, side: 'right', font: { size: 11 } }, thickness: 12 },
+      colorbar: {
+        title: { text: valueLabel, side: 'right', font: { size: 11 } },
+        thickness: 12,
+        ...(zTicks ? { tickmode: 'array', tickvals: zTicks.tickvals, ticktext: zTicks.ticktext } : {}),
+      },
       hovertemplate: `<b>%{y}</b> · %{x}<br>%{z:,.2f} ${valueLabel}<extra></extra>`,
     },
   ];

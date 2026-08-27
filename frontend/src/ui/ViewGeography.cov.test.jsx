@@ -15,13 +15,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 
 // Captured props from the stubbed chart widgets, so we can assert what each branch fed.
-let regionBarsProps, choroProps, tileMapProps, heatmapProps, barChartCalls;
+let regionBarsProps, choroProps, tileMapProps, heatmapProps, barChartCalls, productsByUfCalls;
 
 function stubGlobals(filtered, opts = {}) {
   const {
     geoLevel = 'municipio',     // 'municipio' (IBGE) vs 'uf' (trade) → muniCapable
     baseCcy = 'BRL',
-    snapUfYearly = [],          // dataStore.get(db).ufYearly → real heatmap history
     meta = null,                // dataStore.meta(db) → partial-year calendar signal
     productsByUf = { products: [] },
   } = opts;
@@ -40,6 +39,15 @@ function stubGlobals(filtered, opts = {}) {
   window.volumeAxisLabel = () => 'm³';
   window.countAxisLabel = () => 'cab';
   window.geoLevelFor = () => geoLevel;
+  window.isCanonicalUf = (uf) => ['PA', 'SP', 'MT'].includes(uf);
+  window.UF_DATA = [
+    { uf: 'PA', name: 'Pará', region: 'N' },
+    { uf: 'SP', name: 'São Paulo', region: 'SE' },
+    { uf: 'MT', name: 'Mato Grosso', region: 'CO' },
+  ];
+  window.REGIONS = [
+    { id: 'N', label: 'Norte' }, { id: 'SE', label: 'Sudeste' }, { id: 'CO', label: 'Centro-Oeste' },
+  ];
 
   // scaleSeries: pass through data + a stable label so the DOM is assertable.
   window.scaleSeries = (data, _max, _conv, _key, label) => ({ data: data || [], label });
@@ -53,10 +61,17 @@ function stubGlobals(filtered, opts = {}) {
   window.scaleLabel = (unit, suffix) => (suffix ? `${unit} (${suffix})` : unit);
 
   window.dataStore = {
-    get: () => ({ ufYearly: snapUfYearly }),
+    get: () => ({}), // CONF-1: the heatmap no longer reads dataStore.get(db).ufYearly
     meta: () => meta,
   };
-  window.productsByUf = () => productsByUf;
+  window.productsByUf = (db, summary, conv) => {
+    productsByUfCalls.push({ db, summary, conv });
+    return productsByUf;
+  };
+  window.geoMesh = undefined;
+  window.municipioYearly = undefined;
+  window.openFilterMenu = vi.fn();
+  window.patchFilter = vi.fn();
 
   // Composed widgets — capture props / render markers.
   window.UnitFamilyBanner = () => <div className="ufb" />;
@@ -79,40 +94,28 @@ let ViewGeography;
 beforeEach(async () => {
   regionBarsProps = choroProps = tileMapProps = heatmapProps = undefined;
   barChartCalls = [];
+  productsByUfCalls = [];
   globalThis.React = React;
   window.React = React;
   await import('./ViewGeography.jsx'); // registers window.ViewGeography
   ViewGeography = window.ViewGeography;
 });
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  delete window.geoMesh;
+  delete window.municipioYearly;
+  delete window.openFilterMenu;
+  delete window.patchFilter;
+  delete window.UF_DATA;
+  delete window.REGIONS;
+});
 
-// A representative snapshot: two UFs, two regions, two top municípios, plus a real
-// per-(UF, year) history for the heatmap. Carries value + mass + volume + count so the
-// metric toggle has every dimension available.
-function fullFixture(overrides = {}) {
-  return {
-    ufData: [
-      { uf: 'PA', value: 75, q_mass: 30, q_vol: 8, q_count: 12, real: true },
-      { uf: 'SP', value: 25, q_mass: 10, q_vol: 4, q_count: 6, real: true },
-    ],
-    regionData: [
-      { region: 'Norte', value: 75, q_mass: 30, q_vol: 8, q_count: 12 },
-      { region: 'Sudeste', value: 25, q_mass: 10, q_vol: 4, q_count: 6 },
-    ],
-    topMunis: [
-      { city: 'Belém', uf: 'PA', product: 'Açaí', value: 40, q_mass: 16, q_vol: 5, q_count: 7 },
-      { city: 'Santos', uf: 'SP', product: 'Castanha', value: 12, q_mass: 6, q_vol: 2, q_count: 3 },
-    ],
-    yearStart: 2018,
-    yearEnd: 2020,
-    ufLatestYear: 2020,
-    ufYearPartial: false,
-    notFilteredByBasket: false,
-    ...overrides,
-  };
-}
-
+// A real per-(UF, year) history for the heatmap. CONF-1: the view reads THIS field
+// on `filtered` (applyFilters' own basket/state-aware grid), not
+// dataStore.get(db).ufYearly — the always-all-products snapshot field that used to
+// silently diverge from the map/ranking once a basket cube had loaded.
 const UF_YEARLY = [
   { uf: 'PA', name: 'Pará', year: 2019, value: 60, q_mass: 24, q_vol: 6, q_count: 10 },
   { uf: 'PA', name: 'Pará', year: 2020, value: 75, q_mass: 30, q_vol: 8, q_count: 12 },
@@ -120,9 +123,39 @@ const UF_YEARLY = [
   { uf: 'SP', name: 'São Paulo', year: 2020, value: 25, q_mass: 10, q_vol: 4, q_count: 6 },
 ];
 
+// A representative snapshot: two UFs, two regions, two top municípios, plus the real
+// (UF × year) heatmap history. Carries value + mass + volume + count so the metric
+// toggle has every dimension available.
+function fullFixture(overrides = {}) {
+  return {
+    ufData: [
+      { uf: 'PA', value: 75, q_mass: 30, q_vol: 8, q_count: 12, real: true },
+      { uf: 'SP', value: 25, q_mass: 10, q_vol: 4, q_count: 6, real: true },
+    ],
+    regionData: [
+      { id: 'N',  label: 'Norte',   value: 75, q_mass: 30, q_vol: 8, q_count: 12 },
+      { id: 'SE', label: 'Sudeste', value: 25, q_mass: 10, q_vol: 4, q_count: 6 },
+    ],
+    topMunis: [
+      { city: 'Belém', uf: 'PA', product: '', value: 40, q_mass: 16, q_vol: 5, q_count: 7 },
+      { city: 'Santos', uf: 'SP', product: '', value: 12, q_mass: 6, q_vol: 2, q_count: 3 },
+    ],
+    yearStart: 2018,
+    yearEnd: 2020,
+    ufLatestYear: 2020,
+    ufYearPartial: false,
+    notFilteredByBasket: false,
+    ufYearlySeries: UF_YEARLY,
+    muniYearlySeries: [],
+    subUfActive: false,
+    subUfLoaded: false,
+    ...overrides,
+  };
+}
+
 describe('ViewGeography — smoke + main branches', () => {
   it('renders the default (value · UF) view with the choropleth and the real heatmap', () => {
-    stubGlobals(fullFixture(), { snapUfYearly: UF_YEARLY });
+    stubGlobals(fullFixture());
     const { container } = render(
       <ViewGeography
         families={['mass', 'volume']}
@@ -136,7 +169,7 @@ describe('ViewGeography — smoke + main branches', () => {
     expect(choroProps.data.map((u) => u.uf)).toEqual(['PA', 'SP']);
     // value × valueMul (1e6) → PA 75 → 75e6
     expect(choroProps.data.find((u) => u.uf === 'PA').value).toBe(75e6);
-    // Heatmap built from the REAL ufYearly history (two states kept).
+    // Heatmap built from filtered.ufYearlySeries (two states kept).
     expect(heatmapProps).toBeTruthy();
     expect(heatmapProps.rows.length).toBe(2);
     // Metric segment offers Valor + the two quantity dims present in this basket.
@@ -145,8 +178,36 @@ describe('ViewGeography — smoke + main branches', () => {
     expect(container.textContent).toContain('Quantidade (volume)');
   });
 
+  // CONF-1: the heatmap used to read dataStore.get(db).ufYearly directly — ALWAYS
+  // all-products — instead of the basket-aware grid the map/ranking already used
+  // once their cube loaded. Proven here by making the two sources DISAGREE: if the
+  // heatmap read the (now-empty) dataStore mock, it would render 0 rows.
+  it('CONF-1: the heatmap reads filtered.ufYearlySeries, not dataStore.get(db).ufYearly', () => {
+    stubGlobals(fullFixture({ ufYearlySeries: UF_YEARLY }));
+    window.dataStore.get = () => ({ ufYearly: [] }); // a stale/decoy snapshot field
+    render(<ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />);
+    expect(heatmapProps.rows.length).toBe(2); // came from ufYearlySeries, not the decoy
+  });
+
+  // CONF-3: a non-state pseudo-origin (a trade banco's ND/EX/ZN…) must never inflate
+  // the map's shared scale, the Top-N ranking, or the heatmap's UF keep-set — mirrors
+  // the SAME isRealUf guard ViewOverview/ViewConcentration already apply.
+  it('CONF-3: excludes a non-real pseudo-UF row from the map/ranking/heatmap', () => {
+    const fx = fullFixture({
+      ufData: [
+        { uf: 'PA', value: 75, q_mass: 30, q_vol: 8, q_count: 12, real: true },
+        { uf: 'SP', value: 25, q_mass: 10, q_vol: 4, q_count: 6, real: true },
+        { uf: 'ND', value: 9999, q_mass: 0, q_vol: 0, q_count: 0, real: false },
+      ],
+    });
+    stubGlobals(fx);
+    render(<ViewGeography families={['mass']} summary={{}} database="mdic_comex" conventions={{ autoScale: true }} />);
+    expect(choroProps.data.map((u) => u.uf)).toEqual(['PA', 'SP']); // ND dropped
+    expect(choroProps.data.some((u) => u.uf === 'ND')).toBe(false);
+  });
+
   it('switching the metric to massa rescales the maps by the mass multiplier', () => {
-    stubGlobals(fullFixture(), { snapUfYearly: UF_YEARLY });
+    stubGlobals(fullFixture());
     const { container } = render(
       <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
@@ -158,7 +219,7 @@ describe('ViewGeography — smoke + main branches', () => {
   });
 
   it('the "Blocos" toggle swaps the choropleth for the SVG tile map', () => {
-    stubGlobals(fullFixture(), { snapUfYearly: UF_YEARLY });
+    stubGlobals(fullFixture());
     const { container } = render(
       <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
@@ -168,20 +229,23 @@ describe('ViewGeography — smoke + main branches', () => {
     expect(tileMapProps.data.length).toBe(2);
   });
 
-  it('the "Região" granularity renders the RegionBars instead of the UF map', () => {
-    stubGlobals(fullFixture(), { snapUfYearly: UF_YEARLY });
+  it('the "Região" granularity renders RegionBars once, WITHOUT the redundant ranking/soma cards (EST-2)', () => {
+    stubGlobals(fullFixture());
     const { container } = render(
       <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
     const regiaoBtn = [...container.querySelectorAll('.seg-opt')].find((b) => b.textContent === 'Região');
     fireEvent.click(regiaoBtn);
-    // RegionBars is also rendered in the lower "Soma por região" card, but with the
-    // scope=region it additionally drives the main map card.
     expect(regionBarsProps).toBeTruthy();
+    // EST-2: scope=região used to ALSO render "Soma por região" below — the SAME
+    // chart, same data, a second time on one screen. That card (and the UF-ranking
+    // card, equally redundant with the top card in this scope) must be gone.
+    expect(container.textContent).not.toContain('Soma por região');
+    expect(container.textContent).not.toContain('Top 10');
   });
 
   it('the "Município" granularity lists the top municípios when rows exist', () => {
-    stubGlobals(fullFixture(), { snapUfYearly: UF_YEARLY, geoLevel: 'municipio' });
+    stubGlobals(fullFixture(), { geoLevel: 'municipio' });
     const { container } = render(
       <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
@@ -193,8 +257,8 @@ describe('ViewGeography — smoke + main branches', () => {
     expect(container.textContent).toContain('Santos');
   });
 
-  it('the município granularity shows the recorte-a-geografia note when there are no rows', () => {
-    stubGlobals(fullFixture({ topMunis: [] }), { snapUfYearly: UF_YEARLY, geoLevel: 'municipio' });
+  it('the município granularity shows the recorte-a-geografia note + an "abrir filtro" button when there are no rows (EST-5)', () => {
+    stubGlobals(fullFixture({ topMunis: [] }), { geoLevel: 'municipio' });
     const { container } = render(
       <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
@@ -202,12 +266,18 @@ describe('ViewGeography — smoke + main branches', () => {
     fireEvent.click(muniBtn);
     expect(container.querySelector('.muni-list')).toBeFalsy();
     expect(container.textContent).toContain('recortar a geografia');
+    // EST-5: the empty state used to be a dead-end paragraph — now a button straight
+    // into the filter modal, via the SAME global bridge patchFilter/openFilterMenu use.
+    const cta = container.querySelector('.geo-empty-cta button');
+    expect(cta).toBeTruthy();
+    fireEvent.click(cta);
+    expect(window.openFilterMenu).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('ViewGeography — gating and honest-note branches', () => {
   it('hides the Município button for a UF-only trade banco (geoLevel=uf)', () => {
-    stubGlobals(fullFixture(), { snapUfYearly: UF_YEARLY, geoLevel: 'uf' });
+    stubGlobals(fullFixture(), { geoLevel: 'uf' });
     const { container } = render(
       <ViewGeography families={['mass']} summary={{}} database="mdic_comex" conventions={{ autoScale: true }} />
     );
@@ -218,7 +288,7 @@ describe('ViewGeography — gating and honest-note branches', () => {
   });
 
   it('shows the basket note when the territorial split is not basket-filtered', () => {
-    stubGlobals(fullFixture({ notFilteredByBasket: true }), { snapUfYearly: UF_YEARLY });
+    stubGlobals(fullFixture({ notFilteredByBasket: true }));
     const { container } = render(
       <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
@@ -234,7 +304,7 @@ describe('ViewGeography — gating and honest-note branches', () => {
         { uf: 'SP', value: 25, q_mass: 0, q_vol: 0, q_count: 0, real: true },
       ],
     });
-    stubGlobals(fx, { snapUfYearly: UF_YEARLY });
+    stubGlobals(fx);
     const { container } = render(
       <ViewGeography families={['mass', 'volume']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
@@ -251,12 +321,13 @@ describe('ViewGeography — gating and honest-note branches', () => {
         { uf: 'SP', value: 0, q_mass: 0, q_vol: 0, q_count: 50, real: true },
       ],
       regionData: [
-        { region: 'Centro-Oeste', value: 0, q_count: 200 },
-        { region: 'Sudeste', value: 0, q_count: 50 },
+        { id: 'CO', label: 'Centro-Oeste', value: 0, q_count: 200 },
+        { id: 'SE', label: 'Sudeste', value: 0, q_count: 50 },
       ],
       topMunis: [],
+      ufYearlySeries: [],
     });
-    stubGlobals(fx, { snapUfYearly: [], geoLevel: 'municipio' });
+    stubGlobals(fx, { geoLevel: 'municipio' });
     const { container } = render(
       <ViewGeography families={['count']} summary={{}} database="ibge_ppm" conventions={{ autoScale: true }} />
     );
@@ -266,9 +337,7 @@ describe('ViewGeography — gating and honest-note branches', () => {
   });
 
   it('renders the ufYearPartial caption and "(parcial)" tag when the UF year lags the window', () => {
-    stubGlobals(fullFixture({ ufYearPartial: true, ufLatestYear: 2019, yearEnd: 2020 }), {
-      snapUfYearly: UF_YEARLY,
-    });
+    stubGlobals(fullFixture({ ufYearPartial: true, ufLatestYear: 2019, yearEnd: 2020 }));
     const { container } = render(
       <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
@@ -278,7 +347,6 @@ describe('ViewGeography — gating and honest-note branches', () => {
 
   it('flags the map year as "(parcial)" from the calendar-incomplete latest year', () => {
     stubGlobals(fullFixture({ ufLatestYear: 2024 }), {
-      snapUfYearly: UF_YEARLY,
       meta: { latest: { yearComplete: false, completeYear: 2023 } },
     });
     const { container } = render(
@@ -286,22 +354,36 @@ describe('ViewGeography — gating and honest-note branches', () => {
     );
     expect(container.textContent).toContain('2024 (parcial)');
   });
-});
 
-describe('ViewGeography — empty geo + products-by-UF base table', () => {
-  it('renders without crashing on an empty heatmap history (no ufYearly)', () => {
-    stubGlobals(fullFixture(), { snapUfYearly: [] });
+  it('EST-6: singles out "Estado produtor" (no "maiores") when only one UF ranks', () => {
+    const fx = fullFixture({
+      ufData: [{ uf: 'PA', value: 75, q_mass: 30, q_vol: 8, q_count: 12, real: true }],
+      regionData: [{ id: 'N', label: 'Norte', value: 75, q_mass: 30, q_vol: 8, q_count: 12 }],
+    });
+    stubGlobals(fx);
     const { container } = render(
       <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
-    // Empty history → 0 heatmap rows, but the rest of the view still mounts.
-    expect(heatmapProps.rows.length).toBe(0);
+    expect(container.textContent).toContain('Estado produtor');
+    expect(container.textContent).not.toContain('Maiores estados produtores');
+  });
+});
+
+describe('ViewGeography — empty geo + products-by-UF base table', () => {
+  it('renders an honest empty-state instead of a blank Heatmap when there is no history', () => {
+    stubGlobals(fullFixture({ ufYearlySeries: [] }));
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+    );
+    // Empty history → no window.Heatmap call at all (an honest caption instead of an
+    // empty chart), but the rest of the view still mounts.
+    expect(heatmapProps).toBeUndefined();
+    expect(container.textContent).toContain('Sem histórico anual disponível');
     expect(container.querySelector('.choro')).toBeTruthy();
   });
 
   it('renders the per-state products card when summary.states is selected', () => {
     stubGlobals(fullFixture(), {
-      snapUfYearly: UF_YEARLY,
       productsByUf: {
         products: [
           { code: 'P1', name: 'Açaí', value: 40 },
@@ -323,11 +405,29 @@ describe('ViewGeography — empty geo + products-by-UF base table', () => {
     expect(barChartCalls.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('omits the per-state products card when productsByUf returns nothing', () => {
-    stubGlobals(fullFixture(), {
-      snapUfYearly: UF_YEARLY,
-      productsByUf: { products: [] },
+  // CONF-2: this card used to sum the ENTIRE window regardless of what year the
+  // map/ranking above were showing. It must now ask productsByUf for the SAME
+  // single data-year (ufLatestYear) the rest of the view is scoped to.
+  it('CONF-2: restricts "Produtos do estado" to the map\'s data-year (ufLatestYear), not the whole window', () => {
+    stubGlobals(fullFixture({ ufLatestYear: 2019, yearStart: 2010, yearEnd: 2024 }), {
+      productsByUf: { products: [{ code: 'P1', name: 'Açaí', value: 40 }] },
     });
+    render(
+      <ViewGeography
+        families={['mass']}
+        summary={{ states: ['PA'], startDate: '2010-01-01', endDate: '2024-12-01' }}
+        database="ibge_pevs"
+        conventions={{ autoScale: true }}
+      />
+    );
+    expect(productsByUfCalls.length).toBe(1);
+    const { summary } = productsByUfCalls[0];
+    expect(summary.startDate).toBe('2019-01-01');
+    expect(summary.endDate).toBe('2019-12-01');
+  });
+
+  it('omits the per-state products card when productsByUf returns nothing', () => {
+    stubGlobals(fullFixture(), { productsByUf: { products: [] } });
     const { container } = render(
       <ViewGeography
         families={['mass']}
@@ -340,7 +440,7 @@ describe('ViewGeography — empty geo + products-by-UF base table', () => {
   });
 
   it('honors autoScale=false on the heatmap (rows passed through unscaled)', () => {
-    stubGlobals(fullFixture(), { snapUfYearly: UF_YEARLY });
+    stubGlobals(fullFixture());
     render(
       <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: false }} />
     );

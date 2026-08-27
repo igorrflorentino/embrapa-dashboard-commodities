@@ -387,6 +387,20 @@ function Dashboard() {
     if (window.dataStore?.setConventions) window.dataStore.setConventions(conventions);
   }, [conventions]);
 
+  // Filter bridge for a view to request a filter change (or open the filter modal)
+  // WITHOUT a callback threaded through MainScreen's per-view props — those are the
+  // SAME props every OTHER perspective also renders through, so adding one there for
+  // a single view's interaction (Geografia's click-a-UF-to-filter, and its "abrir
+  // filtro" button on the município empty state) would touch a contract ~20 other
+  // views share. `setSummary`/`setFilterOpen` are React setState setters, which
+  // React guarantees are referentially stable across renders, so registering once
+  // here is enough — this always calls into the CURRENT state, never a stale one.
+  useEffect(() => {
+    window.patchFilter = (patch) => setSummary((s) => ({ ...s, ...patch }));
+    window.openFilterMenu = () => setFilterOpen(true);
+    return () => { delete window.patchFilter; delete window.openFilterMenu; };
+  }, []);
+
   // Flow → data layer bridge: fluxo (export/import) is the ONE server-side FILTER
   // (the trade snapshot is pre-aggregated over flow), so a direction change re-fetches
   // — unlike the client-side product/geo/quality filters that narrow the loaded

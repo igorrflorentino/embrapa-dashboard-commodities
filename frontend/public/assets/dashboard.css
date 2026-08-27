@@ -2470,8 +2470,12 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
   border-top: 1px solid var(--border-subtle);
 }
 .muni-row {
+  /* MAPA-7: a 5th "produto" column used to sit here, always empty — the
+     município cube is basket-aggregated with no per-product split (dataFilters.js
+     always sets product:'') — reserving 1.6fr for it pushed the bar column far to
+     the right and left every bar short regardless of the município's rank. */
   display: grid;
-  grid-template-columns: 32px 1.4fr 36px 1.6fr 2fr 1fr;
+  grid-template-columns: 32px 1.4fr 36px 3.4fr 1fr;
   align-items: center;
   gap: 12px;
   padding: 10px 4px;
@@ -2486,7 +2490,6 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
   color: var(--fg-3);
   letter-spacing: 0.04em;
 }
-.muni-product { color: var(--fg-3); font-size: 12.5px; }
 .muni-bar {
   height: 6px;
   background: var(--bg-surface-2);
@@ -2495,6 +2498,17 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
 }
 .muni-bar > div { height: 100%; border-radius: 3px; }
 .muni-val { color: var(--fg-1); font-weight: 500; text-align: right; }
+
+/* EST-5: the "recorte a geografia" empty state used to be a dead-end paragraph —
+   now paired with a button straight into the filter modal. */
+.geo-empty-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 4px 12px;
+}
+.geo-empty-cta .caption { margin: 0; }
 
 /* ====================================================================
    Quality view
@@ -3685,7 +3699,7 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
   .conc-hhi-row { grid-template-columns: 1fr auto; }
   .conc-hhi-label { grid-column: 1 / -1; }
   .muni-row { grid-template-columns: 28px minmax(0, 1fr) auto; gap: 8px 10px; }
-  .muni-row .muni-uf, .muni-row .muni-product { grid-column: 2; font-size: 11.5px; }
+  .muni-row .muni-uf { grid-column: 2; font-size: 11.5px; }
   .muni-row .muni-bar { display: none; }
   .muni-name { white-space: normal; }
 

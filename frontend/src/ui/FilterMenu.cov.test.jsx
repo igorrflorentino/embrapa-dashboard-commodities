@@ -184,7 +184,7 @@ describe('FilterMenu — live render (ibge_pevs: product + geo + quality)', () =
     expect(container.textContent).toContain('de 3 selecionados');
   });
 
-  it('renders the geografia cascade columns (nação ▸ região ▸ UF ▸ sub-UF ▸ município)', () => {
+  it('renders nação/região/UF open, with sub-UF collapsed behind a disclosure by default (FILT-1)', () => {
     const { container } = render(
       <FilterMenu open banco="ibge_pevs" value={null} onClose={() => {}} onApply={() => {}} />
     );
@@ -192,10 +192,39 @@ describe('FilterMenu — live render (ibge_pevs: product + geo + quality)', () =
     expect(titles).toContain('Nações');
     expect(titles).toContain('Regiões');
     expect(titles).toContain('Estados');
+    // Sub-UF columns are NOT in the DOM until the disclosure is opened — collapsed
+    // by default (no applied filter narrows any of them).
+    expect(titles).not.toContain('Mesorregiões');
+    expect(titles).not.toContain('Municípios');
+    const toggle = container.querySelector('.fm-subuf-toggle');
+    expect(toggle).toBeTruthy();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.querySelector('.fm-subuf-badge')).toBeFalsy(); // nothing narrowed → no badge
+  });
+
+  it('the sub-UF disclosure reveals meso/micro/inter/imediata/município on click (nação ▸ região ▸ UF ▸ sub-UF ▸ município)', () => {
+    const { container } = render(
+      <FilterMenu open banco="ibge_pevs" value={null} onClose={() => {}} onApply={() => {}} />
+    );
+    fireEvent.click(container.querySelector('.fm-subuf-toggle'));
+    const titles = [...container.querySelectorAll('.fm-geo-title')].map((n) => n.textContent);
     expect(titles).toContain('Mesorregiões');
+    expect(titles).toContain('Microrregiões');
+    expect(titles).toContain('Reg. intermediárias');
+    expect(titles).toContain('Reg. imediatas');
     expect(titles).toContain('Municípios');
     // The mesh footer reports the município universe (2 in the fixture).
     expect(container.textContent).toContain('Malha IBGE: 2 municípios');
+  });
+
+  it('auto-expands the sub-UF disclosure when the applied filter already narrows one (never hides a live narrowing)', () => {
+    const { container } = render(
+      <FilterMenu open banco="ibge_pevs" value={{ mesos: ['1506'] }} onClose={() => {}} onApply={() => {}} />
+    );
+    const toggle = container.querySelector('.fm-subuf-toggle');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const titles = [...container.querySelectorAll('.fm-geo-title')].map((n) => n.textContent);
+    expect(titles).toContain('Mesorregiões');
   });
 
   it('renders the 11 quality flags with their pt-BR labels', () => {

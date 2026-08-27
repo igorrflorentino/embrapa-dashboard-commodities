@@ -3,6 +3,65 @@
 
 const { useState: useGeoState, useMemo: useGeoMemo, useEffect: useGeoEffect } = React;
 
+// A row counts as a real Brazilian UF when the backend's own `real` flag says so;
+// falls back to the canonical 27-UF registry for a row that predates the flag.
+// Mirrors the SAME guard ViewOverview/ViewConcentration already apply — without
+// it a trade banco's non-state pseudo-origin (ND/EX/ZN…) inflates the map's shared
+// scale, the Top-N ranking and the heatmap's max, and shows up nowhere on the
+// choropleth (no matching polygon) or the "Soma por região" card (no region) —
+// so it silently distorted the OTHER cards while being invisible on its own.
+function isRealUfRow(u) {
+  return u.real != null ? u.real : (window.isCanonicalUf ? window.isCanonicalUf(u.uf) : true);
+}
+// uf → região / uf → nome from the static tile registry — used to label/group
+// rows from a source that doesn't carry them itself (the sub-UF município
+// rollup's (uf, year) rows have neither; see dataFilters.js rollupMuniCubeToUf).
+function ufRegionMap() {
+  const idx = {};
+  (window.UF_DATA || []).forEach((u) => { idx[u.uf] = u.region; });
+  return idx;
+}
+function ufNameMap() {
+  const idx = {};
+  (window.UF_DATA || []).forEach((u) => { idx[u.uf] = u.name; });
+  return idx;
+}
+const pl = (n, singular, plural) => (n === 1 ? singular : plural);
+
+// Rank a raw (município × ano) cube at its latest in-window year into the SAME
+// shape dataFilters.js's own topMunis produces. Used ONLY by the single-UF
+// fallback below — a view-local supplement, not a change to the shared cascade
+// (see the comment at singleUf/localMuniCube for why it stays local).
+function rankMunisFromCube(cube, mesh, yearStart, yearEnd) {
+  if (!Array.isArray(cube) || !cube.length) return [];
+  const nameByCode = {};
+  (mesh || []).forEach((m) => { nameByCode[m.cityCode] = m.cityName; });
+  const years = cube.map((r) => r.year).filter((y) => y >= yearStart && y <= yearEnd);
+  if (!years.length) return [];
+  const latest = Math.max(...years);
+  return cube
+    .filter((r) => r.year === latest)
+    .map((r) => ({
+      city: nameByCode[r.cityCode] || r.cityCode, uf: r.uf, product: '',
+      value: r.value, q_mass: r.q_mass, q_vol: r.q_vol, q_count: r.q_count,
+    }))
+    .sort((a, b) => (b.value || 0) - (a.value || 0))
+    .slice(0, 100);
+}
+// Per-value compact magnitude (e.g. 113_008_308 → "113,0 mi") — the SAME rule the
+// choropleth popup and tile map already apply per-cell, reused here so the
+// município ranking stops showing raw, unscaled figures ("113.008.308,7 R$")
+// while every other geo card shows a compact one ("PA · 2,9 bi").
+function fmtCompact(v) {
+  if (window.autoScaleNum && Math.abs(v) >= 1000) {
+    const mp = window.autoScaleNum(v);
+    const scaled = v / mp.factor;
+    const txt = scaled.toLocaleString('pt-BR', { maximumFractionDigits: Math.abs(scaled) < 10 ? 1 : 0 });
+    return mp.suffix ? `${txt} ${mp.suffix}` : txt;
+  }
+  return (v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+}
+
 function ViewGeography({ families, conventions, summary, database }) {
   const conv     = conventions || window.DEFAULT_CONVENTIONS;
   // UF_DATA.value is in the banco's OWN base currency (mi) internally — scale by
@@ -52,12 +111,22 @@ function ViewGeography({ families, conventions, summary, database }) {
   const volFamily  = families.includes('volume');
   const countFamily = families.includes('count'); // PPM livestock head/eggs
 
+  // CONF-3: exclude non-state pseudo-origins (a trade banco's ND/EX/ZN…) BEFORE
+  // anything derives from ufData — the map/blocks, the shared auto-scale factor,
+  // the Top-N ranking and the heatmap's UF keep-set all read `scaledUFs`, so
+  // filtering once here keeps every one of them consistent with the choropleth
+  // (which already drops them silently — no polygon matches) and with the
+  // "Soma por região" card (which already excludes them — no region matches).
+  const realUfData = useGeoMemo(
+    () => (filtered.ufData || []).filter(isRealUfRow),
+    [filtered],
+  );
+
   // A quantity dimension is only offered when the per-UF rows actually CARRY it —
   // gating on the basket family alone (the old behaviour) offered a toggle that
   // rendered an all-zero map for a banco whose per-UF reader returns no quantity.
   // We require both the family AND at least one non-zero per-UF value.
-  const hasUfQty = (key) =>
-    Array.isArray(filtered.ufData) && filtered.ufData.some(u => (u[key] || 0) > 0);
+  const hasUfQty = (key) => realUfData.some(u => (u[key] || 0) > 0);
   const massAvail = massFamily && hasUfQty('q_mass');
   const volAvail  = volFamily  && hasUfQty('q_vol');
   const countAvail = countFamily && hasUfQty('q_count');
@@ -92,61 +161,170 @@ function ViewGeography({ families, conventions, summary, database }) {
   const unit      = activeDim.unit;
   const mul       = activeDim.mul;
 
+  // ---- Map-click ↔ filter bridge (state selection from the map itself) ------
+  // window.patchFilter is registered once by main.jsx (the component that owns
+  // the applied filter's setState) — a small global bridge rather than a new prop
+  // threaded through MainScreen's per-view contract, which every OTHER perspective
+  // also renders through. Clicking a UF sets it as the sole state filter and, since
+  // the researcher didn't go through the filter modal, resets every sub-UF/region/
+  // nation facet to "unconstrained" so a stale narrowing from a PRIOR session can't
+  // silently combine with the click in a way the researcher never chose. Clicking
+  // the already-selected UF again clears the state filter (toggle off).
+  const selectedSingleUf = Array.isArray(summary && summary.states) && summary.states.length === 1
+    ? summary.states[0] : null;
+  const handleUfClick = (uf) => {
+    if (!uf || !window.patchFilter) return;
+    const cleared = { regions: null, nations: null, mesos: null, micros: null, inters: null, imediatas: null, munis: null };
+    window.patchFilter(selectedSingleUf === uf ? { states: null, ...cleared } : { states: [uf], ...cleared });
+  };
+  const handleTileSelect = (row) => handleUfClick(row && row.uf);
+
+  // EST-5: município scope shouldn't require first drilling into a mesorregião to
+  // be useful. When exactly one UF is selected and dataFilters' OWN sub-UF cascade
+  // isn't already narrowing (filtered.subUfActive), fetch that UF's município
+  // ranking directly here — a view-LOCAL supplement, same pattern as productsByUf
+  // below. An earlier version tried this inside applyFilters itself (extending the
+  // shared cascade to trigger on a single selected state); it worked for Geografia
+  // but also put every OTHER perspective into a loading state whenever a single UF
+  // was selected and the IBGE mesh hadn't warmed yet (a dataFilters.cov.test.js
+  // regression caught it). Kept local, it can only ever affect this view.
+  const wantMuniFallback = scope === 'municipio' && !!selectedSingleUf && !filtered.subUfActive;
+  const mesh = wantMuniFallback && window.geoMesh ? window.geoMesh() : null;
+  const ufCityCodes = useGeoMemo(
+    () => (mesh ? mesh.filter((m) => m.uf === selectedSingleUf).map((m) => m.cityCode) : null),
+    [mesh, selectedSingleUf],
+  );
+  const localMuniCube = (wantMuniFallback && ufCityCodes && ufCityCodes.length && window.municipioYearly)
+    ? window.municipioYearly(database, summary, ufCityCodes)
+    : null; // null = pending fetch (or not wanted); [] = loaded-empty; [...] = rows
+  const localMuniLoading = wantMuniFallback && !!(ufCityCodes && ufCityCodes.length) && localMuniCube == null;
+  const localMuniRows = useGeoMemo(
+    () => rankMunisFromCube(localMuniCube, mesh, filtered.yearStart, filtered.yearEnd),
+    [localMuniCube, mesh, filtered.yearStart, filtered.yearEnd],
+  );
+  // dataFilters' own sub-UF cube (an explicit meso/micro/… facet) always wins when
+  // it has rows; the single-UF fallback only fills in when that path is empty.
+  const activeMuniRows = filtered.topMunis.length ? filtered.topMunis : localMuniRows;
+
+  // CONF-4: "Exportar CSV" lives in the topbar (main.jsx), built from
+  // {view, database, summary, conventions} — it has no way to see this view's OWN
+  // local scope/município-fallback state (React state that never leaves this
+  // component). Mirroring both here, the same bridge pattern as patchFilter, lets
+  // csvExport.js's 'geo' case export whatever granularity is ACTUALLY on screen
+  // instead of always the per-UF table regardless of the Granularidade control.
+  useGeoEffect(() => {
+    window.geoExportScope = scope;
+    window.geoExportMunis = activeMuniRows;
+    return () => { delete window.geoExportScope; delete window.geoExportMunis; };
+  }, [scope, activeMuniRows]);
+
   // Scale geo datasets according to active dimension's multiplier
   const scaledUFs = useGeoMemo(
-    () => filtered.ufData.map(u => ({ ...u, [valueKey]: u[valueKey] * mul })),
-    [valueKey, mul, filtered]
+    () => realUfData.map(u => ({ ...u, [valueKey]: u[valueKey] * mul })),
+    [valueKey, mul, realUfData]
   );
   const scaledRegions = useGeoMemo(
     () => filtered.regionData.map(r => ({ ...r, [valueKey]: r[valueKey] * mul })),
     [valueKey, mul, filtered]
   );
   const scaledMunis = useGeoMemo(
-    () => filtered.topMunis.map(m => ({ ...m, [valueKey]: (m[valueKey] || 0) * mul })),
-    [valueKey, mul, filtered]
+    () => activeMuniRows.map(m => ({ ...m, [valueKey]: (m[valueKey] || 0) * mul })),
+    [valueKey, mul, activeMuniRows]
   );
 
-  // Heatmap: ano × UF — REAL per-(UF, year) Gold history from the snapshot's
-  // ufYearly (the serving marts are at the reference_year × uf grain). The old
-  // code FABRICATED each UF's curve as ufTotal × (national year value ÷ max),
-  // giving every state the identical national trajectory — invented evolution
-  // presented as real history. We now read the real rows, honor the year window +
-  // state set (the UFs present in filtered.ufData) and use the ACTIVE dimension's
-  // metric/scale. We do NOT re-apply a basket productShare here: there is no per-
-  // product × UF×year grain, and uniformly scaling every real cell by selected/all
-  // would re-inject the same fabrication F1.5 removed from the maps. When a basket
-  // is active the view shows an honest pt-BR note (notFilteredByBasket) that the
-  // territorial split reflects all products.
+  // Heatmap: ano × (UF | região | município), matching the active Granularidade —
+  // EST-1: this used to always aggregate by UF regardless of scope, so choosing
+  // "Região" changed the map above but left "the same year-value" repeated a THIRD
+  // time here at the wrong grain. Every branch reads REAL per-(…, year) Gold
+  // history — never a basket-rescaled fabrication (see the F1.5 note this file
+  // used to carry): a basket only narrows once its (grain × year) cube has
+  // actually loaded (filtered.ufYearlySeries / muniYearlySeries already encode
+  // that — see dataFilters.js), so there is nothing left to re-derive here.
+  //
+  // CONF-1: the UF branch used to read `dataStore.get(database).ufYearly` directly
+  // — ALWAYS all-products — instead of `filtered.ufYearlySeries`, the basket-aware
+  // grid the map/ranking above already use once their cube loads. A one-product
+  // PEVS basket measured a 3.4× divergence between the map (correct) and this
+  // heatmap (silently wrong) with no on-screen warning once the basket note had
+  // cleared. Reading the SAME source the map reads makes the two agree by
+  // construction — there is only one (UF × year) grid in this view now.
   const heatRows = useGeoMemo(() => {
-    const snap = (window.dataStore && window.dataStore.get)
-      ? window.dataStore.get(database) : null;
-    const yearly = (snap && Array.isArray(snap.ufYearly)) ? snap.ufYearly : [];
-    if (!yearly.length) return [];
-    // Only the UFs that survived the state filter (filtered.ufData is already
-    // state-filtered), ranked by the active dimension's total — keep the top 12.
-    const keepUf = new Set(scaledUFs.map(u => u.uf));
-    const order = scaledUFs
-      .slice()
-      .sort((a, b) => b[valueKey] - a[valueKey])
-      .slice(0, 12)
-      .map(u => u.uf);
-    const byUf = {};
-    yearly.forEach(r => {
-      if (!keepUf.has(r.uf)) return;
-      if (r.year < filtered.yearStart || r.year > filtered.yearEnd) return;
-      const row = byUf[r.uf] || (byUf[r.uf] = { id: r.uf, name: r.name, values: [] });
-      // mul applies the active dimension's display scale (value/mass/vol); the
-      // cell value is the REAL per-(UF, year) figure, never basket-rescaled.
-      row.values.push({ y: r.year, v: (r[valueKey] || 0) * mul });
-    });
-    return order
-      .filter(uf => byUf[uf])
-      .map(uf => ({
+    const yearStart = filtered.yearStart, yearEnd = filtered.yearEnd;
+
+    if (scope === 'uf') {
+      const yearly = Array.isArray(filtered.ufYearlySeries) ? filtered.ufYearlySeries : [];
+      if (!yearly.length) return [];
+      const keepUf = new Set(scaledUFs.map(u => u.uf)); // real-UF + state-filtered already
+      const order = scaledUFs.slice().sort((a, b) => b[valueKey] - a[valueKey]).slice(0, 12).map(u => u.uf);
+      const names = ufNameMap();
+      const byUf = {};
+      yearly.forEach(r => {
+        if (!keepUf.has(r.uf)) return;
+        if (r.year < yearStart || r.year > yearEnd) return;
+        const row = byUf[r.uf] || (byUf[r.uf] = { values: [] });
+        row.values.push({ y: r.year, v: (r[valueKey] || 0) * mul });
+      });
+      return order.filter(uf => byUf[uf]).map(uf => ({
         id: uf,
-        label: `${uf} · ${byUf[uf].name || uf}`,
+        label: `${uf} · ${names[uf] || byUf[uf].name || uf}`,
         values: byUf[uf].values.slice().sort((a, b) => a.y - b.y),
       }));
-  }, [valueKey, mul, scaledUFs, filtered, database]);
+    }
+
+    // Ranked by each row's value AT THE reference year (filtered.ufLatestYear) —
+    // the SAME year (and thus the SAME ranking) the "Distribuição" card and its
+    // list/map above use, matching the 'uf' branch's own convention (which ranks
+    // scaledUFs the same way). Ranking by the all-years SUM instead would silently
+    // disagree with "top" everywhere else on this screen means (a município that
+    // led every year until fading in mapYear would out-rank this year's actual
+    // leader here, while the card above shows the opposite order).
+    const latestYear = filtered.ufLatestYear;
+
+    if (scope === 'region') {
+      const yearly = Array.isArray(filtered.ufYearlySeries) ? filtered.ufYearlySeries : [];
+      if (!yearly.length) return [];
+      const keepUf = new Set(scaledUFs.map(u => u.uf));
+      const regionOf = ufRegionMap();
+      const regionLabel = {};
+      (window.REGIONS || []).forEach(r => { regionLabel[r.id] = r.label || r.id; });
+      const byRegion = {};
+      yearly.forEach(r => {
+        if (!keepUf.has(r.uf)) return;
+        if (r.year < yearStart || r.year > yearEnd) return;
+        const reg = regionOf[r.uf];
+        if (!reg) return;
+        const row = byRegion[reg] || (byRegion[reg] = { values: new Map() });
+        row.values.set(r.year, (row.values.get(r.year) || 0) + (r[valueKey] || 0) * mul);
+      });
+      return Object.keys(byRegion).map(id => {
+        const values = [...byRegion[id].values.entries()].map(([y, v]) => ({ y, v })).sort((a, b) => a.y - b.y);
+        return { id, label: regionLabel[id] || id, rankValue: byRegion[id].values.get(latestYear) || 0, values };
+      }).sort((a, b) => b.rankValue - a.rankValue);
+    }
+
+    // scope === 'municipio' — either dataFilters' own sub-UF cube (an explicit
+    // facet) or the single-UF fallback above; never the plain UF grid (that would
+    // be the exact "same vector at the wrong grain" problem this fix removes).
+    const cube = (filtered.subUfActive && filtered.subUfLoaded && filtered.muniYearlySeries.length)
+      ? filtered.muniYearlySeries
+      : localMuniCube;
+    if (!Array.isArray(cube) || !cube.length) return [];
+    const names = {};
+    (mesh || []).forEach(m => { names[m.cityCode] = m.cityName; });
+    const byCity = {};
+    cube.forEach(r => {
+      if (r.year < yearStart || r.year > yearEnd) return;
+      const row = byCity[r.cityCode] || (byCity[r.cityCode] = { values: new Map(), uf: r.uf });
+      row.values.set(r.year, (row.values.get(r.year) || 0) + (r[valueKey] || 0) * mul);
+    });
+    return Object.keys(byCity).map(code => {
+      const values = [...byCity[code].values.entries()].map(([y, v]) => ({ y, v })).sort((a, b) => a.y - b.y);
+      return {
+        id: code, label: `${names[code] || code} · ${byCity[code].uf}`,
+        rankValue: byCity[code].values.get(latestYear) || 0, values,
+      };
+    }).sort((a, b) => b.rankValue - a.rankValue).slice(0, 12);
+  }, [scope, valueKey, mul, scaledUFs, filtered, mesh, localMuniCube]);
 
   const top10ufs = scaledUFs.slice().sort((a, b) => b[valueKey] - a[valueKey]).slice(0, 10);
 
@@ -155,8 +333,6 @@ function ViewGeography({ families, conventions, summary, database }) {
   const ufScaled    = window.scaleSeries(scaledUFs,    sharedMax, conv, valueKey, unit);
   const regScaled   = window.scaleSeries(scaledRegions, Math.max(...scaledRegions.map(r => r[valueKey] || 0)), conv, valueKey, unit);
   const top10Scaled = window.scaleSeries(top10ufs,     sharedMax, conv, valueKey, unit);
-  const muniMax     = Math.max(...scaledMunis.map(m => m[valueKey] || 0));
-  const muniScaled  = window.scaleSeries(scaledMunis,  muniMax,   conv, valueKey, unit);
   const heatMax     = Math.max(...heatRows.flatMap(r => r.values.map(v => v.v)));
   const heatScaled  = (() => {
     if (!conv.autoScale) return { rows: heatRows, label: unit };
@@ -172,6 +348,30 @@ function ViewGeography({ families, conventions, summary, database }) {
     };
   })();
   const displayUnit = ufScaled.label;
+
+  // EST-1/MAPA-4: the top card + heatmap titles follow the SAME grain as the
+  // Granularidade control, instead of the fixed "UF"/"mapa de calor" wording that
+  // used to sit above a region-bars chart or a município list unchanged.
+  const scopeNoun = scope === 'region' ? 'região' : scope === 'municipio' ? 'município' : 'UF';
+  const distTitle =
+    scope === 'region' ? 'Distribuição por região' :
+    scope === 'uf'     ? 'Distribuição por UF' :
+                         'Distribuição por município';
+  const distKind = scope === 'uf' ? 'Mapa' : 'Distribuição';
+  const heatCountTag =
+    heatScaled.rows.length === 0 ? '' :
+    heatScaled.rows.length === 1 ? `(1 ${scopeNoun})` :
+    scope === 'region' ? `(${heatScaled.rows.length} ${pl(heatScaled.rows.length, 'região', 'regiões')})` :
+    `(${heatScaled.rows.length} maiores)`;
+  // EST-2: a ranking card duplicating the grain the top card ALREADY shows (region
+  // bars again for scope=região; the município list again for scope=município) used
+  // to render unconditionally — the SAME chart, same data, twice on one screen for
+  // região. Show the UF ranking only in UF scope; "Soma por região" stays useful in
+  // every OTHER scope (a different grain: national region totals vs. the active
+  // UF/município narrowing), so it's suppressed ONLY when scope IS região itself.
+  const showRankingCard = scope === 'uf';
+  const showRegionSumCard = scope !== 'region';
+  const ufRankTitle = `${pl(top10ufs.length, 'Estado produtor', 'Maiores estados produtores')} · ${mapYearTag}`;
 
   return (
     <>
@@ -211,10 +411,11 @@ function ViewGeography({ families, conventions, summary, database }) {
       <div className="geo-controls">
         <div className="geo-control-grp">
           <span className="overline">Métrica</span>
-          <div className="seg">
+          <div className="seg" role="group" aria-label="Métrica">
             {dims.map(d => (
               <button key={d.id}
                       className={'seg-opt ' + (dim === d.id ? 'on' : '')}
+                      aria-pressed={dim === d.id}
                       onClick={() => setDim(d.id)}>
                 {d.label}
               </button>
@@ -223,11 +424,11 @@ function ViewGeography({ families, conventions, summary, database }) {
         </div>
         <div className="geo-control-grp">
           <span className="overline">Granularidade</span>
-          <div className="seg">
-            <button className={'seg-opt ' + (scope === 'region' ? 'on' : '')} onClick={() => setScope('region')}>Região</button>
-            <button className={'seg-opt ' + (scope === 'uf' ? 'on' : '')} onClick={() => setScope('uf')}>UF</button>
+          <div className="seg" role="group" aria-label="Granularidade">
+            <button className={'seg-opt ' + (scope === 'region' ? 'on' : '')} aria-pressed={scope === 'region'} onClick={() => setScope('region')}>Região</button>
+            <button className={'seg-opt ' + (scope === 'uf' ? 'on' : '')} aria-pressed={scope === 'uf'} onClick={() => setScope('uf')}>UF</button>
             {muniCapable && (
-              <button className={'seg-opt ' + (scope === 'municipio' ? 'on' : '')} onClick={() => setScope('municipio')}>Município</button>
+              <button className={'seg-opt ' + (scope === 'municipio' ? 'on' : '')} aria-pressed={scope === 'municipio'} onClick={() => setScope('municipio')}>Município</button>
             )}
           </div>
         </div>
@@ -235,29 +436,26 @@ function ViewGeography({ families, conventions, summary, database }) {
 
       <div className="card">
         <window.SectionHeader
-          overline={`Mapa de calor · ${activeDim.label} · ${displayUnit} · ${mapYearTag}`}
-          title={
-            scope === 'region' ? 'Distribuição por região' :
-            scope === 'uf'     ? 'Distribuição por UF' :
-                                 'Distribuição por município (top)'
-          }
+          overline={`${distKind} · ${activeDim.label} · ${displayUnit} · ${mapYearTag}`}
+          title={distTitle}
         />
         {scope === 'region' && <window.RegionBars data={regScaled.data} valueKey={valueKey} label={regScaled.label} height={280} />}
         {scope === 'uf' && (
           <>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-              <div className="seg">
-                <button className={'seg-opt ' + (ufViz === 'map' ? 'on' : '')} onClick={() => setUfViz('map')}>Mapa</button>
-                <button className={'seg-opt ' + (ufViz === 'tiles' ? 'on' : '')} onClick={() => setUfViz('tiles')}>Blocos</button>
+              <div className="seg" role="group" aria-label="Visualização do mapa">
+                <button className={'seg-opt ' + (ufViz === 'map' ? 'on' : '')} aria-pressed={ufViz === 'map'} onClick={() => setUfViz('map')}>Mapa</button>
+                <button className={'seg-opt ' + (ufViz === 'tiles' ? 'on' : '')} aria-pressed={ufViz === 'tiles'} onClick={() => setUfViz('tiles')}>Blocos</button>
               </div>
             </div>
             {/* The UF maps get the RAW (unscaled) per-UF values + just the currency symbol:
                 each cell/popup is formatted with its OWN compact magnitude (e.g. "2,9 bi",
                 "384 mi", "3,0 mi"), so small UFs never round to "0" (the global-factor
-                auto-scale problem) and big ones never overflow the cell. */}
+                auto-scale problem) and big ones never overflow the cell. Clicking a UF
+                filters the whole dashboard to it (click again to clear). */}
             {ufViz === 'map'
-              ? <window.BrazilChoropleth data={scaledUFs} valueKey={valueKey} label={valueUnitLabel} />
-              : <window.BrazilTileMap data={scaledUFs} valueKey={valueKey} label={valueUnitLabel} />}
+              ? <window.BrazilChoropleth data={scaledUFs} valueKey={valueKey} label={valueUnitLabel} onSelect={handleUfClick} selectedUf={selectedSingleUf} />
+              : <window.BrazilTileMap data={scaledUFs} valueKey={valueKey} label={valueUnitLabel} onSelect={handleTileSelect} selectedUf={selectedSingleUf} />}
             {filtered.ufYearPartial && (
               <p className="caption" style={{ padding: '8px 4px 0' }}>
                 <strong>{mapYear} (parcial):</strong> o último ano com dados por UF disponíveis fica
@@ -268,16 +466,31 @@ function ViewGeography({ families, conventions, summary, database }) {
           </>
         )}
         {scope === 'municipio' && (() => {
-          const rows = muniScaled.data
+          const rows = scaledMunis
             .filter(m => valueKey === 'value' || (m[valueKey] != null && m[valueKey] > 0));
           if (!rows.length) {
+            if (localMuniLoading) {
+              return (
+                <p className="caption" style={{ padding: '12px' }}>
+                  Carregando municípios de <strong>{selectedSingleUf}</strong>…
+                </p>
+              );
+            }
             return (
-              <p className="caption" style={{ padding: '12px' }}>
-                A lista por município aparece ao <strong>recortar a geografia</strong> — selecione
-                uma mesorregião/microrregião, região intermediária/imediata ou municípios
-                específicos no filtro. Sem um recorte sub-UF ativo, use a granularidade
-                <strong> UF</strong> ou <strong> Região</strong>.
-              </p>
+              <div className="geo-empty-cta">
+                <p className="caption">
+                  A lista por município aparece ao <strong>recortar a geografia</strong> — selecione
+                  uma UF, uma mesorregião/microrregião, região intermediária/imediata ou municípios
+                  específicos no filtro.
+                </p>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => window.openFilterMenu && window.openFilterMenu()}
+                >
+                  Abrir filtro de geografia
+                </button>
+              </div>
             );
           }
           const max = Math.max(...rows.map(x => x[valueKey] || 0)) || 1;
@@ -290,9 +503,8 @@ function ViewGeography({ families, conventions, summary, database }) {
                     <span className="muni-rank tnum">#{i + 1}</span>
                     <span className="muni-name">{m.city}</span>
                     <span className="muni-uf">{m.uf}</span>
-                    <span className="muni-product">{m.product}</span>
                     <div className="muni-bar"><div style={{ width: ((v / max) * 100).toFixed(1) + '%', background: 'var(--viz-2)' }}></div></div>
-                    <span className="muni-val tnum">{v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} {muniScaled.label}</span>
+                    <span className="muni-val tnum">{fmtCompact(v)}</span>
                   </div>
                 );
               })}
@@ -304,36 +516,58 @@ function ViewGeography({ families, conventions, summary, database }) {
       <div className="card">
         <window.SectionHeader
           overline={`Evolução temporal · ${activeDim.label} (${heatScaled.label})`}
-          title={`Mapa de calor · ano × UF (${heatScaled.rows.length} maiores)`}
+          title={`Mapa de calor · ano × ${scopeNoun} ${heatCountTag}`.trim()}
         />
-        <window.Heatmap rows={heatScaled.rows} valueKey="v" valueLabel={heatScaled.label} />
+        {heatScaled.rows.length
+          ? <window.Heatmap rows={heatScaled.rows} valueKey="v" valueLabel={heatScaled.label} />
+          : (
+            <p className="caption" style={{ padding: '12px' }}>
+              {scope === 'municipio' && !localMuniLoading
+                ? <>A evolução por município aparece ao <strong>recortar a geografia</strong> — selecione
+                    uma UF ou um recorte sub-UF no filtro.</>
+                : scope === 'municipio' && localMuniLoading
+                  ? <>Carregando o histórico de <strong>{selectedSingleUf}</strong>…</>
+                  : 'Sem histórico anual disponível para o recorte atual.'}
+            </p>
+          )}
       </div>
 
-      <div className="grid-2">
-        <div className="card">
-          <window.SectionHeader
-            overline={`Top 10 · ${activeDim.label}`}
-            title={`Maiores estados produtores · ${mapYearTag}`}
-            action={<span className="caption">{activeDim.label} ({top10Scaled.label})</span>}
-          />
-          <window.BarChart data={top10Scaled.data} valueKey={valueKey} color="var(--viz-2)" height={320} />
+      {(showRankingCard || showRegionSumCard) && (
+        <div className="grid-2">
+          {showRankingCard && (
+            <div className="card">
+              <window.SectionHeader
+                overline={`Top 10 · ${activeDim.label}`}
+                title={ufRankTitle}
+                action={<span className="caption">{activeDim.label} ({top10Scaled.label})</span>}
+              />
+              <window.BarChart data={top10Scaled.data} valueKey={valueKey} color="var(--viz-2)" height={320} />
+            </div>
+          )}
+          {showRegionSumCard && (
+            <div className="card">
+              <window.SectionHeader
+                overline={`${activeDim.label} · ${mapYearTag}`}
+                title="Soma por região"
+                action={<span className="caption">{regScaled.data.length} {pl(regScaled.data.length, 'macrorregião', 'macrorregiões')} · {regScaled.label}</span>}
+              />
+              <window.RegionBars data={regScaled.data} valueKey={valueKey} label={regScaled.label} height={320} />
+            </div>
+          )}
         </div>
-        <div className="card">
-          <window.SectionHeader
-            overline={`${activeDim.label} · ${mapYearTag}`}
-            title="Soma por região"
-            action={<span className="caption">{regScaled.data.length} macrorregiões · {regScaled.label}</span>}
-          />
-          <window.RegionBars data={regScaled.data} valueKey={valueKey} label={regScaled.label} height={320} />
-        </div>
-      </div>
+      )}
 
-      {/* Base de dados — products ranked WITHIN the selected UF(s). The inverse of
-          "onde X é produzido": here a state is fixed and the products are ranked.
-          Only shown when a UF is selected (the per-(product × UF) grain the rest of
-          this view lacks comes from the dedicated /api/products-by-uf reader). */}
+      {/* Base de dados — products ranked WITHIN the selected UF(s), for the SAME
+          data-year the rest of this view shows (CONF-2: this card used to sum the
+          ENTIRE 1986–2024 window regardless of what year the map/ranking above were
+          showing — "PA · 2024 → R$ 2,9 bi" next to "Madeira em tora → R$ 136 bi" on
+          the same screen). The inverse of "onde X é produzido": here a state is
+          fixed and the products are ranked. Only shown when a UF is selected (the
+          per-(product × UF) grain the rest of this view lacks comes from the
+          dedicated /api/products-by-uf reader). */}
       {summary && Array.isArray(summary.states) && summary.states.length > 0 && (() => {
-        const pbu = window.productsByUf(database, summary, conv);
+        const pbuSummary = { ...summary, startDate: `${mapYear}-01-01`, endDate: `${mapYear}-12-01` };
+        const pbu = window.productsByUf(database, pbuSummary, conv);
         const rows = (pbu.products || [])
           .map(p => ({ ...p, [valueKey]: (p[valueKey] || 0) * mul }))
           .filter(r => (r[valueKey] || 0) > 0)
@@ -343,14 +577,15 @@ function ViewGeography({ families, conventions, summary, database }) {
         // instead of silently rendering nothing (would read as "este estado não tem produtos").
         if (!rows.length) return pbu.loadError ? <window.LoadErrorNote error={pbu.loadError} /> : null;
         const scaled = window.scaleSeries(rows, Math.max(...rows.map(r => r[valueKey] || 0)), conv, valueKey, unit);
+        const estadoLabel = pl(summary.states.length, 'Produtos do estado', 'Produtos dos estados');
         return (
           <div className="card">
             <window.SectionHeader
-              overline={`Base de dados · ${activeDim.label} · ${scaled.label}`}
-              title={`Produtos do estado (${summary.states.join(', ')})`}
+              overline={`Base de dados · ${activeDim.label} · ${scaled.label} · ${mapYearTag}`}
+              title={`${estadoLabel} (${summary.states.join(', ')})`}
               action={<span className="caption">{rows.length} produtos · ranking por {activeDim.label.toLowerCase()}</span>}
             />
-            <window.BarChart data={scaled.data} valueKey={valueKey} color="var(--viz-4)" height={Math.max(240, rows.length * 26)} />
+            <window.BarChart data={scaled.data} valueKey={valueKey} color="var(--viz-2)" height={Math.max(240, rows.length * 26)} />
           </div>
         );
       })()}

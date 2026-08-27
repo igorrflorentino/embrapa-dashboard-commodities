@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { NODATA, RAMP, fillColorExpression, ufColorScale } from './choroplethScale';
+import { NODATA, RAMP, fillColorExpression, ufColorScale, ufColorScaleQuantile } from './choroplethScale';
 
 describe('ufColorScale', () => {
   it('buckets values 0..max into the ramp; max → darkest, zero → no-data', () => {
@@ -22,6 +22,58 @@ describe('ufColorScale', () => {
     expect(ufColorScale([], 'v').byUf).toEqual({});
     expect(ufColorScale(null, 'v').max).toBe(1); // max floored at 1 (no divide-by-zero)
     expect(ufColorScale([{ v: 5 }], 'v').byUf).toEqual({}); // rows with no uf are skipped
+  });
+});
+
+describe('ufColorScaleQuantile (MAPA-3: spreads a concentrated distribution across every bucket)', () => {
+  it('uses every ramp bucket for a concentrated distribution the linear scale collapses', () => {
+    // Mirrors the measured PEVS 2024 shape: one dominant state, a long tail of
+    // much smaller ones. The linear scale puts all but the top 2 in bucket 0.
+    const rows = [
+      { uf: 'PA', v: 2908 }, { uf: 'MT', v: 1122 }, { uf: 'MA', v: 386 }, { uf: 'AM', v: 354 },
+      { uf: 'RO', v: 242 }, { uf: 'CE', v: 200 }, { uf: 'BA', v: 145 }, { uf: 'AC', v: 108 },
+      { uf: 'SC', v: 99 }, { uf: 'PE', v: 98 }, { uf: 'PI', v: 97 }, { uf: 'PR', v: 51 },
+      { uf: 'SP', v: 0 }, { uf: 'RJ', v: 0 },
+    ];
+    const { byUf, thresholds } = ufColorScaleQuantile(rows, 'v');
+    const usedBuckets = new Set(Object.values(byUf).filter((c) => c !== NODATA));
+    expect(usedBuckets.size).toBe(RAMP.length); // every bucket gets at least one UF
+    expect(byUf.PA).toBe(RAMP[RAMP.length - 1]); // the maximum still lands darkest
+    expect(byUf.SP).toBe(NODATA);
+    expect(byUf.RJ).toBe(NODATA);
+    // Every non-empty threshold's min/max come from UFs actually assigned that color.
+    thresholds.filter(Boolean).forEach((t) => expect(t.min).toBeLessThanOrEqual(t.max));
+  });
+
+  it('is safe on empty / all-zero data', () => {
+    expect(ufColorScaleQuantile([], 'v').byUf).toEqual({});
+    expect(ufColorScaleQuantile([{ uf: 'SP', v: 0 }], 'v').byUf).toEqual({ SP: NODATA });
+    expect(ufColorScaleQuantile([{ uf: 'SP', v: 0 }], 'v').thresholds.every((t) => t === null)).toBe(true);
+  });
+
+  it('paints a lone positive UF darkest, not lightest, regardless of its magnitude', () => {
+    // A straight rank/n split puts rank 0 of n=1 at position 0/1=0 — the lightest
+    // bucket — for a value that is simultaneously the smallest AND the largest.
+    // Caught via the map's own click-to-filter: selecting a single UF narrowed the
+    // choropleth to n=1 and painted it pale regardless of its real magnitude.
+    const { byUf } = ufColorScaleQuantile([{ uf: 'PA', v: 2_900_000_000 }], 'v');
+    expect(byUf.PA).toBe(RAMP[RAMP.length - 1]);
+  });
+
+  it('spreads a handful of UFs (fewer than the ramp) across the DARKEST buckets, ascending', () => {
+    const { byUf } = ufColorScaleQuantile(
+      [{ uf: 'PA', v: 300 }, { uf: 'MT', v: 100 }, { uf: 'SP', v: 0 }],
+      'v',
+    );
+    expect(byUf.MT).toBe(RAMP[RAMP.length - 2]); // smaller of the two
+    expect(byUf.PA).toBe(RAMP[RAMP.length - 1]); // larger — darkest
+    expect(byUf.SP).toBe(NODATA);
+  });
+
+  it('agrees with the plain quantile split exactly at n === ramp.length (no jump at the threshold)', () => {
+    const rows = RAMP.map((_, i) => ({ uf: `UF${i}`, v: i + 1 })); // 6 UFs, 6 buckets
+    const { byUf } = ufColorScaleQuantile(rows, 'v');
+    RAMP.forEach((color, i) => expect(byUf[`UF${i}`]).toBe(color));
   });
 });
 

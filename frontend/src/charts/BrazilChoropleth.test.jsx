@@ -29,6 +29,8 @@ class FakeMap {
     this.loadHandler = null;
     this.idleHandlers = 0;
     this.touchZoomRotate = { disableRotation() {} };
+    this.scrollZoom = { disable() {} };
+    this.filters = {};
   }
   isStyleLoaded() {
     return this.styleReady;
@@ -39,6 +41,10 @@ class FakeMap {
   setPaintProperty(layer, prop, value) {
     this.paintProps[`${layer}.${prop}`] = value;
   }
+  setFilter(layer, filter) {
+    this.filters[layer] = filter;
+  }
+  fitBounds() {}
   get fill() {
     return this.paintProps['uf-fill.fill-color'];
   }
