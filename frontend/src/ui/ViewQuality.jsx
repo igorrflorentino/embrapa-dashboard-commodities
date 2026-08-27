@@ -210,7 +210,16 @@ function ViewQuality({ summary, database }) {
           title="% de linhas não-íntegras por UF"
           action={<span className="caption">{qaByUf.length} de {filtered.qualityByUf.length} UFs</span>}
         />
-        <window.BrazilTileMap data={qaByUf.map(u => ({ ...u, v: Math.round(u.not_ok * 1000) / 10 }))} valueKey="v" label="% ≠ OK" />
+        {/* Clicking a UF filters the dashboard to it (click again to clear) — safe
+            here because qaByUf is itself narrowed by the state filter, so the map
+            reacts to its own click. */}
+        <window.BrazilTileMap
+          data={qaByUf.map(u => ({ ...u, v: Math.round(u.not_ok * 1000) / 10 }))}
+          valueKey="v"
+          label="% ≠ OK"
+          onSelect={window.tileSelectHandler && window.tileSelectHandler(summary)}
+          selectedUf={window.selectedSingleUf && window.selectedSingleUf(summary)}
+        />
         <p className="caption" style={{ padding: '8px 4px 0' }}>
           Participação de linhas não-íntegras no acervo do banco, por UF (todos os anos e produtos);
           recortada apenas pelo filtro de UF.

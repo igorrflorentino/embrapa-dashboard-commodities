@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.27.0] - 2026-08-27
+
+Leva à **app inteira** o que a v1.25.0 tinha entregue só à Geografia, e fecha a
+inconsistência que aquela versão criou: o coroplético passou a classificar por
+quantil e a grade de blocos ficou na escala linear — **os dois lados de um mesmo
+toggle Mapa/Blocos, sobre os mesmos números, com classificações diferentes**.
+
+### Fixed
+- **A escala linear seguia viva em 6 das 7 renderizações de mapa.** `BrazilTileMap`
+  é usado por Geografia, **Visão geral, Rebanho, Produtividade, Qualidade e as
+  análises cruzadas** — todas continuavam com o `(v-min)/(max-min)` que colapsa em
+  série concentrada. Medido no valor real por UF do PEVS 2024: **21 das 25 UFs com
+  produção caíam na faixa mais clara** e 4 das 7 faixas nunca eram usadas. Agora usa
+  o mesmo quantil dos dois mapas maplibre, e a legenda mostra a faixa que cada cor
+  cobre (faixa sem ninguém fica esmaecida em vez de ganhar um intervalo inventado).
+- **A tarja cinza do mapa municipal podia contar errado.** Contava por diferença de
+  tamanhos (`malha.length - dados.length`), o que soma indevidamente um município
+  que tenha dado mas nenhum polígono — e, com alguns deles, chegaria a número
+  negativo. Passa a comparar os códigos de fato.
+
+### Added
+- **Clique-para-filtrar na Visão geral e na Qualidade.** Clicar numa UF filtra o
+  painel inteiro; clicar de novo limpa — o mesmo gesto da Geografia. A regra saiu de
+  dentro da view para `ui/geoSelect.js`, compartilhada pelas três, incluindo a parte
+  fácil de errar: selecionar uma UF **zera** os recortes sub-UF/região/nação, para
+  que um recorte antigo (ou de um link compartilhado) não se cruze silenciosamente
+  com o clique e mostre menos do que o estado pedido.
+
+  **Deliberadamente NÃO ligado** em Rebanho, Produtividade e Coeficiente de
+  exportação: os leitores dessas três (`/api/product-uf`, `/api/productivity`,
+  `/api/cross/export-coef`) **não aceitam filtro de UF**, então o clique mudaria o
+  filtro global e o mapa não reagiria — o controle-que-parece-agir-e-não-age que
+  esta mesma auditoria condenou. Fica registrado como achado: os mapas dessas três
+  views ignoram o filtro de UF ativo.
+
+- **`make refresh-geo`** — re-busca os DOIS artefatos territoriais versionados de
+  uma vez (o seed código→ancestralidade e as 27 malhas municipais). Nenhum dos dois
+  scripts tinha alvo no Makefile.
+
+- **Verificação automática de malha vencida** (`geo-mesh-check.yml`, trimestral).
+  A malha é versionada, então envelhece em silêncio: o IBGE cria municípios a cada
+  ciclo e nada no app notaria — o município novo simplesmente nunca seria desenhado
+  nem apareceria no filtro, enquanto a produção dele seguiria contando nos totais.
+  Diferente do lembrete de `reconcile` ao lado, este **não cutuca: mede**, e só abre
+  issue quando algo divergiu de fato. `refresh_ibge_municipio_geojson.py --check` é
+  uma requisição pequena ao roster do Localidades, não os 27 downloads pesados.
+
+### Notes — o que a verificação encontrou
+- **As duas APIs do IBGE discordam entre si.** O roster (Localidades) lista **5571**
+  municípios; a API de malhas desenha **5570**. O ausente é **Boa Esperança do
+  Norte/MT (5101837)**, criado em 2023 — o mesmo município que o script irmão já
+  registrava como tendo só o ramo sub-UF de 2017. Não é defasagem nossa e re-baixar
+  a malha não o traz, então ele está em `ROSTER_ONLY`, documentado, e o `--check`
+  passa verde (um check permanentemente vermelho é um check que se aprende a ignorar).
+
+  Consequência no produto: ele é **selecionável no filtro** (a cascata vem do roster)
+  e **não pode ser desenhado**. O `MunicipioChoropleth` agora avisa explicitamente
+  quando um município com dado não tem malha, em vez de somá-lo ao cinza. Hoje a nota
+  não aparece porque ele ainda não tem nenhuma linha no Gold.
+
+- **O mapa municipal já valia para PAM e PPM** — nenhuma linha de código foi
+  necessária. `ViewGeography` é o mesmo componente para todo banco, os três IBGE já
+  declaram `geoLevel: 'municipio'` e já estavam em `_MUNICIPIO_SOURCES`. Verificado:
+  PAM desenha os 399 municípios do PR, PPM os 141 de MT.
+
+- `ufColorScale` (a versão linear) foi **removida** — ninguém mais a importava.
+
+---
+
 ## [1.26.0] - 2026-08-27
 
 Fecha o passo 7 do `PLANS/geo_subregions.md`, aberto desde 2026-06: **o recorte sub-UF

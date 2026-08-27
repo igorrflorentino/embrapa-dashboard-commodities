@@ -18,6 +18,7 @@ import './ui/glossary.js';
 import './ui/urlState.js';
 import './ui/chipFmt.js';
 import './ui/filterSummary.js';
+import './ui/geoSelect.js';
 import './ui/useGeoCascade.js';
 import './ui/seriesUtils.js';
 import './ui/dataFilters.js';

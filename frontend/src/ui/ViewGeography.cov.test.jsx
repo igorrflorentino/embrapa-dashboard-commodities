@@ -14,6 +14,12 @@ import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 
+// The click-a-UF-to-filter rule lives in geoSelect.js (shared with Visão geral and
+// Qualidade) and self-registers on window, exactly as main.jsx loads it. Imported
+// rather than stubbed so these tests exercise the REAL selection logic — including
+// the sub-UF facet reset, which is the part that is easy to get wrong.
+import './geoSelect.js';
+
 // Captured props from the stubbed chart widgets, so we can assert what each branch fed.
 let regionBarsProps, choroProps, tileMapProps, heatmapProps, barChartCalls, productsByUfCalls, muniMapProps;
 

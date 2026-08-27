@@ -268,9 +268,18 @@ export function MunicipioChoropleth({
 
   const legend = scale.thresholds;
   const hasLegend = legend.some(Boolean);
-  const semDado = (data || []).length
-    ? (mesh.features || []).length - (data || []).filter((d) => (d[valueKey] || 0) > 0).length
-    : (mesh.features || []).length;
+  // Count against the mesh's OWN codes, not just lengths. IBGE's two APIs disagree:
+  // the Localidades roster (which builds the geography filter) currently lists one
+  // município whose geometry the malhas API does not publish — Boa Esperança do
+  // Norte/MT, created 2023. So a município can legitimately carry data and have no
+  // polygon. Subtracting lengths blindly would fold it into the grey tally, quietly
+  // over-counting "sem produção" and, with enough of them, going negative.
+  const drawnCodes = new Set((mesh.features || []).map((f) => f.properties && f.properties.codarea));
+  const withData = (data || []).filter((d) => (d[valueKey] || 0) > 0);
+  const semDado = (mesh.features || []).length - withData.filter((d) => drawnCodes.has(d.cityCode)).length;
+  // Municípios the data knows about but the mesh cannot draw — reported on their own
+  // rather than silently missing from a map that otherwise looks complete.
+  const semGeometria = withData.filter((d) => !drawnCodes.has(d.cityCode));
   return (
     <div className="bmap-wrap">
       <div className="br-choropleth" style={{ position: 'relative', width: '100%', height }}>
@@ -303,6 +312,13 @@ export function MunicipioChoropleth({
           {narrowed
             ? `${semDado} ${semDado === 1 ? 'município fora do recorte' : 'municípios fora do recorte'} — em cinza.`
             : `${semDado} ${semDado === 1 ? 'município sem produção registrada' : 'municípios sem produção registrada'} no período — em cinza.`}
+        </p>
+      )}
+      {semGeometria.length > 0 && (
+        <p className="caption" style={{ padding: '0 4px', color: 'var(--fg-3)' }}>
+          {semGeometria.length === 1
+            ? `${semGeometria[0].city || semGeometria[0].cityCode} tem dado no período mas o IBGE ainda não publicou sua malha — não aparece no mapa (consta no ranking).`
+            : `${semGeometria.length} municípios têm dado no período mas o IBGE ainda não publicou suas malhas — não aparecem no mapa (constam no ranking).`}
         </p>
       )}
     </div>

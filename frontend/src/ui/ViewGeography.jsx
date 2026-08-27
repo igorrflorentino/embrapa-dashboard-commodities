@@ -167,22 +167,14 @@ function ViewGeography({ families, conventions, summary, database }) {
   const mul       = activeDim.mul;
 
   // ---- Map-click ↔ filter bridge (state selection from the map itself) ------
-  // window.patchFilter is registered once by main.jsx (the component that owns
-  // the applied filter's setState) — a small global bridge rather than a new prop
-  // threaded through MainScreen's per-view contract, which every OTHER perspective
-  // also renders through. Clicking a UF sets it as the sole state filter and, since
-  // the researcher didn't go through the filter modal, resets every sub-UF/region/
-  // nation facet to "unconstrained" so a stale narrowing from a PRIOR session can't
-  // silently combine with the click in a way the researcher never chose. Clicking
-  // the already-selected UF again clears the state filter (toggle off).
-  const selectedSingleUf = Array.isArray(summary && summary.states) && summary.states.length === 1
-    ? summary.states[0] : null;
-  const handleUfClick = (uf) => {
-    if (!uf || !window.patchFilter) return;
-    const cleared = { regions: null, nations: null, mesos: null, micros: null, inters: null, imediatas: null, munis: null };
-    window.patchFilter(selectedSingleUf === uf ? { states: null, ...cleared } : { states: [uf], ...cleared });
-  };
-  const handleTileSelect = (row) => handleUfClick(row && row.uf);
+  // Extracted to geoSelect.js so the other territorial maps (Visão geral, Qualidade)
+  // apply the identical rule instead of each re-deriving it — including the part
+  // that is easy to get wrong: selecting a UF also RESETS the sub-UF/região/nação
+  // facets, so a stale narrowing can't silently intersect with a click the
+  // researcher made on the map.
+  const selectedSingleUf = window.selectedSingleUf(summary);
+  const handleUfClick = window.ufClickHandler(summary);
+  const handleTileSelect = window.tileSelectHandler(summary);
 
   // EST-5: município scope shouldn't require first drilling into a mesorregião to
   // be useful. When exactly one UF is selected and dataFilters' OWN sub-UF cascade

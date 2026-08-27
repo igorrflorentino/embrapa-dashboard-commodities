@@ -6,7 +6,7 @@
         dbt-deps dbt-build dbt-build-prod dbt-build-prod-with-backup backup-gold \
         dbt-build-curation serving-sync ensure-curation ensure-flow-market \
         dbt-test dbt-source-freshness dbt-clean lint sqlfluff test clean \
-        precommit-install precommit-run
+        refresh-geo precommit-install precommit-run
 
 PY := uv run
 
@@ -105,6 +105,15 @@ dbt-build-prod: dbt-deps    ## Prod: silver+gold in silver / gold (real datasets
 
 backup-gold:    ## Snapshot prod Gold tables to gs://${GCS_BUCKET}/backups/run=<ts>/
 	$(PY) embrapa backup-gold
+
+refresh-geo:    ## Re-fetch the IBGE territorial mesh: the código->ancestry seed AND the map geometry
+	@echo "[1/2] seed: city_code -> meso/micro + intermediaria/imediata"
+	$(PY) python scripts/refresh_ibge_municipio_mesh.py
+	@echo "[2/2] geometry: one municipal GeoJSON per UF (frontend/public/geo/municipios/)"
+	$(PY) python scripts/refresh_ibge_municipio_geojson.py
+	@echo "[ok] Run 'make dbt-build' to rebuild the seed's dim; the GeoJSON is served as-is."
+	@echo "[!]  Both are versioned — review 'git diff --stat' before committing."
+
 
 dbt-build-prod-with-backup: dbt-build-prod backup-gold    ## Recommended prod path: build then snapshot
 	@echo "[ok] prod build + Gold snapshot complete"
