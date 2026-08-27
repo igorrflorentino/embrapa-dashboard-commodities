@@ -48,10 +48,15 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
   const zMin = zVals.length ? Math.min(...zVals) : 0;
   const zMax = zVals.length ? Math.max(...zVals) : 0;
   const zTicks = colorbarAnchors(zMin, zMax);
-  // Row-count-aware height, and whether that leaves the vertical colorbar enough room.
-  // Three rows at 24px + chrome is about where a right-side title stops fitting.
+  // Row-count-aware height, and whether that leaves the VERTICAL colorbar enough room
+  // for its three anchors plus the unit above them.
+  //
+  // The threshold is measured, not guessed: the bar's drawn height tracks the plotting
+  // area, and at 4 rows that came out at 44px — three ~12px labels stacked into 44px,
+  // legible but touching. At 6 rows it is ~100px, which lets them breathe. Below that
+  // the bar goes horizontal, where a one-row heatmap has width to spare.
   const autoHeight = 22 + rows.length * 24 + 22;
-  const shortPlot = !height && rows.length <= 3;
+  const shortPlot = !height && rows.length <= 5;
 
   const traces = [
     {
