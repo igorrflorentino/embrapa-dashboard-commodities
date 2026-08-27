@@ -1,7 +1,11 @@
 {
   "name": "embrapa-dashboard-frontend",
   "private": true,
-  "version": "1.28.2",
+  "version": "1.28.3",
+  "//engines": "CI and the Dockerfile build stage both read the Node major from /.nvmrc; keep the three in step. A newer local Node is what broke localStorage in the test env (see vitest.setup.js).",
+  "engines": {
+    "node": "^24"
+  },
   "type": "module",
   "description": "Embrapa Produtos Agrícolas dashboard — React SPA (design-system UI in src/ui/) over the Python BFF REST API; analytical charts in Plotly.js.",
   "scripts": {

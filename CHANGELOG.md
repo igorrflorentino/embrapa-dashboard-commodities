@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.28.3] - 2026-08-27
+
+Os 36 testes que falhavam localmente e passavam no CI não eram flaky nem culpa do
+código — era o Node 26 quebrando o `localStorage` do ambiente de teste. Agora o
+ambiente se conserta sozinho.
+
+### Fixed
+- **`localStorage` volta a funcionar sob Node ≥26.** O Node 26 passou a expor um
+  `localStorage` próprio, atrás de `--localstorage-file`. Sem a flag o global
+  continua **definido** — como um getter que devolve `undefined` — e, como o
+  ambiente jsdom do Vitest funde `window` em `globalThis`, esse getter **sobrepõe**
+  o Storage que o jsdom tinha instalado. Toda chamada virava
+  `Cannot read properties of undefined`, o que aparecia como **36 falhas em
+  `AppShell.cov.test.jsx`** com cara de bug nosso.
+
+  O CI roda o major do `/.nvmrc` (24), onde nada disso existe — então o sintoma só
+  atingia máquina local, e custava uma hora até alguém pensar em conferir `node -v`.
+  O descriptor é `configurable: true`, então o `vitest.setup.js` simplesmente
+  recoloca um Storage funcional. **Escopo deliberado:** só age quando o
+  `localStorage` está ausente ou inutilizável; no Node 24 a implementação do jsdom
+  fica intocada.
+
+  Medido: suíte completa no Node 26.7.0 sem nenhuma flag — **832/832**, contra 36
+  falhas antes.
+
+### Added
+- `frontend/src/ui/localStorageEnv.test.js` — 4 testes fixando o invariante "todo
+  teste recebe um `localStorage` funcional, em qualquer major do Node", inclusive
+  que uma chave ausente devolve `null` e não `undefined` (a UI ramifica em
+  `=== null`).
+- Campo `engines` (`node: ^24`) em `frontend/package.json`, alinhado ao `/.nvmrc` e
+  ao estágio de build do Dockerfile, com nota explicando por que os três andam
+  juntos.
+
+---
+
 ## [1.28.2] - 2026-08-27
 
 O `geo mesh check` nunca tinha rodado. Disparei manualmente pela primeira vez e ele
