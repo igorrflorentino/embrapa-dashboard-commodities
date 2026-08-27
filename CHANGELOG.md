@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.31.2] - 2026-08-27
+
+### Fixed
+- **"Por banco de dados" nomeava as MÉTRICAS no seletor de séries cruzadas.** Na
+  perspectiva "Cruzamento entre fontes" o nível do meio saía como
+  `…produtos agrícolas: Valor da produção (IBGE PEVS) × Valor exportado (FOB) (MDIC
+  COMEX)` — indicadores sob um rótulo que promete bancos, e um detalhe que já pertence
+  ao nível "Consulta detalhada".
+
+  Essa perspectiva não tem `sources` fixas (o pesquisador monta as séries), então o
+  fallback lia o rótulo das séries. Agora os bancos são derivados das séries escolhidas
+  e **deduplicados** — duas métricas do mesmo banco não o listam duas vezes. Resultado:
+  `: IBGE PEVS · MDIC COMEX.`, igual às perspectivas cruzadas de fontes fixas.
+
+  Encontrado abrindo o modo Multi-fonte, o único caminho da citação que fora projetado
+  sem especificação e nunca visto na tela.
+
+---
+
 ## [1.31.1] - 2026-08-27
 
 ### Changed
