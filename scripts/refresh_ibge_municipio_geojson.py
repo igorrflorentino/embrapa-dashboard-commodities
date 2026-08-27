@@ -38,6 +38,7 @@ Uses ``requests`` (a core dep) because the host gzip-encodes the response.
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -49,6 +50,9 @@ URL = (
     "https://servicodados.ibge.gov.br/api/v3/malhas/estados/{uf}"
     "?formato=application/vnd.geo+json&intrarregiao=municipio&qualidade=minima"
 )
+# The authoritative município roster. ONE small request, unlike the 27 heavy mesh
+# downloads — which is what makes `--check` cheap enough to run on a schedule.
+COUNT_URL = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios"
 OUT_DIR = Path(__file__).resolve().parents[1] / "frontend" / "public" / "geo" / "municipios"
 
 # The 27 federative units (26 states + DF), matching the UF registry the map joins on.
@@ -82,10 +86,28 @@ UFS = [
     "TO",
 ]
 
-# IBGE's own município count per the Localidades API (~5570). A partial fetch that
-# still returns valid JSON would silently shrink the map, so the total is asserted.
+# How many municípios the malhas API actually DRAWS. A partial fetch that still
+# returns valid JSON would silently shrink the map, so the total is asserted.
+#
+# Note this is one FEWER than the Localidades roster (5571): IBGE's two APIs
+# disagree with each other. See ROSTER_ONLY.
 EXPECTED_TOTAL = 5570
 COORD_PRECISION = 3
+
+# Municípios that IBGE's Localidades roster lists but whose GEOMETRY the malhas API
+# does not publish yet. IBGE's own two APIs are out of step here — nothing this
+# script can fix, and not a staleness signal, so `--check` excludes them rather than
+# reporting a divergence that would be red forever (a permanently-failing check is
+# one people learn to ignore).
+#
+#   5101837  Boa Esperança do Norte/MT — created 2023. It is also the município the
+#            sibling mesh script flags as carrying ONLY the 2017 sub-UF branch (no
+#            classic meso/micro), for the same reason: it postdates those divisions.
+#
+# Consequence in the product: it is selectable in the geography filter (that cascade
+# is built from Localidades) but cannot be drawn. MunicipioChoropleth reports any
+# such município explicitly instead of silently folding it into the grey tally.
+ROSTER_ONLY = {"5101837"}
 
 
 def _round_coords(node: object) -> object:
@@ -117,6 +139,51 @@ def _fetch(uf: str) -> dict:
     resp = requests.get(URL.format(uf=uf), timeout=120, headers={"User-Agent": "Mozilla/5.0"})
     resp.raise_for_status()
     return resp.json()
+
+
+def vendored_codes() -> set[str]:
+    """Every município código currently drawn by the map, read off the vendored files."""
+    codes: set[str] = set()
+    for path in sorted(OUT_DIR.glob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for feat in payload.get("features") or []:
+            code = (feat.get("properties") or {}).get("codarea")
+            if code:
+                codes.add(str(code))
+    return codes
+
+
+def check() -> int:
+    """Compare the vendored geometry against IBGE's CURRENT município roster.
+
+    The mesh is versioned, so it silently goes stale: IBGE creates municípios (and
+    redraws limits) every few years, and nothing in the app would notice — the new
+    município would simply never be drawn, and its production would vanish from the
+    map while still counting in every total. This answers "is it stale?" with one
+    cheap request instead of re-downloading all 27 meshes, so it is affordable on a
+    schedule. Read-only; exits 1 when they diverge, 0 when they agree.
+    """
+    resp = requests.get(COUNT_URL, timeout=120, headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+    current = {str(m["id"]) for m in resp.json()}
+    have = vendored_codes()
+    # Known roster/geometry mismatches at IBGE itself are not staleness (see ROSTER_ONLY).
+    missing = sorted(current - have - ROSTER_ONLY)  # IBGE draws them, the map lacks them
+    extra = sorted(have - current)  # the map draws them, IBGE dropped them
+    known = sorted((current - have) & ROSTER_ONLY)
+
+    print(f"IBGE hoje: {len(current)} municípios · malha vendorizada: {len(have)}")
+    if known:
+        print(f"[i] {len(known)} sem geometria publicada pelo IBGE (conhecido): {known}")
+    if not missing and not extra:
+        print("[ok] A malha do mapa está em dia com o IBGE.")
+        return 0
+    if missing:
+        print(f"[!] {len(missing)} município(s) no IBGE e AUSENTES do mapa: {missing[:10]}")
+    if extra:
+        print(f"[!] {len(extra)} município(s) no mapa e ausentes do IBGE: {extra[:10]}")
+    print("Rode `make refresh-geo` para atualizar a malha e o seed.")
+    return 1
 
 
 def main() -> None:
@@ -173,4 +240,13 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Read-only: report whether the vendored mesh still matches IBGE (exit 1 if not).",
+    )
+    args = parser.parse_args()
+    if args.check:
+        raise SystemExit(check())
     main()

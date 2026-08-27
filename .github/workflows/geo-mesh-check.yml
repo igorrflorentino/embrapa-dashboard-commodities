@@ -1,0 +1,96 @@
+# Is the vendored IBGE territorial mesh still current?
+#
+# The mesh is VERSIONED (dbt/seeds/ibge_municipio_mesh.csv + the per-UF GeoJSON under
+# frontend/public/geo/municipios/), which means it goes stale silently: IBGE creates
+# municípios and redraws limits every few years, and nothing in the app would notice.
+# A new município would simply never be drawn on the map and never be selectable in
+# the geography filter, while its production still counted in every total.
+#
+# Unlike the reconcile reminder next door, this does NOT nag — it MEASURES, then only
+# opens an issue when something actually diverged. `--check` is one small request
+# against IBGE's Localidades roster (not the 27 heavy mesh downloads), so it is cheap
+# enough to run on a schedule. Quarterly: municipal boundary changes are tied to the
+# electoral calendar, so nothing moves faster than that.
+name: geo mesh check
+
+on:
+  schedule:
+    - cron: '0 12 1 */3 *'   # 1st of Jan/Apr/Jul/Oct, 12:00 UTC (09:00 BRT)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12.11"
+
+      - name: Install requests
+        run: pip install --quiet requests
+
+      - name: Compare the vendored mesh against IBGE
+        id: check
+        run: |
+          set +e
+          out="$(python scripts/refresh_ibge_municipio_geojson.py --check 2>&1)"
+          code=$?
+          set -e
+          echo "$out"
+          {
+            echo 'report<<GEOEOF'
+            echo "$out"
+            echo 'GEOEOF'
+          } >> "$GITHUB_OUTPUT"
+          echo "stale=$([ $code -ne 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Open an issue when the mesh has drifted
+        if: steps.check.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          REPORT: ${{ steps.check.outputs.report }}
+        run: |
+          body_file="$(mktemp)"
+          cat > "$body_file" <<EOF
+          **A malha territorial vendorizada divergiu do IBGE.**
+
+          \`\`\`
+          $REPORT
+          \`\`\`
+
+          O IBGE mudou o conjunto de municípios (criação, fusão ou mudança de código).
+          Enquanto a malha não for atualizada, um município novo **não é desenhado no
+          mapa** e **não aparece no filtro de geografia** — mas a produção dele segue
+          contando em todos os totais, então nenhum número fica errado, só invisível.
+
+          Para atualizar:
+
+          \`\`\`bash
+          make refresh-geo     # re-busca o seed (código -> ancestralidade) E as malhas por UF
+          make dbt-build       # reconstrói a dim a partir do seed
+          \`\`\`
+
+          Depois revise \`git diff --stat\` — os dois artefatos são versionados — e abra um PR.
+
+          Se a divergência for um município que o IBGE **lista** mas cuja **geometria
+          ele ainda não publica** (as duas APIs do IBGE saem de sincronia nesses casos),
+          o caminho é adicioná-lo a \`ROSTER_ONLY\` em
+          \`scripts/refresh_ibge_municipio_geojson.py\`, com a data e o motivo — não
+          re-baixar a malha, que não vai trazê-lo.
+          EOF
+          gh issue create \
+            --repo "\$REPO" \
+            --title "🗺️ Malha do IBGE divergiu — $(date -u +'%Y-%m')" \
+            --assignee "\$OWNER" \
+            --body-file "\$body_file"

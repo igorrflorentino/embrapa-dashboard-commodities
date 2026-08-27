@@ -1,27 +1,58 @@
-// choroplethScale.test.js — the pure color logic behind the UF choropleth
-// (maplibre itself needs WebGL, so it's verified in the browser, not here).
+// choroplethScale.test.js — the pure classification logic behind EVERY territorial
+// map (maplibre itself needs WebGL, so those are verified in the browser, not here).
 
 import { describe, expect, it } from 'vitest';
 
-import { NODATA, RAMP, fillColorExpression, ufColorScale, ufColorScaleQuantile } from './choroplethScale';
+import {
+  NODATA, RAMP, fillColorExpression, quantileIndexer, quantileThresholds, ufColorScaleQuantile,
+} from './choroplethScale';
 
-describe('ufColorScale', () => {
-  it('buckets values 0..max into the ramp; max → darkest, zero → no-data', () => {
-    const { byUf, max } = ufColorScale(
-      [{ uf: 'SP', v: 100 }, { uf: 'PA', v: 50 }, { uf: 'AC', v: 0 }],
-      'v',
-    );
-    expect(max).toBe(100);
-    expect(byUf.SP).toBe(RAMP[RAMP.length - 1]); // the maximum gets the darkest bucket
-    expect(byUf.AC).toBe(NODATA); // zero → neutral "no data" gray
-    expect(RAMP).toContain(byUf.PA); // a mid value lands on some ramp bucket
-    expect(byUf.PA).not.toBe(NODATA);
+describe('quantileIndexer — the rule every map now shares', () => {
+  it('spreads a concentrated series across all buckets where a linear split collapses it', () => {
+    // The real PEVS 2024 per-UF valor: one dominant state and a long tail. A linear
+    // (v-min)/(max-min) split put 21 of these 25 in the SAME lightest bucket.
+    const vals = [2908, 1122, 386, 354, 242, 200, 145, 108, 99, 98, 97, 97, 86, 81,
+                  65, 52, 51, 31, 26, 26, 11, 5, 3, 3, 1];
+    const idx = quantileIndexer(vals, 7);
+    const used = new Set(vals.map((v) => idx.indexOf(v)));
+    expect(used.size).toBe(7);            // every bucket earns at least one UF
+    expect(idx.indexOf(2908)).toBe(6);    // the maximum is darkest
+    expect(idx.indexOf(1)).toBe(0);       // the minimum is lightest
   });
 
-  it('is safe on empty / null / uf-less data', () => {
-    expect(ufColorScale([], 'v').byUf).toEqual({});
-    expect(ufColorScale(null, 'v').max).toBe(1); // max floored at 1 (no divide-by-zero)
-    expect(ufColorScale([{ v: 5 }], 'v').byUf).toEqual({}); // rows with no uf are skipped
+  it('reports -1 for non-positive / non-numeric values (absent ≠ smallest)', () => {
+    const idx = quantileIndexer([10, 20, 0], 6);
+    expect(idx.indexOf(0)).toBe(-1);
+    expect(idx.indexOf(-5)).toBe(-1);
+    expect(idx.indexOf(undefined)).toBe(-1);
+    expect(idx.indexOf(NaN)).toBe(-1);
+    expect(quantileIndexer([], 6).indexOf(1)).toBe(-1);
+  });
+
+  it('gives equal values the same bucket', () => {
+    const idx = quantileIndexer([5, 5, 5, 100], 6);
+    expect(idx.indexOf(5)).toBe(idx.indexOf(5));
+    expect(idx.indexOf(100)).toBeGreaterThan(idx.indexOf(5));
+  });
+
+  it('puts a lone value in the DARKEST bucket, not the lightest', () => {
+    // rank/n would put rank 0 of n=1 at position 0 — the lightest — for a value that
+    // is at once the smallest and the largest. Reachable from the map's own
+    // click-to-filter, which narrows the selection to a single UF.
+    expect(quantileIndexer([2_900_000_000], 6).indexOf(2_900_000_000)).toBe(5);
+  });
+
+  it('agrees with the plain split exactly at n === bucketCount (no jump at the seam)', () => {
+    const idx = quantileIndexer([1, 2, 3, 4, 5, 6], 6);
+    expect([1, 2, 3, 4, 5, 6].map((v) => idx.indexOf(v))).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it('quantileThresholds describes each bucket and nulls the empty ones', () => {
+    const idx = quantileIndexer([10, 20], 6);
+    const t = quantileThresholds(idx, RAMP);
+    expect(t.filter(Boolean)).toHaveLength(2); // 2 values → the top 2 buckets
+    expect(t[0]).toBeNull();
+    t.filter(Boolean).forEach((b) => expect(b.min).toBeLessThanOrEqual(b.max));
   });
 });
 

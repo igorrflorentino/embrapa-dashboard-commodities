@@ -3,6 +3,11 @@
 // can't match and that doesn't benefit from zoom/pan. Faithful port of the
 // prototype's component. Same name + props (incl. onSelect for drill-down).
 //   data: [{ uf, col, row, region, [valueKey] }]  (col/row decorated client-side)
+//
+// Classification comes from choroplethScale.js, shared with the two maplibre maps,
+// so every territorial view in the app bins the same numbers the same way.
+
+import { quantileIndexer, quantileThresholds } from './choroplethScale';
 
 function BrazilTileMap({ data = [], valueKey = 'value', label = 'R$ mi', height = 420, onSelect, selectedUf, compact = true }) {
   const COLS = 8;
@@ -23,18 +28,27 @@ function BrazilTileMap({ data = [], valueKey = 'value', label = 'R$ mi', height 
   );
 
   const vals = rows.map((d) => d[valueKey] || 0);
-  const max = vals.length ? Math.max(...vals) : 0;
-  const min = vals.length ? Math.min(...vals) : 0;
 
   const STOPS = [
     'var(--heat-1)', 'var(--heat-2)', 'var(--heat-3)', 'var(--heat-4)',
     'var(--heat-5)', 'var(--heat-6)', 'var(--heat-7)',
   ];
-  const level = (v) => {
-    if (!v) return -1;
-    const t = (v - min) / (max - min || 1);
-    return Math.min(STOPS.length - 1, Math.floor(t * (STOPS.length - 1) + 0.5));
-  };
+  // QUANTILE, the same rule BrazilChoropleth/MunicipioChoropleth use. This used to
+  // be a linear (v-min)/(max-min) split, which collapses on concentrated series:
+  // measured on the real PEVS 2024 per-UF valor, **21 of the 25 producing states
+  // landed in the single lightest bucket** and 4 of these 7 stops were never used.
+  //
+  // It also made the Geografia view contradict itself once the choropleth moved to
+  // quantile (v1.25.0): "Mapa" and "Blocos" are a toggle over the SAME numbers, so
+  // flipping between them silently reclassified the data. This component backs FIVE
+  // other views too (Visão geral, Rebanho, Produtividade, Qualidade, cruzadas), so
+  // the linear split was the classification most of the app was actually reading.
+  const indexer = quantileIndexer(vals, STOPS.length);
+  const thresholds = quantileThresholds(indexer, STOPS);
+  const positives = indexer.ranked;
+  const min = positives.length ? positives[0] : 0;
+  const max = positives.length ? positives[positives.length - 1] : 0;
+  const level = (v) => indexer.indexOf(v);
   const color = (v) => {
     const i = level(v);
     return i < 0 ? 'var(--heat-0)' : STOPS[i];
@@ -115,7 +129,16 @@ function BrazilTileMap({ data = [], valueKey = 'value', label = 'R$ mi', height 
         <span className="caption">{label}</span>
         <div className="bmap-scale">
           {STOPS.map((c, i) => (
-            <span key={i} style={{ background: c }}></span>
+            <span
+              key={i}
+              style={{ background: c, opacity: thresholds[i] ? 1 : 0.35 }}
+              // Each bucket says the range it actually covers, matching the
+              // choropleth's legend; an empty bucket is dimmed rather than given an
+              // invented range.
+              title={thresholds[i]
+                ? `${fmtTile(thresholds[i].min)} – ${fmtTile(thresholds[i].max)}`
+                : 'nenhuma UF nesta faixa'}
+            ></span>
           ))}
         </div>
         <span className="caption tnum">

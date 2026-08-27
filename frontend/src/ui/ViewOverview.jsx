@@ -256,7 +256,17 @@ function ViewOverview({ families, summary, database, conventions }) {
                 {/* RAW values + base unit: the tile map formats each UF with its OWN compact
                     magnitude (per-tile), so the global auto-scale — which floored small UFs to
                     "0" when ON — is intentionally NOT applied to the map. */}
-                <window.BrazilTileMap data={ufRows} valueKey="value" label={geoUnit} />
+                {/* Clicking a UF filters the whole dashboard to it (click again to
+                    clear) — the same gesture the Geografia map offers. Safe here
+                    because this map reads applyFilters' state-filtered ufData, so it
+                    actually reacts to the click. */}
+                <window.BrazilTileMap
+                  data={ufRows}
+                  valueKey="value"
+                  label={geoUnit}
+                  onSelect={window.tileSelectHandler && window.tileSelectHandler(summary)}
+                  selectedUf={window.selectedSingleUf && window.selectedSingleUf(summary)}
+                />
                 {filtered.ufYearPartial && (
                   <p className="caption" style={{ padding: '8px 4px 0' }}>
                     <strong>{mapYear} (parcial):</strong> o último ano com dados por UF fica antes do
