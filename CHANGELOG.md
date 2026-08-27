@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.29.3] - 2026-08-27
+
+Três ajustes de interface na Geografia, todos reportados por uso real.
+
+### Fixed
+- **O "Ver raio-x" não parecia clicável.** Foi entregue com a classe `seg-opt`, que só
+  tem aparência dentro de um grupo segmentado — solto num cabeçalho de card, era texto
+  sem chrome nenhum. Agora é `btn-secondary` (borda, superfície, hover, `cursor:
+  pointer`) com um ícone, que diz "isto abre uma leitura detalhada" onde o rótulo
+  sozinho não dizia.
+
+- **A barra de cor do mapa de calor colapsava com poucas linhas.** Ela ocupa a altura do
+  *gráfico*, e com uma única UF selecionada o gráfico tem ~68 px: o título da unidade e
+  os ticks se sobrepunham num borrão ilegível — justamente no recorte mais comum que
+  existe. Com até 3 linhas a barra vira **horizontal, abaixo do gráfico**, onde largura
+  é o que um mapa de calor de uma linha tem de sobra. Acima disso segue vertical. A
+  escada de ticks pt-BR é a mesma nas duas orientações, e uma altura passada
+  explicitamente pelo chamador continua sendo respeitada.
+
+### Added
+- **Mapa para a granularidade "Região"** — era a única das três sem mapa, ou seja, o
+  grão mais grosso era o único que não dava para ver. Não há geometria de macrorregião
+  para vendorizar e não é preciso: uma macrorregião é exatamente uma união de UFs, então
+  o mapa pinta **cada UF com o total da SUA região**, desenhando os cinco blocos sobre a
+  malha que já existe. Os valores vêm do mesmo `regScaled` das barras, então mapa e
+  barras compartilham base e escala.
+
+  Vem com o mesmo alternador **Mapa | Barras** que a UF tem — cinco blocos leem um
+  ranking pior do que cinco barras, então nenhuma das duas visões é a resposta sozinha.
+
+  Clicar numa região estreita para **as UFs dela**: `regions` sozinho é pai de cascata
+  (dirige as opções do menu de filtro), enquanto `states` é o que chega ao dado — os
+  dois são definidos, senão o chip se moveria e mais nada.
+
+---
+
 ## [1.29.2] - 2026-08-27
 
 Varredura em busca de outros casos do bug "4361,4%" — testes cujo *stub* diverge da

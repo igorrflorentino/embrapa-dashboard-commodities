@@ -81,6 +81,10 @@ function stubGlobals(filtered, opts = {}) {
 
   // Composed widgets — capture props / render markers.
   window.UnitFamilyBanner = () => <div className="ufb" />;
+  // The app always provides Icon (bootstrap-globals); a harness without it turns any
+  // icon-bearing element into "Element type is invalid", which reads as a component
+  // bug rather than a missing stub.
+  window.Icon = ({ name }) => <span data-icon={name} />;
   window.SectionHeader = ({ overline, title, action }) => (
     <div className="sh">
       <span className="sh-ov">{overline}</span>
@@ -527,5 +531,76 @@ describe('ViewGeography — the Perfil do território shortcut', () => {
     );
     expect([...container.querySelectorAll('button')].some((b) => /raio-x/i.test(b.textContent)))
       .toBe(false);
+  });
+});
+
+// ── Região: a map, like the other two grains ─────────────────────────────────
+//
+// Região had bars where UF and município had maps, so the COARSEST grain was the only
+// one you could not see on a map. A macrorregião is exactly a union of UFs, so the
+// region choropleth paints every UF with ITS REGION's total over geometry already
+// shipped — no região polygons to vendor, and one basis shared with the bars.
+
+describe('ViewGeography — the região map', () => {
+  // `region` on each UF row is what the real app's _decorateUf fills in; the shared
+  // fixture omits it, so the region map (which joins UF → region) needs it stated.
+  const regionFixture = () => fullFixture({
+    ufYearlySeries: UF_YEARLY,
+    ufData: [
+      { uf: 'PA', region: 'N', value: 75, q_mass: 30, q_vol: 8, q_count: 12, real: true },
+      { uf: 'AM', region: 'N', value: 20, q_mass: 8, q_vol: 2, q_count: 3, real: true },
+      { uf: 'SP', region: 'SE', value: 25, q_mass: 10, q_vol: 4, q_count: 6, real: true },
+    ],
+    regionData: [
+      { id: 'N', label: 'Norte', value: 95, q_mass: 38, q_vol: 10, q_count: 15, ufs: 2 },
+      { id: 'SE', label: 'Sudeste', value: 25, q_mass: 10, q_vol: 4, q_count: 6, ufs: 1 },
+    ],
+  });
+
+  it('paints every UF with its REGION total, so the five regions read as blocks', () => {
+    stubGlobals(regionFixture());
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs"
+                     conventions={{ autoScale: true }} />,
+    );
+    fireEvent.click([...container.querySelectorAll('button')].find((b) => b.textContent === 'Região'));
+    // Every UF of a region carries the SAME value — that is what makes it a region map
+    // rather than a UF map with region labels.
+    const byUf = Object.fromEntries(choroProps.data.map((d) => [d.uf, d[choroProps.valueKey]]));
+    // PA and AM are both Norte, so they must carry the SAME value — that is what makes
+    // this a region map rather than a UF map wearing region labels.
+    expect(byUf.PA).toBe(byUf.AM);
+    expect(byUf.PA).not.toBe(byUf.SP);
+  });
+
+  it('offers Barras too — five blocks rank worse than five bars', () => {
+    stubGlobals(regionFixture());
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs"
+                     conventions={{ autoScale: true }} />,
+    );
+    fireEvent.click([...container.querySelectorAll('button')].find((b) => b.textContent === 'Região'));
+    expect(container.querySelector('[aria-label="Visualização da região"]')).toBeTruthy();
+    fireEvent.click([...container.querySelectorAll('button')].find((b) => b.textContent === 'Barras'));
+    expect(container.querySelector('.region-bars, .regionbars')).toBeTruthy();
+  });
+
+  it('clicking a region narrows to ITS UFs, not just the cascade parent', () => {
+    // `regions` alone is a cascade parent (it steers the filter MENU); `states` is what
+    // reaches the data. Setting only the former would move the chip and nothing else.
+    stubGlobals(regionFixture());     // stubGlobals installs its own patchFilter mock…
+    const patch = vi.fn();
+    window.patchFilter = patch;       // …so ours has to land AFTER it
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs"
+                     conventions={{ autoScale: true }} />,
+    );
+    fireEvent.click([...container.querySelectorAll('button')].find((b) => b.textContent === 'Região'));
+    choroProps.onSelect('PA');
+    const arg = patch.mock.calls.at(-1)[0];
+    expect(arg.regions).toEqual(['N']);
+    expect(arg.states).toContain('PA');
+    // A region click must also drop any leftover sub-UF narrowing, same as a UF click.
+    expect(arg.munis).toBeNull();
   });
 });

@@ -44,6 +44,10 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
   // support "nice" ones (ptBrValueTicks returns null for that — see _base.jsx).
   const zMax = Math.max(0, ...z.flat().filter((v) => v != null));
   const zTicks = ptBrValueTicks(zMax);
+  // Row-count-aware height, and whether that leaves the vertical colorbar enough room.
+  // Three rows at 24px + chrome is about where a right-side title stops fitting.
+  const autoHeight = 22 + rows.length * 24 + 22;
+  const shortPlot = !height && rows.length <= 3;
 
   const traces = [
     {
@@ -56,17 +60,40 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
       // Sparse/ragged rows set missing cells to null (drawn as gaps). Suppress hover on
       // those gaps so a null cell doesn't pop a tooltip with a blank "%{z:,.2f}" value.
       hoverongaps: false,
-      colorbar: {
-        title: { text: valueLabel, side: 'right', font: { size: 11 } },
-        thickness: 12,
-        ...(zTicks ? { tickmode: 'array', tickvals: zTicks.tickvals, ticktext: zTicks.ticktext } : {}),
-      },
+      // The colorbar spans the PLOT's height, so on a short plot it has nowhere to put a
+      // right-side title AND its ticks: with a single row (a one-UF selection) the plot
+      // is ~68px and the unit collided with the values into an unreadable smudge.
+      // Below the threshold the bar goes HORIZONTAL, under the plot, where width is the
+      // one thing a one-row heatmap has plenty of.
+      colorbar: shortPlot
+        ? {
+            orientation: 'h',
+            title: { text: valueLabel, side: 'right', font: { size: 11 } },
+            thickness: 10,
+            len: 0.55,
+            x: 0,
+            xanchor: 'left',
+            y: -0.35,
+            yanchor: 'top',
+            ...(zTicks
+              ? { tickmode: 'array', tickvals: zTicks.tickvals, ticktext: zTicks.ticktext }
+              : {}),
+          }
+        : {
+            title: { text: valueLabel, side: 'right', font: { size: 11 } },
+            thickness: 12,
+            ...(zTicks
+              ? { tickmode: 'array', tickvals: zTicks.tickvals, ticktext: zTicks.ticktext }
+              : {}),
+          },
       hovertemplate: `<b>%{y}</b> · %{x}<br>%{z:,.2f} ${valueLabel}<extra></extra>`,
     },
   ];
 
   const layout = baseLayout({
-    margin: { l: 120, r: 16, t: 8, b: 36 },
+    // A horizontal colorbar lives BELOW the plot, so it needs bottom room the
+    // vertical one never did.
+    margin: { l: 120, r: 16, t: 8, b: shortPlot ? 76 : 36 },
     hovermode: 'closest',
     // x = a LINEAR year axis (not category): the years are contiguous integers, so a
     // numeric axis renders the heatmap cells identically (centred on each year, width
@@ -78,7 +105,9 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
   });
 
   // Fall back to a row-count-aware height when none is supplied.
-  return <Plot traces={traces} layout={layout} height={height || 22 + rows.length * 24 + 22} />;
+  // The extra height on a short plot is the horizontal colorbar's strip, not taller
+  // cells — the data band keeps its 24px row.
+  return <Plot traces={traces} layout={layout} height={height || (shortPlot ? autoHeight + 52 : autoHeight)} />;
 }
 
 window.Heatmap = Heatmap;
