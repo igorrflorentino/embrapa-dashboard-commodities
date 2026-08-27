@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.29.2] - 2026-08-27
+
+Varredura em busca de outros casos do bug "4361,4%" — testes cujo *stub* diverge da
+implementação real e por isso abençoam o bug. **Não havia outros.** Mas a causa raiz
+apareceu, e é a API, não os stubs.
+
+### Resultado da varredura
+- **Todos os call sites estão corretos.** Auditados um a um os 15 usos de `fmtPct`, os
+  9 de `pctBR`/aliases e os 20 de `fmtSigned` em `src/`: cada um passa o tipo certo de
+  número. O `fmtPct` da v1.29.0 era o único errado e já estava corrigido.
+- **Comparação estática de stubs é ruidosa demais** para essa classe (falsos positivos
+  em `crossViewApplies`, `viewAppliesTo`). O método que funcionou foi executar a suíte
+  **com os formatadores reais no lugar dos stubs**: as 15 falhas resultantes eram todas
+  cosméticas (`60,0%` vs `60.0%`, `'2 mil'` vs `'1500'`) ou artefato do próprio
+  experimento — nenhuma divergência de escala.
+
+### Added
+- **`formatterContracts.test.js`** — o único lugar que declara, de forma executável, o
+  que cada formatador numérico espera receber. Existe porque o projeto tem **três**
+  formatadores de porcentagem com **duas convenções opostas** e nomes que não dizem
+  qual é qual:
+
+      fmtPct(0.6)   → '60,0%'   recebe FRAÇÃO      (multiplica por 100)
+      pctBR(60)     → '60,0%'   recebe PERCENTUAL  (só concatena '%')
+      fmtSigned(60) → '+60,0%'  recebe PERCENTUAL
+
+  Um stub pode sempre divergir da função real; o que não pode divergir em silêncio é o
+  **contrato**. Inclui o caso errado (`fmtPct(43.614) === '4361,4%'`) fixado de
+  propósito, para que o sintoma seja reconhecível na próxima vez.
+
+### Fixed
+- **`pctBR(null)` renderizava `"—%"`** — traço com unidade colada, que se lê como valor
+  em vez de ausência. O irmão `fmtSigned(null)` já devolvia `'—'`, e o teste existente
+  afirmava as duas coisas a três linhas de distância sem notar a inconsistência: era um
+  teste de caracterização que travou a verruga em vez de questioná-la.
+
+### Documented
+- **Nota de convenção em `data.js`**, onde o autor de um call site realmente lê. Os
+  nomes dos campos do payload são a proteção que já existia (`*Frac` é fração,
+  `*Share`/`*Pct` é percentual) e agora está escrita.
+- **`fmtPct` e `pctBR` arredondam diferente** para a mesma quantidade — `toFixed`
+  (binário: `3.55` é `3.5499…` → baixo) contra `toLocaleString` (→ cima). O mesmo número
+  pode sair `3,5%` numa tela e `3,6%` noutra. Inofensivo em si, mas parece discrepância
+  de dado para quem compara duas views, então está fixado em teste.
+
+---
+
 ## [1.29.1] - 2026-08-27
 
 O seletor de território do "Perfil do território" **ignorava o filtro geográfico**.

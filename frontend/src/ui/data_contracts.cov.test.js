@@ -156,7 +156,10 @@ describe('data.js — formatters', () => {
   it('numBR / pctBR honour a fixed-decimal count and null', () => {
     expect(window.numBR(null)).toBe('—');
     expect(window.numBR(1234.5, 1)).toBe((1234.5).toLocaleString('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 1 }));
-    expect(window.pctBR(null)).toBe('—%');
+    // Was '—%' until v1.29.2 — a characterization test that locked in the wart rather
+    // than questioning it, three lines below the sibling assertion that fmtSigned(null)
+    // is a bare '—'. A dash with a unit glued on reads as a value, not as absence.
+    expect(window.pctBR(null)).toBe('—');
     expect(window.pctBR(12.34, 1)).toBe(window.numBR(12.34, 1) + '%');
   });
 

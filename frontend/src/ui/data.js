@@ -257,6 +257,19 @@ window.fmtNum = (n, unit) => {
   if (n == null) return '—';
   return n.toLocaleString('pt-BR') + (unit ? ' ' + unit : '');
 };
+// ── Percentages: THREE formatters, TWO opposite input conventions ────────────
+//
+//     fmtPct(0.6)   → '60,0%'   takes a FRACTION   (multiplies by 100)
+//     pctBR(60)     → '60,0%'   takes a PERCENTAGE (only appends '%')
+//     fmtSigned(60) → '+60,0%'  takes a PERCENTAGE (like pctBR)
+//
+// The names do not say which is which, and passing a percentage to fmtPct renders
+// something like "4361,4%" — which shipped once (v1.29.0). The payload field names are
+// the guardrail: `*Frac` is a fraction, `*Share`/`*Pct` is a percentage, and a call site
+// crossing the boundary multiplies EXPLICITLY (`chPct(data.expFrac * 100)`).
+//
+// formatterContracts.test.js pins all of this against real values — change a convention
+// there first, and read it there before writing a call site or a test stub.
 window.fmtPct = (n, digits = 1) => {
   if (n == null) return '—';
   return (n * 100).toFixed(digits).replace('.', ',') + '%';
@@ -269,10 +282,13 @@ window.fmtSigned = (n, digits = 1, suffix = '%') => {
 // pt-BR number with a FIXED number of decimals (min = max), or '—' for null.
 // Shared by the multi-source / curated views (was copy-pasted as caNum / msNum
 // / chNum). `pctBR` appends '%' to an ALREADY-percentage value — distinct from
-// fmtPct above, which multiplies a fraction by 100.
+// fmtPct above, which multiplies a fraction by 100 (see the note there).
+//
+// The null guard is on pctBR itself, not inherited from numBR: appending '%' to numBR's
+// em dash rendered "—%", which reads as a value rather than as absence.
 window.numBR = (v, d = 0) =>
   (v == null ? '—' : v.toLocaleString('pt-BR', { maximumFractionDigits: d, minimumFractionDigits: d }));
-window.pctBR = (v, d = 1) => window.numBR(v, d) + '%';
+window.pctBR = (v, d = 1) => (v == null ? '—' : window.numBR(v, d) + '%');
 
 // Compact row-counter label (mi / mil) for provenance "Linhas" readouts.
 // Shared by MainScreen + ViewHealth (was duplicated verbatim in both). Deliberately a
