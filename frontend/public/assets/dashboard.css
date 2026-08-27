@@ -3842,3 +3842,13 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
   .side-mode-switch .mode-opt.on { background: var(--embrapa-green); color: #fff; }
 }
 
+
+/* Card-header action that NAVIGATES (Geografia → Perfil do território). btn-secondary
+   gives it real chrome; these three lines only align the icon and let it sit inside a
+   section header without stretching it. */
+.gx-xray-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+}

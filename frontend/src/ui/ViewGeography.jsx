@@ -111,6 +111,9 @@ function ViewGeography({ families, conventions, summary, database }) {
     if (!muniCapable && scope === 'municipio') setScope('uf');
   }, [muniCapable, scope]);
   const [ufViz, setUfViz] = useGeoState('map'); // 'map' = maplibre choropleth, 'tiles' = SVG tile-grid
+  // Região gets the same Mapa/Barras choice UF has. Bars stay one click away: five
+  // blocks read a ranking worse than five bars do, so neither view is the answer alone.
+  const [regViz, setRegViz] = useGeoState('map');
 
   const massFamily = families.includes('mass');
   const volFamily  = families.includes('volume');
@@ -378,6 +381,38 @@ function ViewGeography({ families, conventions, summary, database }) {
   const ufScaled    = window.scaleSeries(scaledUFs,    sharedMax, conv, valueKey, unit);
   const regScaled   = window.scaleSeries(scaledRegions, Math.max(...scaledRegions.map(r => r[valueKey] || 0)), conv, valueKey, unit);
   const top10Scaled = window.scaleSeries(top10ufs,     sharedMax, conv, valueKey, unit);
+  // Região had bars where UF and município had maps, so the coarsest grain was the only
+  // one you could not SEE. There is no região geometry to vendor and none is needed: a
+  // macrorregião is exactly a union of UFs, so painting every UF with ITS REGION's total
+  // draws the five regions as five flat blocks over geometry we already ship. Values come
+  // from regScaled, so the map and the bars beside it are on one basis and one scale.
+  const regionUfRows = useGeoMemo(() => {
+    const byRegion = new Map(regScaled.data.map((r) => [r.id, r]));
+    return scaledUFs
+      .map((u) => {
+        const reg = byRegion.get(u.region);
+        return reg ? { ...u, [valueKey]: reg[valueKey], regionLabel: reg.label } : null;
+      })
+      .filter(Boolean);
+  }, [scaledUFs, regScaled, valueKey]);
+  // Clicking a region narrows to ITS UFs. `regions` alone is a cascade parent (it steers
+  // the filter menu's options); `states` is what actually reaches the data, so both are
+  // set — the chip then reads as the researcher's action and the numbers follow it.
+  const regionOfUf = (uf) => (scaledUFs.find((u) => u.uf === uf) || {}).region || null;
+  const selectedRegion = (Array.isArray(summary && summary.regions) && summary.regions.length === 1)
+    ? summary.regions[0] : null;
+  const handleRegionClick = (uf) => {
+    if (!uf || !window.patchFilter) return;
+    const reg = regionOfUf(uf);
+    if (!reg) return;
+    const cleared = { mesos: null, micros: null, inters: null, imediatas: null, munis: null };
+    if (selectedRegion === reg) {
+      window.patchFilter({ regions: null, states: null, ...cleared });
+      return;
+    }
+    const ufs = scaledUFs.filter((u) => u.region === reg).map((u) => u.uf);
+    window.patchFilter({ regions: [reg], states: ufs.length ? ufs : null, ...cleared });
+  };
   const heatMax     = Math.max(...heatRows.flatMap(r => r.values.map(v => v.v)));
   const heatScaled  = (() => {
     if (!conv.autoScale) return { rows: heatRows, label: unit };
@@ -489,19 +524,43 @@ function ViewGeography({ families, conventions, summary, database }) {
           // click, which stays a cheap reversible filter toggle. It carries no place of
           // its own — the profile reads the SAME geography filter this view writes, so
           // whatever is selected here is what opens there.
+          //
+          // Styled as a real button (btn-secondary: border + surface + hover), not the
+          // bare `seg-opt` it shipped as — outside a segmented group that class has no
+          // chrome of its own, so the action read as loose text and nobody could tell it
+          // was clickable. The icon says "this opens a detailed read", which the label
+          // alone does not.
           action={window.goToView ? (
             <button
-              className="seg-opt"
+              type="button"
+              className="btn-secondary gx-xray-btn"
               onClick={() => window.goToView('territory_profile')}
               title={xrayScope
                 ? `Abrir o perfil de ${xrayScope} em Perfil do território`
                 : 'Abrir Perfil do território'}
             >
+              <window.Icon name="fact_check" size={14} />
               Ver raio-x{xrayScope ? ` de ${xrayScope}` : ''}
             </button>
           ) : null}
         />
-        {scope === 'region' && <window.RegionBars data={regScaled.data} valueKey={valueKey} label={regScaled.label} height={280} />}
+        {scope === 'region' && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+              <div className="seg" role="group" aria-label="Visualização da região">
+                <button className={'seg-opt ' + (regViz === 'map' ? 'on' : '')}
+                        aria-pressed={regViz === 'map'} onClick={() => setRegViz('map')}>Mapa</button>
+                <button className={'seg-opt ' + (regViz === 'bars' ? 'on' : '')}
+                        aria-pressed={regViz === 'bars'} onClick={() => setRegViz('bars')}>Barras</button>
+              </div>
+            </div>
+            {regViz === 'map'
+              ? <window.BrazilChoropleth data={regionUfRows} valueKey={valueKey}
+                                         label={regScaled.label} onSelect={handleRegionClick} />
+              : <window.RegionBars data={regScaled.data} valueKey={valueKey}
+                                   label={regScaled.label} height={280} />}
+          </>
+        )}
         {scope === 'uf' && (
           <>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
