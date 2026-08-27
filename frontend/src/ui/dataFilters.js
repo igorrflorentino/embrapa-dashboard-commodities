@@ -414,13 +414,21 @@
           // returns cities beyond the narrowed set (it shouldn't, but don't trust it).
           .filter(r => { const a = meshByCode[r.cityCode]; return a && muniPassesFacets(a, geoFacets); })
           .map(r => ({
+            // cityCode is the IBGE 7-digit code — the join key for the municipal
+            // choropleth (it matches `codarea` in the vendored per-UF meshes).
+            cityCode: r.cityCode,
             city: (meshByCode[r.cityCode] || {}).cityName || r.cityCode,
             uf: r.uf,
             product: '',  // the cube is basket-aggregated (no per-product split here)
             value: r.value, q_mass: r.q_mass, q_vol: r.q_vol, q_count: r.q_count,
           }))
-          .sort((a, b) => (b.value || 0) - (a.value || 0))
-          .slice(0, 100);
+          .sort((a, b) => (b.value || 0) - (a.value || 0));
+        // NOT truncated here. This used to .slice(0, 100), which is a DISPLAY cap
+        // living in the engine — and once the municipal choropleth started drawing
+        // from these rows it turned into a data error: every município past rank 100
+        // had no row to match, so the map painted it as "sem produção registrada"
+        // and counted it in the grey tally (PA: 144 municípios → a false "44 sem
+        // produção"). The view caps the RANKING it lists; the map needs them all.
       }
     }
 

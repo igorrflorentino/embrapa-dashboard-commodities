@@ -87,6 +87,17 @@ describe('fillColorExpression', () => {
     expect(expr[expr.length - 1]).toBe('#fff');
   });
 
+  it('matches on a caller-supplied property (the municipal meshes key on codarea)', () => {
+    // This was hardcoded to 'uf'. The municipal choropleth then produced a valid
+    // `match` that matched NOTHING — every município fell through to the fallback and
+    // the whole state painted no-data grey, with no error anywhere to explain it.
+    const expr = fillColorExpression({ 1500107: '#aaa' }, '#fff', 'codarea');
+    expect(expr[1]).toEqual(['get', 'codarea']);
+    expect(expr).toContain('1500107');
+    // Default stays 'uf' so the UF choropleth is untouched.
+    expect(fillColorExpression({ SP: '#aaa' }, '#fff')[1]).toEqual(['get', 'uf']);
+  });
+
   it('returns the constant fallback when there is nothing to color', () => {
     expect(fillColorExpression({}, '#fff')).toBe('#fff');
     expect(fillColorExpression(null, '#fff')).toBe('#fff');

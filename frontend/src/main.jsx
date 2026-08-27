@@ -50,6 +50,7 @@ import './charts/LagBars.jsx';
 import './charts/Donut.jsx'; // SVG port (categorical share)
 import './charts/BrazilTileMap.jsx'; // SVG port (geographic tile grid)
 import './charts/BrazilChoropleth.jsx'; // maplibre choropleth (real UF shapes)
+import './charts/MunicipioChoropleth.jsx'; // maplibre choropleth (intra-UF município shapes)
 import './charts/PreviewBanner.jsx'; // non-chart banner the preview/cross views use
 
 // ── atoms + shell ─────────────────────────────────────────────────────────────

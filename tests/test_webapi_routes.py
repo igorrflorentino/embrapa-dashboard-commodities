@@ -549,6 +549,33 @@ def test_municipio_yearly_caps_city_codes_count(monkeypatch):
     assert "excede o limite" in resp.get_json()["error"]
 
 
+def test_municipio_yearly_passes_year_window_to_the_seam(monkeypatch):
+    """``y0``/``y1`` must reach the seam as startDate/endDate — the year window is the
+    SECOND cost control, and the one that matters for a whole-UF municipal choropleth
+    (one year over many cities, not all ~39). The SQL builder always accepted the
+    bounds; this route simply never forwarded them, so an unbounded whole-UF request
+    pulled every year. Absent y0/y1 must stay absent (full history, unchanged)."""
+    from embrapa_dashboard.webapi import seam
+
+    client = _client(monkeypatch)
+    seen: dict = {}
+
+    def capture(banco, conv, summary=None):
+        seen.update(summary or {})
+        return None
+
+    monkeypatch.setattr(seam, "geo_municipio_yearly", capture)
+    base = "/api/municipio-yearly?banco=ibge_pevs&currency=BRL&correction=IPCA"
+    client.post(f"{base}&y0=2024&y1=2024", json={"cityCodes": ["1500107"]})
+    assert seen["startDate"] == "2024"
+    assert seen["endDate"] == "2024"
+    assert seen["cityCodes"] == ["1500107"]
+
+    seen.clear()
+    client.post(base, json={"cityCodes": ["1500107"]})
+    assert "startDate" not in seen and "endDate" not in seen
+
+
 def test_basket_codes_count_is_capped(monkeypatch):
     """SEC-1: the product-basket `codes` IN-list is bounded symmetrically with cityCodes.
     An over-long ?codes list 400s as JSON (via the blueprint HTTPException handler)

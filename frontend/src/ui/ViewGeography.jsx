@@ -42,12 +42,17 @@ function rankMunisFromCube(cube, mesh, yearStart, yearEnd) {
   return cube
     .filter((r) => r.year === latest)
     .map((r) => ({
+      // cityCode is what the municipal choropleth joins on (IBGE's `codarea`);
+      // `city` stays the display name.
+      cityCode: r.cityCode,
       city: nameByCode[r.cityCode] || r.cityCode, uf: r.uf, product: '',
       value: r.value, q_mass: r.q_mass, q_vol: r.q_vol, q_count: r.q_count,
     }))
-    .sort((a, b) => (b.value || 0) - (a.value || 0))
-    .slice(0, 100);
+    .sort((a, b) => (b.value || 0) - (a.value || 0));
 }
+// How many municípios the RANKING lists. Display-only: the map always draws every
+// município that has a row, or the ones past the cut would read as "sem produção".
+const MUNI_LIST_CAP = 100;
 // Per-value compact magnitude (e.g. 113_008_308 → "113,0 mi") — the SAME rule the
 // choropleth popup and tile map already apply per-cell, reused here so the
 // município ranking stops showing raw, unscaled figures ("113.008.308,7 R$")
@@ -189,13 +194,22 @@ function ViewGeography({ families, conventions, summary, database }) {
   // was selected and the IBGE mesh hadn't warmed yet (a dataFilters.cov.test.js
   // regression caught it). Kept local, it can only ever affect this view.
   const wantMuniFallback = scope === 'municipio' && !!selectedSingleUf && !filtered.subUfActive;
-  const mesh = wantMuniFallback && window.geoMesh ? window.geoMesh() : null;
+  // The mesh is needed for the FALLBACK's city set AND, in both município paths, to
+  // resolve cityCode→name for the map popup and the heatmap's row labels. Gating it
+  // on wantMuniFallback alone left the sub-UF path (an explicit meso/município facet)
+  // without names, so those rows read as bare 7-digit codes. It is a cached, shared
+  // resource — asking for it whenever the município scope is open costs nothing.
+  const mesh = (scope === 'municipio' && window.geoMesh) ? window.geoMesh() : null;
   const ufCityCodes = useGeoMemo(
     () => (mesh ? mesh.filter((m) => m.uf === selectedSingleUf).map((m) => m.cityCode) : null),
     [mesh, selectedSingleUf],
   );
+  // Scoped to the researcher's OWN period window rather than the full 1986→ history:
+  // the cube feeds the map (one year) and the heatmap (which already discards years
+  // outside the window), so anything beyond it is fetched and thrown away. Worst case
+  // measured unbounded — MG, 853 municípios — is 21.468 rows / 2,3 MB / 4,5 s.
   const localMuniCube = (wantMuniFallback && ufCityCodes && ufCityCodes.length && window.municipioYearly)
-    ? window.municipioYearly(database, summary, ufCityCodes)
+    ? window.municipioYearly(database, summary, ufCityCodes, [filtered.yearStart, filtered.yearEnd])
     : null; // null = pending fetch (or not wanted); [] = loaded-empty; [...] = rows
   const localMuniLoading = wantMuniFallback && !!(ufCityCodes && ufCityCodes.length) && localMuniCube == null;
   const localMuniRows = useGeoMemo(
@@ -205,6 +219,38 @@ function ViewGeography({ families, conventions, summary, database }) {
   // dataFilters' own sub-UF cube (an explicit meso/micro/… facet) always wins when
   // it has rows; the single-UF fallback only fills in when that path is empty.
   const activeMuniRows = filtered.topMunis.length ? filtered.topMunis : localMuniRows;
+
+  // ---- Municipal choropleth (EST-4: the sub-UF filter finally reaches the map) ---
+  // The vendored geometry is ONE FILE PER UF, so the map can only draw when the
+  // active selection resolves to a single state — either because one UF is selected,
+  // or because every município that survived the sub-UF facets happens to sit in one
+  // (the common case: a mesorregião belongs to exactly one UF). Anything broader
+  // (two UFs' mesorregiões, or no geographic narrowing at all) keeps the ranking,
+  // which is correct at any breadth. Loading the whole-country mesh instead would be
+  // ~836 KB gzipped for 5570 polygons that are 2-3px smudges at that zoom.
+  const muniMapUf = useGeoMemo(() => {
+    if (selectedSingleUf) return selectedSingleUf;
+    const ufs = new Set(activeMuniRows.map((m) => m.uf).filter(Boolean));
+    return ufs.size === 1 ? [...ufs][0] : null;
+  }, [selectedSingleUf, activeMuniRows]);
+  const [muniViz, setMuniViz] = useGeoState('map'); // 'map' = choropleth municipal, 'list' = ranking
+  // Clicking a município narrows the filter to it, the same bridge the UF map uses.
+  // Clicking the selected one again clears just the município facet (the UF/sub-UF
+  // narrowing that got us here stays — the researcher didn't ask to leave it).
+  const selectedSingleCity = Array.isArray(summary && summary.munis) && summary.munis.length === 1
+    ? summary.munis[0] : null;
+  const handleCityClick = (code) => {
+    if (!code || !window.patchFilter) return;
+    window.patchFilter({ munis: selectedSingleCity === code ? null : [code] });
+  };
+  const muniVizToggle = (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+      <div className="seg" role="group" aria-label="Visualização por município">
+        <button className={'seg-opt ' + (muniViz === 'map' ? 'on' : '')} aria-pressed={muniViz === 'map'} onClick={() => setMuniViz('map')}>Mapa</button>
+        <button className={'seg-opt ' + (muniViz === 'list' ? 'on' : '')} aria-pressed={muniViz === 'list'} onClick={() => setMuniViz('list')}>Ranking</button>
+      </div>
+    </div>
+  );
 
   // CONF-4: "Exportar CSV" lives in the topbar (main.jsx), built from
   // {view, database, summary, conventions} — it has no way to see this view's OWN
@@ -494,12 +540,13 @@ function ViewGeography({ families, conventions, summary, database }) {
             );
           }
           const max = Math.max(...rows.map(x => x[valueKey] || 0)) || 1;
-          return (
+          const listRows = rows.slice(0, MUNI_LIST_CAP);
+          const list = (
             <div className="muni-list">
-              {rows.map((m, i) => {
+              {listRows.map((m, i) => {
                 const v = m[valueKey] || 0;
                 return (
-                  <div key={m.city + m.uf} className="muni-row">
+                  <div key={(m.cityCode || m.city) + m.uf} className="muni-row">
                     <span className="muni-rank tnum">#{i + 1}</span>
                     <span className="muni-name">{m.city}</span>
                     <span className="muni-uf">{m.uf}</span>
@@ -510,6 +557,29 @@ function ViewGeography({ families, conventions, summary, database }) {
               })}
             </div>
           );
+          // The municipal choropleth is a per-UF asset, so it can only draw when the
+          // selection resolves to exactly ONE state (a meso filter spanning two UFs,
+          // or no UF at all, has no single mesh to load). Falls back to the ranking,
+          // which is grain-correct either way.
+          if (muniMapUf && muniViz === 'map') {
+            return (
+              <>
+                {muniVizToggle}
+                <window.MunicipioChoropleth
+                  uf={muniMapUf}
+                  data={rows}
+                  valueKey={valueKey}
+                  label={valueUnitLabel}
+                  selectedCity={selectedSingleCity}
+                  onSelect={handleCityClick}
+                  // With a sub-UF/município facet active the un-shaded municípios are
+                  // OUTSIDE the selection, not municípios without production.
+                  narrowed={filtered.subUfActive}
+                />
+              </>
+            );
+          }
+          return muniMapUf ? <>{muniVizToggle}{list}</> : list;
         })()}
       </div>
 

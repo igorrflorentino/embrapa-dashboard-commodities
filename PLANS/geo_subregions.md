@@ -1,6 +1,6 @@
 # Plan — IBGE sub-UF geography (meso/micro + intermediate/immediate) + live município
 
-Status: in progress (2026-06-22). Adds the IBGE territorial levels **between UF and
+Status: **DONE** (2026-08-27, v1.26.0). Adds the IBGE territorial levels **between UF and
 município** as filterable geography dimensions, and activates **município** as a live
 filter (today gated). Scope: the municipality-grained IBGE bancos only — `ibge_pevs`,
 `ibge_pam`, `ibge_ppm` (they ingest at SIDRA `n6` and Gold carries `city_code`). COMEX
@@ -57,6 +57,25 @@ already has `city_code` (7-digit IBGE code) to join on.
 7. **Tests + preview** — pytest (dim/seam/serializers/routes), vitest (cascade engine +
    dataFilters), dbt tests on the seed/dim, browser preview verifying a meso/micro filter
    narrows the map.
+
+   ✅ Closed in v1.26.0. Steps 1-6 shipped in v1.5.2; step 7's LAST clause — "a meso/micro
+   filter narrows **the map**" — did not, and stayed open for over a year: the cascade
+   narrowed the DATA correctly while `BrazilChoropleth` kept shading the whole UF, so the
+   finest filter in the product had no visible effect. Closing it needed municipal
+   *geometry*, which the repo had none of:
+
+   - `scripts/refresh_ibge_municipio_geojson.py` vendors one mesh per UF from IBGE's
+     malhas API v3 (`intrarregiao=municipio&qualidade=minima`, coordinates rounded to 3
+     decimals) into `frontend/public/geo/municipios/<UF>.json` — 27 files, ~2.9 MB.
+   - `MunicipioChoropleth.jsx` draws them, lazily, one UF at a time.
+   - The join needed no new plumbing: IBGE's `codarea` IS the 7-digit `city_code` this
+     plan already built everything else on.
+
+   **Per UF, not for Brazil**, and that is a deliberate limit rather than a first
+   increment: the whole-country municipal mesh is ~836 KB gzipped (heavier than maplibre)
+   and 5570 polygons at country zoom are 2-3px smudges. The map therefore renders only
+   when the selection resolves to ONE state; broader selections keep the ranking, which is
+   grain-correct at any breadth.
 
 ## Notes / accessory needs
 - The município universe is currently gated (`topMunis` []); activating it live is part of

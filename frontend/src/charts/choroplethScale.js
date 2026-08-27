@@ -71,8 +71,15 @@ export function ufColorScaleQuantile(data, valueKey, ramp = RAMP, nodata = NODAT
   return { byUf, thresholds };
 }
 
-/** A maplibre data-driven `match` expression on the `uf` feature property, or a
- *  constant fallback color when there's nothing to color.
+/** A maplibre data-driven `match` expression on a feature property, or a constant
+ *  fallback color when there's nothing to color.
+ *
+ *  `property` is the GeoJSON property the keys of `byUf` match against. It defaults
+ *  to `'uf'` (the UF mesh's 2-letter sigla); the municipal meshes vendored from IBGE
+ *  key on `'codarea'` (the 7-digit city code) instead. This used to be hardcoded to
+ *  `'uf'`, so the municipal choropleth compiled a perfectly valid expression that
+ *  matched *nothing* — every município fell through to the fallback and the whole
+ *  state painted no-data grey, with no error anywhere to explain it.
  *
  *  Hardened (FINDING #5): only well-formed [string uf → string color] pairs are
  *  emitted. A `null`/`undefined`/non-string label or color injected into a
@@ -81,7 +88,7 @@ export function ufColorScaleQuantile(data, valueKey, ramp = RAMP, nodata = NODAT
  *  'length')" — which blanks the map without tripping the WebGL fallback. Any
  *  bad pair is dropped; if nothing valid remains we return the constant fallback
  *  so maplibre always receives a valid paint value. */
-export function fillColorExpression(byUf, fallback = NODATA) {
+export function fillColorExpression(byUf, fallback = NODATA, property = 'uf') {
   const pairs = [];
   for (const [uf, color] of Object.entries(byUf || {})) {
     if (typeof uf === 'string' && uf && typeof color === 'string' && color) {
@@ -89,5 +96,5 @@ export function fillColorExpression(byUf, fallback = NODATA) {
     }
   }
   if (!pairs.length) return fallback;
-  return ['match', ['get', 'uf'], ...pairs, fallback];
+  return ['match', ['get', property], ...pairs, fallback];
 }
