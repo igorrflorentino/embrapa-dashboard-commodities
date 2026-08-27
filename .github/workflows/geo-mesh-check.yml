@@ -51,10 +51,13 @@ jobs:
             echo "$out"
             echo 'GEOEOF'
           } >> "$GITHUB_OUTPUT"
-          echo "stale=$([ $code -ne 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          # 0 = in sync, 1 = drifted, 2 = IBGE unreachable. Keep 1 and 2 APART: a
+          # network failure reported as drift is a false alarm every quarter, and an
+          # alert that cries wolf is worse than no alert.
+          echo "code=$code" >> "$GITHUB_OUTPUT"
 
       - name: Open an issue when the mesh has drifted
-        if: steps.check.outputs.stale == 'true'
+        if: steps.check.outputs.code == '1'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -90,7 +93,15 @@ jobs:
           re-baixar a malha, que não vai trazê-lo.
           EOF
           gh issue create \
-            --repo "\$REPO" \
+            --repo "$REPO" \
             --title "🗺️ Malha do IBGE divergiu — $(date -u +'%Y-%m')" \
-            --assignee "\$OWNER" \
-            --body-file "\$body_file"
+            --assignee "$OWNER" \
+            --body-file "$body_file"
+
+      - name: Fail loudly when IBGE could not be reached
+        if: steps.check.outputs.code != '0' && steps.check.outputs.code != '1'
+        run: |
+          echo "::warning title=Malha não verificada::IBGE não respondeu; a malha NÃO foi comparada."
+          echo "Isso NÃO significa que a malha divergiu — significa que não deu para medir."
+          echo "Se repetir por dois trimestres, investigue o acesso ao IBGE a partir dos runners."
+          exit 1

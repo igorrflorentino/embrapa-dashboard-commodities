@@ -148,3 +148,90 @@ def test_main_refuses_a_total_that_does_not_match_expected(monkeypatch, tmp_path
     _patch(monkeypatch, tmp_path, {"PA": _fc("1500107")}, expected=5570)
     with pytest.raises(SystemExit, match="expected 5570"):
         geo.main()
+
+
+# ── `--check`: "could not measure" must never read as "the mesh drifted" ─────
+#
+# The first scheduled run of geo-mesh-check failed because IBGE timed out from a
+# GitHub runner. The workflow collapsed every non-zero exit into stale=true, so a
+# network failure would have opened an issue announcing that IBGE changed the mesh.
+# A quarterly false alarm trains everyone to ignore the one alert that matters, so
+# the two outcomes carry distinct exit codes.
+
+
+class _Resp:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+def test_fetch_roster_retries_then_succeeds(monkeypatch):
+    calls = []
+
+    def flaky(url, **kwargs):
+        calls.append(url)
+        if len(calls) < 3:
+            raise geo.requests.ConnectionError("boom")
+        return _Resp([{"id": 1500107}])
+
+    monkeypatch.setattr(geo.requests, "get", flaky)
+    monkeypatch.setattr(geo.time, "sleep", lambda _s: None)  # no real backoff in tests
+
+    assert geo._fetch_roster() == [{"id": 1500107}]
+    assert len(calls) == 3  # two failures absorbed
+
+
+def test_fetch_roster_returns_none_when_ibge_never_answers(monkeypatch):
+    def always_fails(url, **kwargs):
+        raise geo.requests.ConnectTimeout("timed out")
+
+    monkeypatch.setattr(geo.requests, "get", always_fails)
+    monkeypatch.setattr(geo.time, "sleep", lambda _s: None)
+
+    # None, not an exception: the caller has to be able to tell this apart from drift.
+    assert geo._fetch_roster() is None
+
+
+def test_check_reports_unreachable_not_drift_when_ibge_is_down(monkeypatch, capsys):
+    monkeypatch.setattr(geo, "_fetch_roster", lambda: None)
+
+    code = geo.check()
+
+    assert code == geo.EXIT_UNREACHABLE
+    assert code != geo.EXIT_DRIFTED  # the whole point
+    out = capsys.readouterr().out
+    assert "não foi verificada" in out.lower()
+    # It must NOT tell the reader to go refresh the mesh — nothing was measured.
+    assert "make refresh-geo" not in out
+
+
+def test_check_reports_in_sync_when_roster_matches(monkeypatch, capsys):
+    monkeypatch.setattr(geo, "_fetch_roster", lambda: [{"id": "1500107"}])
+    monkeypatch.setattr(geo, "vendored_codes", lambda: {"1500107"})
+
+    assert geo.check() == geo.EXIT_IN_SYNC
+    assert "em dia" in capsys.readouterr().out
+
+
+def test_check_reports_drift_when_ibge_added_a_municipio(monkeypatch, capsys):
+    monkeypatch.setattr(geo, "_fetch_roster", lambda: [{"id": "1500107"}, {"id": "1500108"}])
+    monkeypatch.setattr(geo, "vendored_codes", lambda: {"1500107"})
+
+    assert geo.check() == geo.EXIT_DRIFTED
+    assert "1500108" in capsys.readouterr().out
+
+
+def test_check_ignores_roster_only_codes_ibge_does_not_draw(monkeypatch, capsys):
+    # IBGE lists the código but publishes no geometry — a known upstream mismatch,
+    # not staleness on our side.
+    only = next(iter(geo.ROSTER_ONLY))
+    monkeypatch.setattr(geo, "_fetch_roster", lambda: [{"id": "1500107"}, {"id": only}])
+    monkeypatch.setattr(geo, "vendored_codes", lambda: {"1500107"})
+
+    assert geo.check() == geo.EXIT_IN_SYNC
+    assert "conhecido" in capsys.readouterr().out

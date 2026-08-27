@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.28.2] - 2026-08-27
+
+O `geo mesh check` nunca tinha rodado. Disparei manualmente pela primeira vez e ele
+falhou — expondo três defeitos que só apareceriam em outubro, e o pior deles em
+silêncio.
+
+### Fixed
+- **Falha de rede não é mais lida como "a malha divergiu".** O `--check` saía `1`
+  em qualquer erro e o workflow fazia `stale=$([ $code -ne 0 ])`, então um timeout
+  do IBGE abriria uma issue anunciando que o IBGE mudou o conjunto de municípios.
+  Isso contradiz o desenho declarado no cabeçalho do próprio workflow ("MEDE, e só
+  abre issue quando algo divergiu de fato") e um alarme falso trimestral é a forma
+  mais rápida de ensinar todo mundo a ignorar o alerta que importa.
+
+  Agora há três desfechos distintos: `0` em dia, `1` divergiu, `2` **não deu para
+  medir**. O passo que abre issue roda só no `1`; o `2` falha com `::warning` e diz
+  explicitamente que não afirma nada sobre a malha.
+
+- **A API de localidades do IBGE dá timeout a partir dos runners do GitHub** (a
+  primeira execução morreu com `ConnectTimeout` após 120 s; da estação de trabalho
+  responde normalmente). `_fetch_roster` agora tenta 4 vezes com backoff
+  exponencial e timeout de 30 s por tentativa, e devolve `None` em vez de levantar
+  — para que o chamador consiga separar "não medi" de "divergiu".
+
+- **O passo que abre a issue estava quebrado.** `--repo "\$REPO"`, `--assignee
+  "\$OWNER"` e `--body-file "\$body_file"` escapavam o `$`, então o bash passava
+  as strings literais `$REPO`/`$OWNER`/`$body_file`. Confirmado na execução real:
+  `open $body_file: no such file or directory`. O `--title` logo acima usava
+  `$(date ...)` sem escape e expandia certo — a inconsistência denunciava o
+  acidente. Esse caminho só roda no momento exato em que a malha diverge, ou seja,
+  falharia justamente quando fosse necessário.
+
+### Added
+- Seis testes em `tests/test_refresh_municipio_geojson.py` fixando a separação
+  entre `EXIT_UNREACHABLE` e `EXIT_DRIFTED`, o retry com backoff, e o fato de que
+  o caminho "não deu para medir" **não** manda ninguém rodar `make refresh-geo`.
+
+---
+
 ## [1.28.1] - 2026-08-27
 
 Higiene de dependências: o PR semanal do eslint 10 **não era instável, era impossível**.
