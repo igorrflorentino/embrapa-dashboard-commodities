@@ -66,6 +66,22 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # eslint 10 is UNINSTALLABLE here, not merely risky: eslint-plugin-react's
+      # peer range ends at `^9.7` and 7.37.5 is still its latest release, so
+      # `npm ci` dies with ERESOLVE before a single test runs. That is not a
+      # migration we can do on our side — no config or code change in this repo
+      # lifts an upstream peer bound. Left alone, Dependabot reopens the same
+      # dead PR every week and each one burns a full CI matrix to fail at the
+      # install step (three such runs on 2026-08-27 alone).
+      #
+      # REVISIT when eslint-plugin-react publishes a release accepting eslint 10
+      # (`npm view eslint-plugin-react peerDependencies`), then drop this block
+      # and bump both together. eslint-plugin-react-hooks@7.1.1 already accepts
+      # ^10.0.0, so that half is ready. Minor/patch eslint 9.x bumps still flow.
+      - dependency-name: "eslint"
+        update-types:
+          - "version-update:semver-major"
 
   # Cloud Run image base layers (deploy/*/Dockerfile). Both pin python:3.12-slim /
   # node:24-slim by floating tag; the docker updater bumps the pinned base (and,
