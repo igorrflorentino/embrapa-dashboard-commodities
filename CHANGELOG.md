@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.30.1] - 2026-08-27
+
+### Fixed
+- **O limiar que decide a orientação da barra de cor era baixo demais.** Estava em 3
+  linhas, um número que eu havia estimado, não medido. Com **4 linhas** a barra vertical
+  saía com **44px de altura** para três rótulos de ~12px cada — legível, mas encostando
+  um no outro.
+
+  Medido e ajustado para **5**: aos 6 o gradiente tem ~92px, onde os rótulos respiram.
+  Abaixo disso a barra vai para a horizontal, onde um mapa de calor de poucas linhas tem
+  largura de sobra. Verificadas as duas fronteiras: 5 linhas → horizontal com gradiente
+  de 781px e nenhuma colisão; 6 linhas → vertical com 92px.
+
+  Encontrado ao fechar a mesma lacuna que deixou o bug da v1.29.5 passar: eu havia
+  verificado os estados extremos (1 linha e 12), nunca a vizinhança do limiar.
+
+---
+
 ## [1.30.0] - 2026-08-27
 
 A barra de cor dos mapas de calor reconstruída como **legenda**, não como eixo.
