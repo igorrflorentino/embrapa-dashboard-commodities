@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.31.1] - 2026-08-27
+
+### Changed
+- **O título da obra vai em negrito na referência**, conforme a ABNT NBR 6023:2025 — e
+  **o subtítulo não**. Na opção "Por banco de dados" isso significa que
+  `Dashboard de análise histórica de produtos agrícolas` fica em negrito e
+  `: IBGE PEVS` não: é justamente a distinção entre título e subtítulo que a norma faz.
+
+  Cada nível passou a ser montado em **três partes** (`head` / `title` / `rest`) em vez
+  de uma string única. Uma string só poderia ser re-dividida por adivinhação sobre onde
+  o título termina; com a fronteira explícita, o negrito cai sempre no lugar certo.
+
+- **"Copiar referência" leva o negrito junto.** `writeText` entrega texto puro, e o
+  destino real deste botão é um editor de texto — onde o título destacado é exatamente o
+  que a norma exige. Sem isso o pesquisador reaplicaria o negrito à mão toda vez.
+
+  Agora escreve `text/html` **e** `text/plain` via `ClipboardItem`: o Word/Docs pega o
+  trecho formatado, e um destino de texto puro (um `.bib`, um terminal) recebe os mesmos
+  caracteres. Onde `ClipboardItem` não existe, cai no `writeText` de antes — uma
+  referência sem negrito é melhor que nenhuma.
+
+  Os `&` do permalink são escapados no HTML: sem isso o destino da colagem os interpreta
+  como entidades e corrompe em silêncio o link que o leitor deveria seguir.
+
+---
+
 ## [1.31.0] - 2026-08-27
 
 O modal "Citar painel" passa a oferecer **três níveis de detalhe** para a referência.

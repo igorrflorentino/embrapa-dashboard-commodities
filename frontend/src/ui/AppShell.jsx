@@ -35,6 +35,16 @@ function clickable(onActivate) {
 const SIDEBAR_MIN_W = 200;
 const SIDEBAR_MAX_W = 460;
 const SIDEBAR_DEFAULT_W = '260px';
+// Minimal HTML escape for the rich-clipboard reference. The reference carries a
+// permalink whose query string is full of `&`, which would otherwise be parsed as an
+// entity by the paste target and silently corrupt the URL a reader is meant to follow.
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function SidebarResizer() {
   const beginResize = (e) => {
     e.preventDefault();
@@ -278,35 +288,40 @@ function AppShell({
     ? (crossSourcesLabel || (isPickerCite ? crossLabel() : ''))
     : (activeBanco?.short || database);
 
-  const citation = isCrossView
+  // Each level is built as three PARTS rather than one string, because NBR 6023:2025
+  // highlights the TITLE of the work and NOT its subtitle. Keeping the boundary explicit
+  // is what lets the modal bold exactly the title, and lets the copy carry that bold into
+  // a word processor — a single string could only be re-split by guessing.
+  //
+  //   head   author, plain
+  //   title  the work's title, BOLD
+  //   rest   subtitle, scope and the publication tail, all plain
+  const citeRest = isCrossView
     ? (isPickerCite
-        ? `${CITE_AUTHOR} ` +
-          `${CITE_TITLE} \u2014 Cruzamento entre fontes \u2014 ` +
+        ? ` \u2014 Cruzamento entre fontes \u2014 ` +
           `${crossLabel()}. Recorte: ${period}. Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ` +
-          `Bras\u00edlia, DF: Embrapa, ${editoraYear}. ${dispoStr}Acesso em: ${accessedOn}.`
-        : `${CITE_AUTHOR} ` +
-          `${CITE_TITLE} \u2014 An\u00e1lise cruzada \u2014 ` +
+          `${citeTail}`
+        : ` \u2014 An\u00e1lise cruzada \u2014 ` +
           `${VIEW_LABEL[view] || view}${crossSourcesLabel ? ` (fontes: ${crossSourcesLabel})` : ''}. ` +
-          `Recorte: ${period}. Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ` +
-          `Bras\u00edlia, DF: Embrapa, ${editoraYear}. ${dispoStr}Acesso em: ${accessedOn}.`)
-    : `${CITE_AUTHOR} ` +
-      `${CITE_TITLE} \u2014 ` +
-      `${bancoCiteLabel} \u2014 ${VIEW_LABEL[view] || view}. ` +
-      `Recorte: ${period}. ${scopeStr}Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ` +
-      `Bras\u00edlia, DF: Embrapa, ${editoraYear}. ${dispoStr}Acesso em: ${accessedOn}.`;
+          `Recorte: ${period}. Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ${citeTail}`)
+    : ` \u2014 ${bancoCiteLabel} \u2014 ${VIEW_LABEL[view] || view}. ` +
+      `Recorte: ${period}. ${scopeStr}Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ${citeTail}`;
 
-  const citationTool = `${CITE_AUTHOR} ${CITE_TITLE}. ${citeTail}`;
-  const citationBanco = citeSourceName
-    ? `${CITE_AUTHOR} ${CITE_TITLE}: ${citeSourceName}. ${citeTail}`
-    : citationTool;
   const CITE_LEVELS = [
-    { id: 'tool', label: 'Ferramenta geral', text: citationTool,
+    { id: 'tool', label: 'Ferramenta geral',
+      head: CITE_AUTHOR, title: CITE_TITLE, rest: `. ${citeTail}`,
       hint: 'Cita o dashboard como ferramenta \u2014 sem banco e sem filtros.' },
-    { id: 'banco', label: 'Por banco de dados', text: citationBanco,
+    { id: 'banco', label: 'Por banco de dados',
+      head: CITE_AUTHOR, title: CITE_TITLE,
+      // The source is a SUBTITLE (after the colon), so it stays out of the bold — that
+      // is the distinction NBR 6023:2025 draws between título and subtítulo.
+      rest: citeSourceName ? `: ${citeSourceName}. ${citeTail}` : `. ${citeTail}`,
       hint: 'Acrescenta a fonte de dados consultada.' },
-    { id: 'query', label: 'Consulta detalhada', text: citation,
+    { id: 'query', label: 'Consulta detalhada',
+      head: CITE_AUTHOR, title: CITE_TITLE, rest: citeRest,
       hint: 'Descreve o recorte exato: banco, per\u00edodo, produtos, UFs e conven\u00e7\u00f5es.' },
-  ];
+  ].map((lv) => ({ ...lv, text: `${lv.head} ${lv.title}${lv.rest}` }));
+
   const activeCite = CITE_LEVELS.find((l) => l.id === citeLevel) || CITE_LEVELS[0];
 
   // ABNT NBR 10520:2023 in-text citation (chamada autor-data) \u2014 what you insert in
@@ -340,10 +355,29 @@ function AppShell({
     setShared(true);
     setTimeout(() => setShared(false), 1800);
   };
+  // Copy the SELECTED level, carrying its bold title into the paste target.
+  //
+  // writeText alone would drop the bold, and the researcher pastes this into a word
+  // processor where the highlighted title is the part NBR 6023:2025 actually requires —
+  // so they would have to re-apply it by hand every time. Writing text/html AND
+  // text/plain lets Word/Docs take the formatted run while a plain-text target (a .bib,
+  // a terminal) still gets the exact same characters.
+  const citeHtml = (lv) =>
+    `<p>${escapeHtml(lv.head)} <b>${escapeHtml(lv.title)}</b>${escapeHtml(lv.rest)}</p>`;
   const onCopyCite = async () => {
-    // The SELECTED level, not the detailed one: the button under a chosen radio has to
-    // copy what the box above it shows.
-    try { await navigator.clipboard.writeText(activeCite.text); } catch {}
+    const plain = activeCite.text;
+    try {
+      if (typeof ClipboardItem === 'function' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([citeHtml(activeCite)], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' }),
+        })]);
+        return;
+      }
+    } catch {
+      /* fall through to plain text — a reference without bold beats no reference */
+    }
+    try { await navigator.clipboard.writeText(plain); } catch {}
   };
   const onCopyInText = async () => {
     try { await navigator.clipboard.writeText(inTextCite); } catch {}
@@ -710,7 +744,13 @@ function AppShell({
                     </label>
                   ))}
                 </div>
-                <pre className="cite-text">{activeCite.text}</pre>
+                {/* The title is the only bold run — NBR 6023:2025 highlights the
+                    título and not the subtítulo, so the source after the colon in
+                    "Por banco de dados" stays plain. */}
+                <pre className="cite-text">
+                  {activeCite.head}{' '}
+                  <strong>{activeCite.title}</strong>{activeCite.rest}
+                </pre>
                 <p className="caption cite-hint">{activeCite.hint} Para a lista de referências ao final do trabalho.</p>
               </div>
               <div className="cite-actions">
