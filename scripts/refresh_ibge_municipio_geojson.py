@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from pathlib import Path
 
 import requests
@@ -153,6 +154,43 @@ def vendored_codes() -> set[str]:
     return codes
 
 
+# `check()` exit codes. DRIFTED and UNREACHABLE are deliberately DISTINCT: a network
+# failure must never be reported as "IBGE changed the mesh". Collapsing them (any
+# non-zero ⇒ drifted) is what made the first scheduled run claim drift when the real
+# problem was that IBGE simply did not answer — a false alarm quarterly, which is the
+# fastest way to teach everyone to ignore the alert that matters.
+EXIT_IN_SYNC = 0
+EXIT_DRIFTED = 1
+EXIT_UNREACHABLE = 2
+
+ROSTER_ATTEMPTS = 4
+ROSTER_TIMEOUT = 30  # seconds per attempt; 4 tries + backoff stays well under a CI budget
+
+
+def _fetch_roster() -> list[dict] | None:
+    """IBGE's município roster, or None when IBGE could not be reached.
+
+    Retried with backoff: the roster endpoint is reachable from a workstation but
+    times out from GitHub-hosted runners often enough that a single attempt is not
+    evidence of anything. Returning None (rather than raising) lets the caller keep
+    "I could not measure" separate from "the mesh drifted".
+    """
+    delay = 5
+    for attempt in range(1, ROSTER_ATTEMPTS + 1):
+        try:
+            resp = requests.get(
+                COUNT_URL, timeout=ROSTER_TIMEOUT, headers={"User-Agent": "Mozilla/5.0"}
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as exc:
+            print(f"[i] tentativa {attempt}/{ROSTER_ATTEMPTS} falhou: {exc}")
+            if attempt < ROSTER_ATTEMPTS:
+                time.sleep(delay)
+                delay *= 2
+    return None
+
+
 def check() -> int:
     """Compare the vendored geometry against IBGE's CURRENT município roster.
 
@@ -161,11 +199,16 @@ def check() -> int:
     município would simply never be drawn, and its production would vanish from the
     map while still counting in every total. This answers "is it stale?" with one
     cheap request instead of re-downloading all 27 meshes, so it is affordable on a
-    schedule. Read-only; exits 1 when they diverge, 0 when they agree.
+    schedule. Read-only.
+
+    Returns EXIT_IN_SYNC / EXIT_DRIFTED / EXIT_UNREACHABLE — see those constants.
     """
-    resp = requests.get(COUNT_URL, timeout=120, headers={"User-Agent": "Mozilla/5.0"})
-    resp.raise_for_status()
-    current = {str(m["id"]) for m in resp.json()}
+    roster = _fetch_roster()
+    if roster is None:
+        print("[erro] Não foi possível consultar o IBGE — a malha NÃO foi verificada.")
+        print("Isso não diz nada sobre a malha estar em dia; apenas não deu para medir.")
+        return EXIT_UNREACHABLE
+    current = {str(m["id"]) for m in roster}
     have = vendored_codes()
     # Known roster/geometry mismatches at IBGE itself are not staleness (see ROSTER_ONLY).
     missing = sorted(current - have - ROSTER_ONLY)  # IBGE draws them, the map lacks them
@@ -177,13 +220,13 @@ def check() -> int:
         print(f"[i] {len(known)} sem geometria publicada pelo IBGE (conhecido): {known}")
     if not missing and not extra:
         print("[ok] A malha do mapa está em dia com o IBGE.")
-        return 0
+        return EXIT_IN_SYNC
     if missing:
         print(f"[!] {len(missing)} município(s) no IBGE e AUSENTES do mapa: {missing[:10]}")
     if extra:
         print(f"[!] {len(extra)} município(s) no mapa e ausentes do IBGE: {extra[:10]}")
     print("Rode `make refresh-geo` para atualizar a malha e o seed.")
-    return 1
+    return EXIT_DRIFTED
 
 
 def main() -> None:
@@ -244,7 +287,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Read-only: report whether the vendored mesh still matches IBGE (exit 1 if not).",
+        help="Read-only: 0 = in sync, 1 = drifted, 2 = IBGE unreachable (not measured).",
     )
     args = parser.parse_args()
     if args.check:
