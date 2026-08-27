@@ -151,17 +151,27 @@ function Heatmap({ rows = [], valueKey = 'v', valueLabel = '', height }) {
   // The extra height on a short plot is the horizontal colorbar's strip, not taller
   // cells — the data band keeps its 24px row.
   //
-  // The `key` forces a REMOUNT when the orientation flips, and it is load-bearing.
+  // The `key` forces a REMOUNT whenever the plot's GEOMETRY changes, and it is
+  // load-bearing on both counts.
   // Plotly.react reuses the existing `.colorbar` SVG group across an orientation change:
   // gd.data and gd._fullData both end up correct (orientation 'v', x 1.02, len 1) while
   // the drawn group keeps the HORIZONTAL geometry — measured at x=309 w=297 inside a
   // 937px plot, i.e. a bar stranded across the middle of the heatmap. Selecting a UF and
   // then deselecting it walked straight into that. Remounting gives Plotly a clean
-  // element, which is the only reliable way to make it lay the bar out again; the flip
-  // only happens on a deliberate selection change, so the cost is one re-plot.
+  // element, which is the only reliable way to make it lay the bar out again.
+  //
+  // The HEIGHT belongs in the key for the same reason. Plotly.react does not re-lay-out
+  // for a changed container height: going from 5 regions to 1 (both horizontal, so the
+  // orientation key alone did not change) left the plot with the FIVE-row geometry —
+  // measured a 105px band inside a 132px plot, with the colorbar stranded at y=-76,
+  // above the card and out of sight. Any row-count change moves the height, so keying on
+  // it covers the case the orientation key cannot see.
+  //
+  // Both triggers are deliberate selection changes, never a render loop, so the cost is
+  // one re-plot when the researcher changes what they are looking at.
   return (
     <Plot
-      key={shortPlot ? 'cb-h' : 'cb-v'}
+      key={`${shortPlot ? 'h' : 'v'}-${height || autoHeight}`}
       traces={traces}
       layout={layout}
       height={height || (shortPlot ? autoHeight + 64 : autoHeight)}

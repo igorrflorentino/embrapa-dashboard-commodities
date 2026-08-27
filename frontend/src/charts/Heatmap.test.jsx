@@ -169,12 +169,27 @@ describe('Heatmap — an orientation flip gets a fresh plot element', () => {
     expect(backToTall).not.toBe(short);
   });
 
-  it('does NOT remount for a row change that stays on the same side of the threshold', () => {
-    // A remount is a full re-plot; paying for it on every ordinary data change would
-    // trade one bug for a jank.
-    const { rerender } = render(<Heatmap rows={rowsFor(8)} valueKey="v" valueLabel="R$" />);
+  it('ALSO remounts when the row count changes the height, same orientation or not', () => {
+    // This assertion used to be the opposite — "does NOT remount for a row change that
+    // stays on the same side of the threshold" — and that is precisely the bug it went
+    // on to bless: going from 5 regions to 1 keeps the horizontal orientation, so the
+    // orientation key never changed, and the plot kept the FIVE-row geometry (a 105px
+    // band inside a 132px plot, colorbar stranded at y=-76, above the card).
+    // Plotly.react does not re-lay-out for a changed container height.
+    const { rerender } = render(<Heatmap rows={rowsFor(5)} valueKey="v" valueLabel="R$" />);
+    const five = reactState.els.at(-1);
+    rerender(<Heatmap rows={rowsFor(1)} valueKey="v" valueLabel="R$" />);
+    expect(reactState.els.at(-1)).not.toBe(five);
+  });
+
+  it('does NOT remount when the geometry is unchanged', () => {
+    // The guarantee that keeps the key from becoming a re-plot on every render: same
+    // row count and same height ⇒ same element, however often the data itself changes.
+    const rows = rowsFor(8);
+    const { rerender } = render(<Heatmap rows={rows} valueKey="v" valueLabel="R$" />);
     const first = reactState.els.at(-1);
-    rerender(<Heatmap rows={rowsFor(12)} valueKey="v" valueLabel="R$" />);
+    rerender(<Heatmap rows={rows.map((r) => ({ ...r, values: [{ y: 2019, v: 99 }] }))}
+                      valueKey="v" valueLabel="R$" />);
     expect(reactState.els.at(-1)).toBe(first);
   });
 });
