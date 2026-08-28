@@ -315,8 +315,13 @@ window.BANCOS = [
     table:  'gold_comtrade_flows',
     // Estável: histórico do Brasil desde 2000 (códigos HS aposentados —
     // banana 080300, soja 120100 etc. — traduzidos para os atuais no silver). O
-    // total mundial (world_exp) cobre só 2022–2023 até o backfill all-reporters,
-    // mantido adiado — por isso os metrics years de world_exp ficam em [2022,2023].
+    // total mundial (world_exp) cobre TODO o período: o backfill all-reporters está
+    // concluído — 2000–2025, 89–166 reporters por ano (medido 2026-08-28; ver
+    // docs/comtrade_world_backfill.md). Ficou em [2022,2023] até então, enquanto
+    // aquele backfill estava adiado, e o literal sobreviveu à conclusão dele:
+    // crossCommonWindow INTERSECTA os `years` das métricas selecionadas, então
+    // world_exp encolhia a janela comparável do compositor de cruzamento para dois
+    // anos sobre 26 de dado real.
     // Country → country flows. Product (HS6), flow, partner, quality.
     // Geography is country-level only (no Brazilian UF/município).
     provides: ['product', 'flow', 'partner', 'quality'],
@@ -332,7 +337,7 @@ window.BANCOS = [
     metrics: [
       { id: 'exp_value', label: 'Valor exportado (BR)', family: 'currency', unit: 'US$', agg: 'Exportações brasileiras declaradas à ONU', years: [2000, 2025] },
       { id: 'imp_value', label: 'Valor importado (BR)', family: 'currency', unit: 'US$', agg: 'Importações brasileiras declaradas à ONU', years: [2000, 2025] },
-      { id: 'world_exp', label: 'Exportação mundial',    family: 'currency', unit: 'US$', agg: 'Total mundial do produto (todos reporters)', years: [2022, 2023] },
+      { id: 'world_exp', label: 'Exportação mundial',    family: 'currency', unit: 'US$', agg: 'Total mundial do produto (todos reporters)', years: [2000, 2025] },
     ],
     // Provenance (live): the real Gold IS wired (gold_comtrade_flows, Brazil 2000+).
     // The edition YEAR below is overlaid live from gold_source_metadata (real
