@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.31.5] - 2026-08-27
+
+### Added
+- **Invariantes geométricos do mapa de calor, varridos sobre 1..15 linhas.** A barra de
+  cor recebeu **cinco correções num único dia** (v1.29.3, v1.29.5, v1.30.0, v1.30.1,
+  v1.31.3). Todas corretas, todas incompletas — cada uma verificada contra as duas ou
+  três contagens de linhas que por acaso estavam na tela. Pior: os testes escritos ao
+  lado delas fixavam o comportamento **suposto**, e um deles ("não remonta numa mudança
+  de linhas do mesmo lado do limiar") afirmava exatamente a regra que produziu o bug da
+  v1.31.3.
+
+  Estes não são mais casos: são as propriedades que precisam valer para **toda**
+  contagem de linhas, verificadas varrendo o espaço em vez de amostrá-lo.
+
+  - orientação segue o limiar, sem exceções;
+  - o mesmo conjunto de chaves da barra é declarado em qualquer contagem (uma chave
+    presente num ramo e ausente no outro sobrevive à virada, porque `Plotly.react` deixa
+    atributo aninhado omitido no valor anterior);
+  - âncoras sempre em exatamente `zmin`, ponto médio e `zmax`;
+  - `len: 1` sempre;
+  - **toda** mudança na contagem de linhas chega a um elemento novo — o invariante que
+    a v1.31.3 violava;
+  - mudança apenas de dados **nunca** remonta, em nenhuma contagem;
+  - uma altura explícita mantém a barra vertical.
+
+  Validados por injeção de regressão: reintroduzir a chave só-de-orientação faz a
+  varredura falhar apontando a transição exata (`1->2: REUSED`), e trocar o limiar de 5
+  para 3 falha em `4:v` esperando `4:h`. Um teste que não falha com o código quebrado
+  não vale nada, então isso foi verificado e não presumido.
+
+### Fixed
+- `uv.lock` ficou em 1.31.3 enquanto o `pyproject.toml` foi para 1.31.4 (o merge do
+  #313 não regenerou o lockfile). Realinhado.
+
+---
+
 ## [1.31.4] - 2026-08-27
 
 ### Fixed
