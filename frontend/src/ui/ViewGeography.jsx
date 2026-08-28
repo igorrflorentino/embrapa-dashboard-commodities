@@ -434,26 +434,10 @@ function ViewGeography({ families, conventions, summary, database }) {
     ((filtered.regions || window.REGIONS || []).find((r) => r.id === id) || {}).label || id;
   const cityNameOf = (code) =>
     ((mesh || []).find((m) => String(m.cityCode) === String(code)) || {}).cityName || code;
-  // Name the active sub-UF narrowing for the trail, resolving the code through the mesh.
-  // Falls back to the count so the crumb still says SOMETHING narrows — a silent trail
-  // is what let the map claim "Brasil" over one mesorregião.
-  const subUfLabel = (() => {
-    if (!filtered.subUfActive) return null;
-    const byKey = [
-      ['mesos', 'meso'], ['micros', 'micro'],
-      ['inters', 'intermediaria'], ['imediatas', 'imediata'],
-    ];
-    for (const [key, meshKey] of byKey) {
-      const sel = summary && summary[key];
-      if (!Array.isArray(sel) || !sel.length) continue;
-      if (sel.length > 1) return `${sel.length} recortes`;
-      const hit = (mesh || []).find(
-        (m) => m[meshKey] && String(m[meshKey].code) === String(sel[0]),
-      );
-      return (hit && hit[meshKey] && hit[meshKey].name) || String(sel[0]);
-    }
-    return null;
-  })();
+  // Named by geoDrill so the rule lives with drillLevel/drillTrail and is swept by the
+  // same invariant test: the trail must account for EVERY active narrowing, not the
+  // first one it finds.
+  const subUfLabel = filtered.subUfActive ? window.subUfLabel(summary, mesh) : null;
   const drillTrail = window.drillTrail(summary, {
     subUfLabel,
     regionLabel: selectedRegion ? regionLabelOf(selectedRegion) : null,

@@ -264,3 +264,78 @@ describe('stepOut — the sub-UF rung', () => {
     expect(guard).toBeLessThan(10);
   });
 });
+
+// ── The trail must account for EVERY active narrowing ────────────────────────
+//
+// This sweep exists because "add another case" is what produced two bugs in a row:
+// v1.33.1 (the level ignored sub-UF facets entirely) and then the label naming only the
+// FIRST facet it found. Both had the same shape — the orientation device describing a
+// strictly larger set than the data.
+//
+// The trail stopped being decoration when the granularity control was removed in
+// v1.32.0: it is now the ONLY place the researcher reads where they are, so its
+// correctness is load-bearing. The property, not the cases, is what protects it.
+
+import { subUfCount, subUfLabel } from './geoDrill.js';
+
+describe('subUfLabel — never describes a wider recorte than the data', () => {
+  const MESH = [
+    { cityCode: '1', uf: 'PA', meso: { code: '1504', name: 'Nordeste Paraense' },
+      micro: { code: '15012', name: 'Cametá' },
+      intermediaria: { code: '1501', name: 'Belém' },
+      imediata: { code: '150001', name: 'Abaetetuba' } },
+  ];
+
+  it('names a single narrowing', () => {
+    expect(subUfLabel({ mesos: ['1504'] }, MESH)).toBe('Nordeste Paraense');
+    expect(subUfLabel({ inters: ['1501'] }, MESH)).toBe('Belém');
+  });
+
+  it('names BOTH when the two parallel divisions narrow at once', () => {
+    // The divisions do not nest and a município must clear every active facet, so the
+    // effective recorte is their INTERSECTION. Naming one described a larger set.
+    expect(subUfLabel({ mesos: ['1504'], inters: ['1501'] }, MESH))
+      .toBe('Nordeste Paraense · Belém');
+  });
+
+  it('falls back to a count past two — vaguer, but never wider', () => {
+    const l = subUfLabel({ mesos: ['1504'], micros: ['15012'], inters: ['1501'] }, MESH);
+    expect(l).toBe('3 recortes');
+  });
+
+  it('is null when nothing narrows', () => {
+    expect(subUfLabel({}, MESH)).toBeNull();
+    expect(subUfLabel({ mesos: [] }, MESH)).toBeNull();
+  });
+
+  it('falls back to the code when the mesh cannot resolve it', () => {
+    // Still honest about HOW MANY narrowings are in play, which is the property.
+    expect(subUfLabel({ mesos: ['9999'] }, MESH)).toBe('9999');
+  });
+
+  // THE invariant. Sweep every combination of the four facets and assert the label
+  // accounts for all of them: a single narrowing may be named, but two or more must
+  // never render as one name.
+  it('accounts for every active facet, across all 16 combinations', () => {
+    const KEYS = ['mesos', 'micros', 'inters', 'imediatas'];
+    const CODES = { mesos: '1504', micros: '15012', inters: '1501', imediatas: '150001' };
+    const NAMES = ['Nordeste Paraense', 'Cametá', 'Belém', 'Abaetetuba'];
+    for (let bits = 0; bits < 16; bits += 1) {
+      const s = {};
+      KEYS.forEach((k, i) => { if (bits & (1 << i)) s[k] = [CODES[k]]; });
+      const n = subUfCount(s);
+      const label = subUfLabel(s, MESH);
+      if (n === 0) {
+        expect(`${bits}: ${label}`).toBe(`${bits}: null`);
+        continue;
+      }
+      // A label naming exactly ONE known place while two or more narrow is the bug.
+      const namesOne = NAMES.includes(label);
+      expect(`${bits}/n=${n}: ${namesOne && n > 1 ? 'UNDER-REPORTS' : 'ok'}`)
+        .toBe(`${bits}/n=${n}: ok`);
+      // And every label must be non-empty — a silent trail is how "Brasil" ended up
+      // over one mesorregião of Pará.
+      expect(`${bits}: ${!!label}`).toBe(`${bits}: true`);
+    }
+  });
+});

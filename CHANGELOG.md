@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.2] - 2026-08-28
+
+A correção da v1.33.1 tinha a **mesma lacuna que corrigia**, um nível abaixo — e agora
+há uma invariante no lugar de mais um caso.
+
+### Fixed
+- **A trilha nomeava só a primeira faceta sub-UF.** As duas divisões do IBGE são
+  **paralelas e não se aninham** (clássica meso→micro, 2017 intermediária→imediata), e um
+  município precisa passar por **todas** as facetas ativas — o recorte efetivo é a
+  **interseção**. Com mesorregião *Nordeste Paraense* **e** intermediária *Belém* ativas,
+  a trilha dizia apenas `Brasil › Nordeste Paraense`.
+
+  Quem lesse aquilo concluiria que o recorte era a mesorregião inteira, quando era um
+  conjunto estritamente menor. Mesma falha de honestidade da v1.33.1 — o dispositivo de
+  orientação descrevendo mais território do que os dados —, agora no rótulo em vez do
+  nível.
+
+  A regra passa a nunca sub-reportar: uma narrowing é nomeada, duas são nomeadas juntas
+  (`Nordeste Paraense · Belém`), e além disso entra a contagem. Uma contagem é mais vaga
+  que um nome, mas não pode afirmar que o recorte é mais largo do que é.
+
+### Added
+- **Invariante varrida sobre as 16 combinações das quatro facetas:** nenhum rótulo pode
+  nomear um único lugar enquanto duas ou mais narrowings estão ativas, e nenhuma
+  combinação ativa pode produzir rótulo vazio.
+
+  Existe porque "adicionar mais um caso" foi o que produziu dois bugs seguidos. A trilha
+  deixou de ser decoração quando o seletor de granularidade saiu (v1.32.0): virou o
+  **único** lugar onde o pesquisador lê onde está, então a correção dela é carga
+  estrutural. Validada por injeção de regressão — reintroduzido o "nomeia só a primeira",
+  a varredura acusa `3/n=2: UNDER-REPORTS`.
+
+- `subUfLabel` e `subUfCount` mudaram da view para o `geoDrill`, junto de
+  `drillLevel`/`drillTrail`, para que a regra viva onde é varrida.
+
+---
+
 ## [1.33.1] - 2026-08-28
 
 Achado de auditoria da própria sessão: o drill-down (v1.32.0) **ignorava as facetas
