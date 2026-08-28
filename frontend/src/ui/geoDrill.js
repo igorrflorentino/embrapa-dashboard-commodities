@@ -60,6 +60,34 @@ export function drillLevel(summary, muniCapable = true, subUfNarrowed = false) {
   return 'region';
 }
 
+/** Whether the `states` sitting under a single selected region are just that region's
+ *  own expansion — `enterRegion` writes BOTH keys, because a region reaches the data
+ *  only THROUGH states (dataFilters.js: "cascade parents; their effect reaches the data
+ *  through `states`") — rather than a narrowing the researcher chose INSIDE it.
+ *
+ *  One question, two consumers that must never disagree:
+ *   • the trail has to SHOW a genuine narrowing, or it claims the whole region while the
+ *     map plots part of it — the v1.33.2 under-reporting defect, one rung up. Measured:
+ *     região Norte with only PA and AM selected rendered identically to all seven.
+ *   • `stepOut` has to SKIP a mere expansion, or the first click on empty space clears
+ *     `states` without changing the level OR the trail — a gesture that appears to do
+ *     nothing. Measured on the most common path of all: click a region, click outside.
+ *
+ *  Keeping it in one function is the v1.33.2 lesson applied: two call sites deriving the
+ *  same rule separately is how the trail and the level came to disagree in the first place.
+ *
+ *  `regionUfs` is the region's full UF list, which both callers already have. WITHOUT it
+ *  we assume a narrowing — noisier ("7 UFs" under a region that IS those seven) but never
+ *  dishonest and never silent, which is the right way for a missing argument to fail. */
+export function isRegionExpansion(summary, regionUfs) {
+  const s = summary || {};
+  const regions = Array.isArray(s.regions) ? s.regions : [];
+  const states = Array.isArray(s.states) ? s.states : [];
+  if (regions.length !== 1 || states.length < 2) return false;
+  if (!Array.isArray(regionUfs) || !regionUfs.length) return false;
+  return regionUfs.every((u) => states.includes(u));
+}
+
 /** The trail from Brasil to the current selection, for a breadcrumb.
  *
  *  "Click outside to go back" is invisible until someone discovers it, and a map with
@@ -67,7 +95,7 @@ export function drillLevel(summary, muniCapable = true, subUfNarrowed = false) {
  *  a country or a state. Each crumb is also the way back to that level. */
 export function drillTrail(
   summary,
-  { regionLabel, ufName, cityName, subUfLabel } = {},
+  { regionLabel, ufName, cityName, subUfLabel, regionUfs } = {},
   muniCapable = true,
 ) {
   const s = summary || {};
@@ -77,8 +105,16 @@ export function drillTrail(
   const trail = [{ level: 'region', label: 'Brasil' }];
   if (regions.length === 1) {
     trail.push({ level: 'uf', label: regionLabel || regions[0], region: regions[0] });
+    // A multi-UF narrowing INSIDE the region is a rung of its own and has to be visible.
+    // Suppressing it (the `else if` below used to swallow it) made "Norte, only PA and AM"
+    // render exactly like all seven UFs of Norte — the trail naming a set strictly larger
+    // than the data, which is the no-invisible-filtering rule broken by the orientation
+    // device itself. The region's own expansion is NOT such a rung and stays suppressed.
+    if (states.length > 1 && !isRegionExpansion(s, regionUfs)) {
+      trail.push({ level: 'uf', label: `${states.length} UFs`, ufs: true });
+    }
   } else if (states.length > 1) {
-    trail.push({ level: 'uf', label: `${states.length} UFs` });
+    trail.push({ level: 'uf', label: `${states.length} UFs`, ufs: true });
   }
   if (states.length === 1) {
     trail.push({ level: 'municipio', label: ufName || states[0], uf: states[0] });
@@ -174,7 +210,7 @@ export function enterCity(code) {
  *
  *  Exactly one level per gesture: dropping straight to Brasil from a município would
  *  discard the state the researcher drilled through, which they did not ask to leave. */
-export function stepOut(summary) {
+export function stepOut(summary, regionUfs) {
   const s = summary || {};
   const states = Array.isArray(s.states) ? s.states : [];
   const munis = Array.isArray(s.munis) ? s.munis : [];
@@ -188,6 +224,15 @@ export function stepOut(summary) {
   );
   if (subUf.length) return Object.fromEntries(subUf.map((k) => [k, null]));
   if (states.length) {
+    // The region's own expansion is not a rung the researcher stepped onto, so clearing
+    // it alone changes neither the level nor the trail — a click that looks broken.
+    // Step past it in one gesture, which is what "out of this region" means.
+    if (isRegionExpansion(s, regionUfs)) {
+      return {
+        regions: null, states: null, nations: null,
+        mesos: null, micros: null, inters: null, imediatas: null, munis: null,
+      };
+    }
     // Back to the region that contains it when we came through one; else to Brasil.
     return regions.length
       ? { states: null, mesos: null, micros: null, inters: null, imediatas: null, munis: null }
@@ -200,6 +245,6 @@ export function stepOut(summary) {
 if (typeof window !== 'undefined') {
   Object.assign(window, {
     drillLevel, drillTrail, enterRegion, enterUf, enterCity, stepOut,
-    subUfLabel, subUfCount,
+    subUfLabel, subUfCount, isRegionExpansion,
   });
 }

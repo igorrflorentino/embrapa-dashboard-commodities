@@ -211,9 +211,17 @@ function AppShell({
   const period = summary && (summary.startDate || summary.endDate)
     ? `${String(summary.startDate || _yStart).slice(0,4)}\u2013${String(summary.endDate || _yEnd).slice(0,4)}`
     : `${_yStart}\u2013${_yEnd}`;
-  const convLabel = conventions
-    ? `${conventions.currency} \u00b7 ${conventions.correction} \u00b7 ${conventions.units?.mass} \u00b7 ${conventions.units?.volume}`
-    : 'BRL \u00b7 IPCA \u00b7 t \u00b7 m\u00b3';
+  // Per-FIELD defaults, not all-or-nothing. The guard used to be a single
+  // `conventions ? … : 'BRL · IPCA · t · m³'`, which trusted the SHAPE once the object
+  // existed: a `conventions` without `units` published
+  // "Convenções métricas: BRL · IPCA · undefined · undefined" into a reference someone
+  // pastes into a paper. Swept in AppShell.cov.test.jsx (N1).
+  const convLabel = [
+    conventions?.currency || 'BRL',
+    conventions?.correction || 'IPCA',
+    conventions?.units?.mass || 't',
+    conventions?.units?.volume || 'm\u00b3',
+  ].join(' \u00b7 ');
 
   const activeView2 = window.viewById ? window.viewById(view) : null;
   const isCrossView = !!(activeView2 && activeView2.crossBanco);
@@ -309,8 +317,13 @@ function AppShell({
   //   rest   subtitle, scope and the publication tail, all plain
   const citeRest = isCrossView
     ? (isPickerCite
-        ? ` \u2014 Cruzamento entre fontes \u2014 ` +
-          `${crossLabel()}. Recorte: ${period}. Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ` +
+        // The series list is EMPTY until the researcher composes one, and the segment
+        // used to be concatenated regardless — "— Cruzamento entre fontes — . Recorte:",
+        // a reference announcing a crossing and then naming nothing. Name the
+        // perspective and claim no series (N2).
+        ? ` \u2014 Cruzamento entre fontes` +
+          `${crossLabel() ? ` \u2014 ${crossLabel()}` : ''}. ` +
+          `Recorte: ${period}. Conven\u00e7\u00f5es m\u00e9tricas: ${convLabel}. ` +
           `${citeTail}`
         : ` \u2014 An\u00e1lise cruzada \u2014 ` +
           `${VIEW_LABEL[view] || view}${crossSourcesLabel ? ` (fontes: ${crossSourcesLabel})` : ''}. ` +

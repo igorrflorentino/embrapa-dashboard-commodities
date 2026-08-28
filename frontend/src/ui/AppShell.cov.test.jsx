@@ -852,3 +852,122 @@ describe('AppShell — the banco level on a cross-source picker', () => {
     expect(txt).toContain('métrica prod_value');
   });
 });
+
+// ---------------------------------------------------------------------------------
+// A referência contra a NORMA, varrida — não um caso.
+//
+// A citação é o único artefato do painel que sai daqui e entra no trabalho de outra
+// pessoa: um defeito aqui não desalinha um gráfico, ele publica um erro. E a forma já
+// oscilou duas vezes (caixa alta no texto, v1.31.0 → revertida na v1.31.1), o que diz
+// que a memória do time não é o mecanismo certo para segurá-la.
+//
+// Varre-se a matriz de estados do app × os três níveis de detalhe, porque os defeitos
+// desta família aparecem quando um campo VAZIO é concatenado — não no caminho feliz.
+const CITE_STATES = [
+  ['padrão', {}],
+  ['sem summary', { summary: null }],
+  ['sem filtros no summary', { summary: {} }],
+  ['convenções sem `units`', { conventions: { currency: 'BRL', correction: 'IPCA' } }],
+  ['sem convenções', { conventions: null }],
+  ['banco desconhecido', { database: 'nao_existe' }],
+  ['cruzamento (picker) sem séries', { view: 'cross_source', crossState: { series: [], mode: '', y0: '', y1: '' } }],
+  ['cruzamento (picker) com séries', { view: 'cross_source', crossState: { series: [{ b: 'ibge_pevs', m: 'x' }, { b: 'comex', m: 'y' }], mode: 'a', y0: '2010', y1: '2020' } }],
+  ['cruzamento de fontes fixas', { view: 'chain_balance' }],
+];
+const CITE_NIVEIS = ['Ferramenta geral', 'Por banco de dados', 'Consulta detalhada'];
+
+describe('AppShell — a referência ABNT, varrida sobre a matriz de estados', () => {
+  // Abre o modal e devolve o texto da referência no nível pedido.
+  const referencia = (over, nivel) => {
+    const { container, unmount } = render(<AppShell {...baseProps()} {...over} />);
+    fireEvent.click([...container.querySelectorAll('.util-action')]
+      .find((b) => b.textContent.includes('Citar painel')));
+    const alvo = [...container.querySelectorAll('.cite-level')]
+      .find((l) => l.textContent.includes(nivel));
+    fireEvent.click(alvo.querySelector('input'));
+    const pre = container.querySelector('.cite-text:not(.cite-text-inline)');
+    const out = {
+      texto: pre.textContent,
+      negrito: [...pre.querySelectorAll('strong')].map((b) => b.textContent),
+      noTexto: container.querySelector('.cite-text-inline').textContent,
+    };
+    unmount();
+    return out;
+  };
+
+  it('N1: nenhum valor ausente vaza para dentro da referência', () => {
+    const falhas = [];
+    for (const [nome, over] of CITE_STATES) {
+      for (const nivel of CITE_NIVEIS) {
+        const { texto } = referencia(over, nivel);
+        for (const lixo of ['undefined', 'null', 'NaN', '[object Object]']) {
+          if (texto.includes(lixo)) falhas.push(`${nome} / ${nivel}: "${lixo}" → ${texto.slice(0, 140)}`);
+        }
+      }
+    }
+    expect(falhas).toEqual([]);
+  });
+
+  it('N2: pontuação bem formada — sem ponto duplo, espaço duplo ou separador órfão', () => {
+    const falhas = [];
+    for (const [nome, over] of CITE_STATES) {
+      for (const nivel of CITE_NIVEIS) {
+        const { texto } = referencia(over, nivel);
+        // `..` (campo vazio entre dois pontos), ` .`, `  `, `: .`, e um travessão de
+        // escopo sem nada entre ele e o próximo — todos são a mesma falha: um campo
+        // vazio concatenado como se estivesse preenchido.
+        for (const [rot, re] of [['ponto duplo', /\.\./], ['espaço antes de ponto', / \./],
+                                 ['espaço duplo', /\s\s/], ['dois-pontos vazio', /:\s*\./],
+                                 ['travessão órfão', /—\s*—/]]) {
+          if (re.test(texto)) falhas.push(`${nome} / ${nivel}: ${rot} → ${texto.slice(0, 160)}`);
+        }
+      }
+    }
+    expect(falhas).toEqual([]);
+  });
+
+  it('N3: a entrada é sempre a entidade em CAIXA ALTA (NBR 6023:2025)', () => {
+    for (const [, over] of CITE_STATES) {
+      for (const nivel of CITE_NIVEIS) {
+        expect(referencia(over, nivel).texto)
+          .toMatch(/^EMPRESA BRASILEIRA DE PESQUISA AGROPECUÁRIA \(EMBRAPA\)\./);
+      }
+    }
+  });
+
+  it('N4: o negrito cobre exatamente o título, e o título é o MESMO nos três níveis', () => {
+    for (const [nome, over] of CITE_STATES) {
+      const titulos = CITE_NIVEIS.map((nivel) => {
+        const { negrito } = referencia(over, nivel);
+        // Exatamente um trecho em negrito: o subtítulo (a fonte, após os dois-pontos)
+        // fica de fora — é a distinção que a 6023:2025 faz entre título e subtítulo.
+        expect(`${nome}: ${negrito.length}`).toBe(`${nome}: 1`);
+        return negrito[0];
+      });
+      // Um único título. O nível detalhado já carregou uma variante própria, e as três
+      // referências discordavam sobre o nome da obra que citam.
+      expect(`${nome}: ${new Set(titulos).size}`).toBe(`${nome}: 1`);
+      // Caixa de sentença, não caixa de título.
+      const t = titulos[0];
+      expect(t).toBe(t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+    }
+  });
+
+  it('N5: toda referência fecha com a data de acesso', () => {
+    for (const [nome, over] of CITE_STATES) {
+      for (const nivel of CITE_NIVEIS) {
+        expect(`${nome}/${nivel}: ${/Acesso em: \d{1,2} \S+ \d{4}\.$/.test(referencia(over, nivel).texto)}`)
+          .toBe(`${nome}/${nivel}: true`);
+      }
+    }
+  });
+
+  it('N6: a citação no texto usa inicial maiúscula, nunca caixa alta (NBR 10520:2023)', () => {
+    // As duas normas divergem DE PROPÓSITO. Já foi "unificado" para caixa alta uma vez
+    // (v1.31.0) e revertido (v1.31.1); a varredura fecha a porta para a terceira.
+    for (const [nome, over] of CITE_STATES) {
+      const { noTexto } = referencia(over, CITE_NIVEIS[0]);
+      expect(`${nome}: ${noTexto}`).toBe(`${nome}: (Embrapa, ${new Date().getFullYear()})`);
+    }
+  });
+});
