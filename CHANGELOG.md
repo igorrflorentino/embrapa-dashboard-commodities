@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.3] - 2026-08-28
+
+Três rótulos idênticos na barra de cores afirmavam que a escala era plana quando não era.
+
+### Corrigido
+
+- **Barra de cores dos mapas de calor: faixa estreita colapsava as três âncoras no mesmo
+  rótulo.** As âncoras (mínimo / centro / máximo) existem para o leitor situar qualquer cor
+  na escala; formatadas todas pela escada `bi/mi/mil` com no máximo uma casa decimal, uma
+  faixa curta as reduzia a três números iguais — Centro-Oeste 2018–2019 no PEVS exibia
+  `1 mil | 1 mil | 1 mil` sobre um gradiente que variava de fato. Medido sobre o acervo
+  real (`/api/geo-yearly`, ibge_pevs): **45 combinações de (região × janela de anos)**
+  colapsavam, todas em seleções corriqueiras. `colorbarAnchors` agora escalona a precisão
+  até os rótulos se separarem e, se nem 3 casas bastarem, devolve o eixo ao Plotly em vez
+  de imprimir um rótulo preciso porém ilegível. O caminho de faixa larga é byte-idêntico
+  ao anterior, e `ptBrMagnitude` sem o novo argumento opcional não mudou para nenhum outro
+  consumidor. Afeta o mapa de calor Ano × Região e o de sazonalidade Mês × Ano.
+
+### Testes
+
+- Varredura de invariante sobre 10 magnitudes × 9 larguras relativas × sinal (`_base.colorbar.test.js`):
+  o resultado é `null` **ou** três rótulos distintos — nunca um repetido. Validada por
+  injeção de regressão (restaurar a formatação antiga faz a varredura acusar 97 casos), com
+  dois casos reais do PEVS ancorados explicitamente.
+
+---
+
 ## [1.33.2] - 2026-08-28
 
 A correção da v1.33.1 tinha a **mesma lacuna que corrigia**, um nível abaixo — e agora

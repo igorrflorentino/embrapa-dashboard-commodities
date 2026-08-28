@@ -55,14 +55,16 @@ export function withAlpha(color, alpha = 0.12) {
  *  "15G" on one card and "150" (bi) on another for the SAME R$ series (FINDING #9).
  *  This formats a tick value into the SAME pt-BR magnitude words, keeping every
  *  value axis consistent with the labels and with each other. */
-export function ptBrMagnitude(v) {
+export function ptBrMagnitude(v, digits = null) {
   // Shared bi/mi/mil ladder (magnitude.js) — same kernel as window.autoScaleNum, so the
   // value axis and the KPI cards can't drift (FINDING #9 / DEDUP-7).
   const { factor, suffix } = magnitudeParts(v);
   const scaled = v / factor;
-  // Up to 1 decimal for readability; drop a trailing ",0".
+  // Up to 1 decimal for readability; drop a trailing ",0". `digits` overrides that
+  // default for callers that must keep NEARBY values distinguishable (colorbarAnchors);
+  // omitted everywhere else, so the shared ladder is unchanged for every other caller.
   const txt = scaled.toLocaleString('pt-BR', {
-    maximumFractionDigits: Math.abs(scaled) < 10 ? 1 : 0,
+    maximumFractionDigits: digits ?? (Math.abs(scaled) < 10 ? 1 : 0),
   });
   return suffix ? `${txt} ${suffix}` : txt;
 }
@@ -101,7 +103,21 @@ export function ptBrValueTicks(max, count = 4) {
 export function colorbarAnchors(min, max) {
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
   const tickvals = [min, (min + max) / 2, max];
-  return { tickmode: 'array', tickvals, ticktext: tickvals.map(ptBrMagnitude) };
+  // A NARROW range collapses all three anchors onto one magnitude label — a measured
+  // [5 mi | 5 mi | 5 mi] for [5.000.000, 5.004.000]. Three identical numbers on a
+  // gradient assert the scale is flat when it is not, so escalate precision until the
+  // labels separate. Beyond 3 decimals the label stops being readable and says less
+  // than Plotly's own ticks, so we hand the axis back (null ⇒ Plotly auto-ticks)
+  // rather than print a precise-but-unreadable lie. Invariant, swept in
+  // _base.colorbar.test.js: the result is null OR three DISTINCT labels — never a
+  // repeated one.
+  for (const digits of [null, 2, 3]) {
+    const ticktext = tickvals.map((v) => ptBrMagnitude(v, digits));
+    if (new Set(ticktext).size === tickvals.length) {
+      return { tickmode: 'array', tickvals, ticktext };
+    }
+  }
+  return null;
 }
 
 /** The value-axis tick props to spread onto ANY chart's y/x value axis, so every
