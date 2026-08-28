@@ -239,10 +239,33 @@ It **warns**, never fails: a lagging source is a reason to look, not a broken en
 
 **What it cannot do**, deliberately: tell a healthy quiet source from a broken one BETWEEN
 publication windows — the data is identical in both cases. It catches the stall at the
-window. To know whether the trigger itself fired, look at the Job's executions
-(`gcloud run jobs executions list --job=embrapa-ingest-all`): the monthly runs appear as
-EXTRA executions next to the nightly one (e.g. 2026-08-02 07:06 and 2026-08-03 07:04 UTC
-for PAM and PPM, beside the daily 08:0x).
+window, not before it.
+
+That other half is now covered by the **Ingest heartbeat** check. Every ingest run writes
+one row to `research_inputs.ingestion_heartbeat` (source, timestamp, outcome, duration)
+**whether or not it had anything to ingest** — so the three states finally separate:
+
+| what you see | what it means |
+|---|---|
+| no row inside the source's window | the **trigger** did not fire — check Cloud Scheduler and the Job's executions |
+| row, `outcome='ok'`, data unchanged | it ran and the source had nothing new — the healthy quiet state |
+| row, `outcome='failed'` | it ran and broke — the Cloud Monitoring alert also fires |
+
+Windows come from `cli.INGESTS`: a source in the nightly batch gets
+`HEARTBEAT_DAILY_SLACK_DAYS` (default 2), the monthly ones get
+`HEARTBEAT_MONTHLY_SLACK_DAYS` (default 35). A source that has NEVER reported is not
+flagged — the table only fills forward from the day this shipped.
+
+The heartbeat write can never fail an ingest (`ingestion_heartbeat.record` swallows every
+error with a warning): a monitor that can take down what it monitors is worse than none.
+
+To see the raw trail, including the runs that ingested nothing:
+
+```sql
+SELECT source, run_ts, outcome, duration_s
+FROM `<project>.research_inputs.ingestion_heartbeat`
+ORDER BY run_ts DESC LIMIT 50;
+```
 
 ## IAP author verification — set `IAP_AUDIENCE` in prod
 

@@ -446,6 +446,12 @@ class Settings(BaseSettings):
     # roughly a year later), so a source only trips after a publication window has passed
     # WITHOUT the new year arriving. Lower it to tighten, raise it for a slower publisher.
     source_freshness_annual_slack_years: int = Field(default=2, ge=1)
+
+    # `doctor`'s Ingest heartbeat windows. Daily = the nightly batch (2 days of slack
+    # absorbs one skipped night); monthly = the sources triggered on their own day of the
+    # month (35 days spans the longest month plus a few days of drift).
+    heartbeat_daily_slack_days: int = Field(default=2, ge=1)
+    heartbeat_monthly_slack_days: int = Field(default=35, ge=1)
     comtrade_end_year: int = Field(default_factory=_current_year)
     # How many recent years (at/below comtrade_end_year) get RE-FETCHED on every run so
     # late reporter submissions and revisions are absorbed. UN Comtrade reporters file an
@@ -552,6 +558,9 @@ class Settings(BaseSettings):
     # merges it into /api/source-meta with the short curation TTL, so a flip like
     # beta→estavel reflects within cache_classification_timeout. Auto-created.
     bq_banco_metadata_table: str = Field(default="banco_metadata")
+    # One row per ingest RUN (see ingestion_heartbeat.py) — the signal that separates
+    # "the trigger never fired" from "it fired and the source had nothing new".
+    bq_heartbeat_table: str = Field(default="ingestion_heartbeat")
     # ─── Curadoria (catalog — what enters/exits the dashboard) ────────────────
     # Append-only log of the researcher-managed COMMODITY CATALOG: which commodities
     # are in the dashboard, their agrupamento (cross-source concept) and ciclo de vida

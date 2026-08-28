@@ -24,6 +24,7 @@ from embrapa_dashboard import (
     backup,
     discover,
     doctor,
+    ingestion_heartbeat,
     monitor,
     observability,
     reconcile_check,
@@ -148,6 +149,28 @@ def _is_transient_failure(exc: BaseException) -> bool:
     if isinstance(exc, IngestPartialFailure):
         return exc.all_transient
     return False
+
+
+@contextmanager
+def _tracked_run(name: str, *, params: dict | None = None):
+    """`pipeline_run`, plus one heartbeat row recording that this ingest RAN.
+
+    Every scheduled ingest goes through here, so a missing heartbeat in the expected
+    window means the TRIGGER did not fire — the one thing neither the failure alert nor
+    Bronze can tell you, because a delta run with nothing new writes nothing at all.
+    The heartbeat never fails the ingest (see ingestion_heartbeat.record).
+    """
+    started = time.monotonic()
+    try:
+        with pipeline_run(name, params=params) as ctx:
+            yield ctx
+    except Exception as exc:
+        ingestion_heartbeat.record(
+            name, "failed", duration_s=round(time.monotonic() - started, 2), detail=str(exc)
+        )
+        raise
+    else:
+        ingestion_heartbeat.record(name, "ok", duration_s=round(time.monotonic() - started, 2))
 
 
 def _echo_chunk_result(tracker: ChunkTracker, outcome: ChunkOutcome) -> None:
@@ -285,7 +308,7 @@ def ingest_ibge(
     settings = get_settings()
     with (
         _transient_aware_exit("IBGE PEVS"),
-        pipeline_run(
+        _tracked_run(
             "ibge",
             params={
                 "start_year": settings.ibge_start_year,
@@ -325,7 +348,7 @@ def ingest_ibge_pam(
     settings = get_settings()
     with (
         _transient_aware_exit("IBGE PAM"),
-        pipeline_run(
+        _tracked_run(
             "ibge-pam",
             params={
                 "start_year": settings.pam_start_year,
@@ -368,7 +391,7 @@ def ingest_ibge_ppm(
     settings = get_settings()
     with (
         _transient_aware_exit("IBGE PPM"),
-        pipeline_run(
+        _tracked_run(
             "ibge-ppm",
             params={
                 "start_year": settings.ppm_start_year,
@@ -409,7 +432,7 @@ def ingest_bcb_inflation(
     settings = get_settings()
     with (
         _transient_aware_exit("BCB inflation"),
-        pipeline_run("bcb-inflation", params={"full": full, "from_raw": from_raw}) as (
+        _tracked_run("bcb-inflation", params={"full": full, "from_raw": from_raw}) as (
             _run_id,
             log_path,
         ),
@@ -439,7 +462,7 @@ def ingest_bcb_currency(
     settings = get_settings()
     with (
         _transient_aware_exit("BCB FX"),
-        pipeline_run("bcb-currency", params={"full": full, "from_raw": from_raw}) as (
+        _tracked_run("bcb-currency", params={"full": full, "from_raw": from_raw}) as (
             _run_id,
             log_path,
         ),
@@ -768,7 +791,7 @@ def ingest_all(
         # `embrapa monitor` and a mid-batch failure leaves a chunk_error in the
         # event log instead of running completely silent.
         try:
-            with pipeline_run(spec.name, params=kwargs) as (_run_id, log_path):
+            with _tracked_run(spec.name, params=kwargs) as (_run_id, log_path):
                 console.print(f"[dim]event log:[/dim] {log_path}")
                 spec.module.run(settings, **kwargs)
         except Exception as exc:
@@ -896,7 +919,7 @@ def _reconcile_full_sources(settings: Settings) -> list[tuple[str, str, bool]]:
         kwargs = {"full": True} if spec.accepts_full else {}
         console.print(f"[bold]→ {spec.label}[/bold] [dim](full)[/dim]")
         try:
-            with pipeline_run(spec.name, params=kwargs) as (_run_id, log_path):
+            with _tracked_run(spec.name, params=kwargs) as (_run_id, log_path):
                 console.print(f"[dim]event log:[/dim] {log_path}")
                 spec.module.run(settings, **kwargs)
         except Exception as exc:

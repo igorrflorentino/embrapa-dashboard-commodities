@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.19] - 2026-08-28
+
+### Adicionado
+
+- **Batimento de ingestão — o ponto cego fecha.** Toda rodada de ingestão passa a gravar
+  uma linha em `research_inputs.ingestion_heartbeat` (fonte, timestamp, desfecho, duração)
+  **tenha ou não tido o que ingerir**. Com isso os três estados finalmente se separam:
+
+  | o que se vê | o que significa |
+  |---|---|
+  | nenhuma linha na janela da fonte | o **gatilho** não disparou |
+  | linha `ok`, dado inalterado | rodou e a fonte não tinha nada — o silêncio saudável |
+  | linha `failed` | rodou e quebrou (o alerta também dispara) |
+
+  Nem o alerta nem o Bronze respondiam isso: o alerta vê execução que **falha**, e o delta
+  **não escreve nada** quando não há dado novo — então "sem linhas novas" é tão comum no
+  caso saudável quanto no quebrado.
+
+  O check **Ingest heartbeat** do `embrapa doctor` lê essa trilha, com janela vinda de
+  `cli.INGESTS`: fonte do lote noturno tem `HEARTBEAT_DAILY_SLACK_DAYS` (padrão 2), as
+  mensais têm `HEARTBEAT_MONTHLY_SLACK_DAYS` (padrão 35). Fonte que **nunca** reportou não
+  é acusada — a tabela só enche daqui para frente.
+
+  A gravação **nunca** pode derrotar uma ingestão: `record()` engole todo erro com aviso.
+  Um monitor capaz de derrubar o que monitora é pior que monitor nenhum — e há teste
+  fixando exatamente isso.
+
+### Corrigido
+
+- **A suíte de testes escrevia batimentos em PRODUÇÃO.** `test_cli.py` exercita os comandos
+  de ingestão, que agora passam pelo envelope novo e chegavam a `record()` — que, com a
+  credencial de quem desenvolve presente, inseria de verdade em `research_inputs`. Uma
+  rodada completa deixou **121 linhas** lá, e o `doctor` passou a reportar "every scheduled
+  ingest ran" com base na própria suíte.
+
+  Fechado com uma fixture `autouse` no `conftest.py` que neutraliza o cliente BigQuery do
+  módulo. Ela troca `_bq_client`, **não** `record` — assim a lógica de `record` continua
+  rodando e testável (os testes dele injetam o próprio cliente). Verificado: 121 linhas
+  antes, 121 depois de uma suíte completa. A suíte também caiu de **163s para 27s**, o que
+  confirma que o custo eram idas reais ao BigQuery.
+
+  As 121 linhas de artefato precisam ser removidas por um humano — `DELETE` em BigQuery é
+  deliberadamente bloqueado para o agente (ver `docs/operations_runbook.md`).
+
+### Documentação
+
+- O runbook § "Is a source still arriving?" ganha a tabela dos três estados, as janelas, a
+  garantia de não-derrubar-a-ingestão e a consulta para ver a trilha crua.
+
+---
+
 ## [1.33.18] - 2026-08-28
 
 ### Adicionado

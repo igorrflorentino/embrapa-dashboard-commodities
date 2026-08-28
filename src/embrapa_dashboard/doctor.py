@@ -862,6 +862,78 @@ def _check_source_data_freshness(settings: Settings) -> CheckResult:
         return CheckResult("Source data freshness", False, str(exc)[:120])
 
 
+def _check_ingest_heartbeat(settings: Settings) -> CheckResult:
+    """Did each scheduled ingest actually RUN inside its own cadence window?
+
+    The companion to "Source data freshness", and the half that check explicitly cannot
+    do. Freshness asks whether the DATA advanced — which stays legitimately still between
+    publication windows. This asks whether the RUN happened, which must be true every
+    window regardless of whether the source had anything to give.
+
+    Expected window per source comes from `cli.INGESTS`: a source in the nightly batch
+    (`in_all=True`) must have a heartbeat within `heartbeat_daily_slack_days`; the ones
+    outside it run monthly, so they get `heartbeat_monthly_slack_days`.
+
+    A source that has NEVER reported is not flagged: the table only starts filling after
+    this ships, and calling a not-yet-observed source "broken" would cry wolf on day one.
+    """
+    try:
+        from embrapa_dashboard import ingestion_heartbeat
+        from embrapa_dashboard.cli import INGESTS
+
+        client = bigquery.Client(
+            project=settings.gcp_project_id,
+            location=settings.bq_location,
+            credentials=get_credentials(settings),
+        )
+        fqn = ingestion_heartbeat.table_fqn(settings)
+        rows = {
+            r.source: r.last_run
+            for r in client.query(
+                f"select source, max(run_ts) as last_run from `{fqn}` group by source"
+            ).result()
+        }
+        if not rows:
+            return CheckResult(
+                "Ingest heartbeat",
+                True,
+                "⚠ no heartbeat recorded yet — expected until the next scheduled run lands",
+            )
+
+        now = datetime.now(UTC)
+        overdue: list[str] = []
+        seen: list[str] = []
+        for spec in INGESTS:
+            last = rows.get(spec.name)
+            if last is None:
+                continue  # never observed — see the docstring
+            age_days = (now - last).total_seconds() / 86400
+            slack = (
+                settings.heartbeat_daily_slack_days
+                if spec.in_all
+                else settings.heartbeat_monthly_slack_days
+            )
+            if age_days > slack:
+                overdue.append(f"{spec.name} {age_days:.0f}d ago (> {slack}d)")
+            else:
+                seen.append(f"{spec.name}={age_days:.0f}d")
+
+        if overdue:
+            return CheckResult(
+                "Ingest heartbeat",
+                True,  # warn — the trigger may be paused on purpose
+                "⚠ no run inside its window: "
+                + " · ".join(sorted(overdue))
+                + " (check Cloud Scheduler + the Job's executions — this is the TRIGGER, "
+                "not the data)",
+            )
+        return CheckResult(
+            "Ingest heartbeat", True, f"every scheduled ingest ran: {' · '.join(sorted(seen))}"
+        )
+    except Exception as exc:
+        return CheckResult("Ingest heartbeat", False, str(exc)[:120])
+
+
 _INFRA_CHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
     ("env", _check_env),
     ("inflation-codes", _check_inflation_pivot_codes),
@@ -977,6 +1049,7 @@ _POSTCHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
     ("catalog-arrival", _check_catalog_data_arrival),
     ("backup", _check_backup_freshness),
     ("source-freshness", _check_source_data_freshness),
+    ("heartbeat", _check_ingest_heartbeat),
 ]
 
 # Total ordering of the checks. Each block can be extended without changing this alias.
