@@ -99,6 +99,7 @@ class ResetViewControl {
 // invented, one is only hidden where both sides are the same colour anyway.
 export function BrazilChoropleth({
   data, valueKey, label, height = 360, onSelect, selectedUf, seamless = false, onBackground,
+  focusUfs = null,
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
@@ -331,6 +332,18 @@ export function BrazilChoropleth({
       if (typeof map.setFilter === 'function' && map.getLayer('uf-selected')) {
         map.setFilter('uf-selected', ['==', ['get', 'uf'], selectedUf || '__none__']);
       }
+      // Drilling into a território HIDES the rest of the country rather than greying it.
+      // At a given level the map answers "what is inside here"; leaving the neighbours
+      // drawn invites reading them as part of the answer, and at região level they
+      // carry another region's colour entirely.
+      if (typeof map.setFilter === 'function') {
+        const only = Array.isArray(focusUfs) && focusUfs.length
+          ? ['in', ['get', 'uf'], ['literal', focusUfs]]
+          : null;
+        for (const id of ['uf-fill', 'uf-line']) {
+          if (map.getLayer(id)) map.setFilter(id, only);
+        }
+      }
     } catch (err) {
       console.error('[choropleth] paint failed; falling back to no-data fill:', err);
       try {
@@ -347,7 +360,7 @@ export function BrazilChoropleth({
   useEffect(() => {
     paint();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scale, selectedUf, layerReady, seamless]);
+  }, [scale, selectedUf, layerReady, seamless, focusUfs]);
 
   // Re-frame the viewport to the active selection (or back to all of Brazil once
   // cleared). A no-op until the map has actually loaded; harmless to also fire once
@@ -356,9 +369,21 @@ export function BrazilChoropleth({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !layerReady || typeof map.fitBounds !== 'function') return;
-    const bounds = (selectedUf && UF_BOUNDS[selectedUf]) || BRAZIL_BOUNDS;
+    // The union of the focused UFs' boxes, so entering a região frames THAT region the
+    // way entering a state already framed the state.
+    const union = (ufs) => ufs.reduce((acc, u) => {
+      const b = UF_BOUNDS[u];
+      if (!b) return acc;
+      if (!acc) return [[b[0][0], b[0][1]], [b[1][0], b[1][1]]];
+      return [
+        [Math.min(acc[0][0], b[0][0]), Math.min(acc[0][1], b[0][1])],
+        [Math.max(acc[1][0], b[1][0]), Math.max(acc[1][1], b[1][1])],
+      ];
+    }, null);
+    const focused = Array.isArray(focusUfs) && focusUfs.length ? union(focusUfs) : null;
+    const bounds = (selectedUf && UF_BOUNDS[selectedUf]) || focused || BRAZIL_BOUNDS;
     map.fitBounds(bounds, { padding: 32, duration: 500 });
-  }, [selectedUf, layerReady]);
+  }, [selectedUf, layerReady, focusUfs]);
 
   if (failed) {
     return (

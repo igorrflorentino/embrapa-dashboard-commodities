@@ -213,3 +213,47 @@ describe('BrazilChoropleth — seamless outlines', () => {
     expect(lineColor()).toBe('#ffffff');
   });
 });
+
+// ── Drilling in hides the rest of the country ────────────────────────────────
+//
+// At a given level the map answers "what is inside here". Leaving the neighbours drawn
+// invites reading them as part of the answer — and at região level they carry another
+// region's colour entirely, so a greyed-out neighbour would be actively misleading.
+
+describe('BrazilChoropleth — focusUfs', () => {
+  const rows = [{ uf: 'PA', value: 10 }, { uf: 'AM', value: 6 }, { uf: 'SP', value: 3 }];
+
+  it('filters BOTH the fill and the outline to the focused UFs', async () => {
+    fakeMap = new FakeMap();
+    render(<BrazilChoropleth data={rows} valueKey="value" label="R$" focusUfs={['PA', 'AM']} />);
+    await waitForMapInit();
+    await fakeMap.fireLoad();
+    await waitFor(() => expect(fakeMap.filters['uf-fill']).toBeTruthy());
+    // The outline too: filtering only the fill would leave the neighbours' borders
+    // floating over an empty map.
+    for (const layer of ['uf-fill', 'uf-line']) {
+      expect(fakeMap.filters[layer]).toEqual(['in', ['get', 'uf'], ['literal', ['PA', 'AM']]]);
+    }
+  });
+
+  it('clears the filter when nothing is focused, so the country comes back', async () => {
+    fakeMap = new FakeMap();
+    render(<BrazilChoropleth data={rows} valueKey="value" label="R$" />);
+    await waitForMapInit();
+    await fakeMap.fireLoad();
+    await waitFor(() => expect(Array.isArray(fakeMap.fill)).toBe(true));
+    expect(fakeMap.filters['uf-fill']).toBeNull();
+    expect(fakeMap.filters['uf-line']).toBeNull();
+  });
+
+  it('treats an empty focus list as no focus, not as an empty map', async () => {
+    // A selection that resolves to zero UFs must not blank the map — that reads as a
+    // broken render rather than as "nothing matched".
+    fakeMap = new FakeMap();
+    render(<BrazilChoropleth data={rows} valueKey="value" label="R$" focusUfs={[]} />);
+    await waitForMapInit();
+    await fakeMap.fireLoad();
+    await waitFor(() => expect(Array.isArray(fakeMap.fill)).toBe(true));
+    expect(fakeMap.filters['uf-fill']).toBeNull();
+  });
+});

@@ -616,6 +616,7 @@ function ViewGeography({ families, conventions, summary, database }) {
               ? <window.BrazilChoropleth data={regionUfRows} valueKey={valueKey}
                                          label={regScaled.label} onSelect={handleRegionEnter}
                                          onBackground={handleMapBackground}
+                                         focusUfs={selectedRegion ? ufsOfRegion(selectedRegion) : null}
                                          seamless />
               : <window.RegionBars data={regScaled.data} valueKey={valueKey}
                                    label={regScaled.label} height={280} />}
@@ -637,7 +638,8 @@ function ViewGeography({ families, conventions, summary, database }) {
             {ufViz === 'map'
               ? <window.BrazilChoropleth data={scaledUFs} valueKey={valueKey} label={valueUnitLabel}
                                          onSelect={handleUfEnter} selectedUf={selectedSingleUf}
-                                         onBackground={handleMapBackground} />
+                                         onBackground={handleMapBackground}
+                                         focusUfs={selectedRegion ? ufsOfRegion(selectedRegion) : null} />
               : <window.BrazilTileMap data={scaledUFs} valueKey={valueKey} label={valueUnitLabel} onSelect={handleTileEnter} selectedUf={selectedSingleUf} />}
             {filtered.ufYearPartial && (
               <p className="caption" style={{ padding: '8px 4px 0' }}>
@@ -710,6 +712,7 @@ function ViewGeography({ families, conventions, summary, database }) {
                   selectedCity={selectedSingleCity}
                   onSelect={handleCityClick}
                   onBackground={handleMapBackground}
+                  focusCity={selectedSingleCity}
                   // With a sub-UF/município facet active the un-shaded municípios are
                   // OUTSIDE the selection, not municípios without production.
                   narrowed={filtered.subUfActive}

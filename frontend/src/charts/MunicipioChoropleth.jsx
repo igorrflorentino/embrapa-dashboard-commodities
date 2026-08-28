@@ -57,6 +57,7 @@ function fmtCompact(v) {
 
 export function MunicipioChoropleth({
   uf, data, valueKey, label, height = 420, onSelect, selectedCity, narrowed = false, onBackground,
+  focusCity = null,
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
@@ -253,6 +254,15 @@ export function MunicipioChoropleth({
         // 'codarea' — IBGE's property name for the 7-digit city code on these meshes
         // (the UF mesh keys on 'uf', which is fillColorExpression's default).
         map.setPaintProperty('mun-fill', 'fill-color', fillColorExpression(scale.byUf, NODATA, 'codarea'));
+      // Focusing ONE município hides the rest of the state, the same way entering a
+      // state hides the rest of the country: at this depth the map answers "this
+      // place", and the neighbours around it are not part of that answer.
+      if (typeof map.setFilter === 'function') {
+        const only = focusCity ? ['==', ['get', 'codarea'], String(focusCity)] : null;
+        for (const id of ['mun-fill', 'mun-line']) {
+          if (map.getLayer(id)) map.setFilter(id, only);
+        }
+      }
         if (typeof map.setFilter === 'function' && map.getLayer('mun-selected')) {
           map.setFilter('mun-selected', ['==', ['get', 'codarea'], selectedCity || '__none__']);
         }
@@ -262,7 +272,19 @@ export function MunicipioChoropleth({
       }
     };
     paint();
-  }, [scale, selectedCity, layerReady]);
+  }, [scale, selectedCity, layerReady, focusCity]);
+
+  // Frame the focused município (or back to the whole state once cleared). Reuses
+  // meshBounds over a one-feature collection rather than a second coordinate walker.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !layerReady || !mesh || typeof map.fitBounds !== 'function') return;
+    const feats = (mesh.features || []).filter(
+      (f) => !focusCity || (f.properties && String(f.properties.codarea) === String(focusCity)),
+    );
+    if (!feats.length) return;
+    map.fitBounds(meshBounds({ features: feats }), { padding: focusCity ? 40 : 16, duration: 500 });
+  }, [focusCity, layerReady, mesh]);
 
   if (failed) {
     return (
@@ -320,14 +342,17 @@ export function MunicipioChoropleth({
           honest map from reading as a broken one — but the REASON differs: with a
           sub-UF/município facet active the greys are simply outside the selection,
           and calling those "sem produção" would assert something the data never said. */}
-      {semDado > 0 && (
+      {/* Focusing ONE município hides the others instead of greying them, so a tally
+          that says "em cinza" would describe a map that is no longer on screen. At this
+          depth there is also nothing to explain: exactly one place is drawn, on purpose. */}
+      {semDado > 0 && !focusCity && (
         <p className="caption" style={{ padding: '0 4px', color: 'var(--fg-3)' }}>
           {narrowed
             ? `${semDado} ${semDado === 1 ? 'município fora do recorte' : 'municípios fora do recorte'} — em cinza.`
             : `${semDado} ${semDado === 1 ? 'município sem produção registrada' : 'municípios sem produção registrada'} no período — em cinza.`}
         </p>
       )}
-      {semGeometria.length > 0 && (
+      {semGeometria.length > 0 && !focusCity && (
         <p className="caption" style={{ padding: '0 4px', color: 'var(--fg-3)' }}>
           {semGeometria.length === 1
             ? `${semGeometria[0].city || semGeometria[0].cityCode} tem dado no período mas o IBGE ainda não publicou sua malha — não aparece no mapa (consta no ranking).`

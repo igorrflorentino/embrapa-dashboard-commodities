@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.32.1] - 2026-08-27
+
+### Changed
+- **Entrar num território agora ESCONDE o resto do mapa, não o deixa cinza.** Faltava
+  fechar o ciclo do drill-down da v1.32.0: entrar numa UF já enquadrava o estado, mas
+  entrar numa **região** deixava o país inteiro desenhado, e focar um **município**
+  deixava os outros do estado à volta.
+
+  Em cada nível o mapa responde "o que há aqui dentro". Deixar os vizinhos desenhados
+  convida a lê-los como parte da resposta — e no nível de região eles carregam a cor de
+  **outra** região, então um vizinho acinzentado seria ativamente enganoso.
+
+  Novas props `focusUfs` (BrazilChoropleth) e `focusCity` (MunicipioChoropleth):
+  filtram **preenchimento e contorno** — filtrar só o preenchimento deixaria as bordas
+  dos vizinhos flutuando sobre um mapa vazio — e enquadram a seleção. Para uma região, o
+  enquadramento é a **união** das caixas das UFs dela; para um município, a geometria
+  dele.
+
+### Fixed
+- **A contagem em cinza calava-se sobre um mapa que deixou de existir.** Com um
+  município focado, os demais ficam ocultos e não cinzentos, mas a legenda seguia
+  dizendo *"143 municípios fora do recorte — em cinza"*. A contagem é uma afirmação
+  contábil sobre o que está na tela, então ela se cala no nível de foco — onde,
+  aliás, não há o que explicar: exatamente um lugar está desenhado, de propósito.
+
+  Encontrado na verificação em navegador da própria mudança acima; a supressão é
+  guardada pelo **foco**, não por silêncio geral, e há teste dos dois lados.
+
+---
+
 ## [1.32.0] - 2026-08-27
 
 O mapa da Geografia vira **uma superfície só, navegável por zoom**, no lugar de três
