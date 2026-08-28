@@ -287,13 +287,33 @@ jobs:
   # model input it references (or any unit-test regression) slips silently through to
   # the post-merge `dbt-build-prod` and reds the prod build (exactly what happened with
   # test_ppm_family_mil_scale_and_value_conversion vs product_unit_factors). This gate
-  # runs the unit tests on every PR. Unit tests execute each model's SQL against inline
-  # `given` fixtures (they read NO real tables and write nothing), but dbt still needs a
-  # warehouse connection, so it uses the SAME keyless WIF as sqlfluff/dbt-build-prod.
-  # Fork PRs are skipped (they can't mint the OIDC token) — same posture as sqlfluff.
+  # runs the unit tests on every PR, which is the whole point: catch it BEFORE the merge.
+  # It uses the SAME keyless WIF as sqlfluff/dbt-build-prod. Fork PRs are skipped (they
+  # can't mint the OIDC token) — same posture as sqlfluff.
+  #
+  # PULL REQUESTS ONLY — it used to run on push to main as well, and that was both
+  # redundant and harmful:
+  #   • redundant: `dbt build` has run unit tests since dbt 1.8, so the post-merge
+  #     `dbt-build-prod` already executes all of them (measured 2026-08-28: they are
+  #     nodes 20, 21, 128, 129 and 190 of that build's 357) — over the full DAG, not
+  #     just the 6 selected here.
+  #   • harmful: both start on the same push and materialize each tested model into the
+  #     SAME temp table (`<test_name>__dbt_tmp`) in the SAME `gold` dataset. Unit tests
+  #     read no real ROWS, but dbt does materialize them, and it resolves each ref'd
+  #     relation's column types from the live warehouse — so they cannot simply be
+  #     pointed at an empty sandbox dataset either (tried: `historical_currency_factors`
+  #     does not exist in dbt_dev_silver and compilation fails). The build dropping a
+  #     temp table out from under the running test fails it with "Destination
+  #     deleted/expired during operation". Measured 2026-08-28: build starts
+  #     test_dim_produto_catalog_latest_wins_active at 17:52:03, CI fails that exact test
+  #     at 17:52:13, and an identical re-run passed once the build had finished
+  #     (runs 33196613456 / 33196613442).
+  # A direct push to main with no PR still gets these tests — from `dbt build` itself.
   dbt-unit-tests:
     name: dbt unit tests (BigQuery)
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
