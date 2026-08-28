@@ -104,10 +104,11 @@ class IngestSpec:
 # working (see tests/test_cli.py).
 INGESTS: list[IngestSpec] = [
     IngestSpec("ibge", ibge_pipeline, accepts_full=True, label="IBGE PEVS"),
-    # PAM is ANNUAL, slow-changing data (~1yr publication lag) and a freshly-shipped
-    # source: kept OUT of the nightly `ingest all` (in_all=False) so the live cron
-    # path stays unchanged. Runs on demand via `ingest ibge-pam`; give it its own
-    # monthly cadence later (like COMTRADE) once validated.
+    # PAM is ANNUAL, slow-changing data (~1yr publication lag): kept OUT of the nightly
+    # `ingest all` (in_all=False) so the daily cron stays fast — polling an annual source
+    # 365×/year to catch one publication buys nothing. It is NOT unscheduled, though:
+    # `embrapa-ingest-all-pam-monthly` (cron `0 4 2 * *`, from `make ingest-job-pam-schedule`)
+    # is ENABLED and firing — verified 2026-08-28. Also on demand via `ingest ibge-pam`.
     IngestSpec("ibge-pam", pam_pipeline, accepts_full=True, label="IBGE PAM", in_all=False),
     # PPM (livestock) is the same kind of source as PAM: ANNUAL, slow-changing,
     # freshly-shipped — OUT of the nightly `ingest all` (in_all=False). Runs on

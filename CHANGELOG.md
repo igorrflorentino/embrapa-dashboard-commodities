@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.17] - 2026-08-28
+
+### Corrigido
+
+- **Comentário em `cli.py` dizia que o PAM deveria ganhar cadência mensal "later … once
+  validated". Ele já tem, há meses.** `embrapa-ingest-all-pam-monthly` (cron `0 4 2 * *`) e
+  `embrapa-ingest-all-ppm-monthly` (`0 4 3 * *`) estão **ENABLED** no Cloud Scheduler e
+  disparam — verificado em 2026-08-28 pelas execuções extras do Job nos dias 2 e 3 de
+  agosto às 07:06 e 07:04 UTC, além da diária das 08:0x, e pela ingestão de PPM em Bronze
+  datada de 2026-08-03.
+
+  O comentário, somado à nota de exclusão do lote noturno (corrigida na v1.33.16), fazia
+  parecer que estar fora do `ingest all` era estar **sem** cadência — duas coisas
+  diferentes. Reescrito com o nome do agendamento, o cron e o alvo de `make` que o cria.
+
+### Verificado, sem achados
+
+A cadência mensal é funcional, não só agendada: `pam_delta_overlap_years` /
+`ppm_delta_overlap_years` são 1 (cada rodada refaz de `último_ano_bronze − 1`, absorvendo
+revisões) e `pam_end_year` / `ppm_end_year` usam `default_factory=_current_year` — flutuam
+à frente do último ano publicado e não estão pinados no `.env`. Logo, quando o IBGE
+publicar 2025, a próxima rodada mensal o captura. O `pam_pipeline` inclusive documenta o
+caso confusível (SIDRA vazio ⇒ pular, não acumular vazios).
+
+---
+
 ## [1.33.16] - 2026-08-28
 
 Auditoria do `CLAUDE.md` — a doc carregada em toda sessão, e a que acabou de se provar
