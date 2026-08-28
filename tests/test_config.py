@@ -287,7 +287,8 @@ def test_env_example_lists_the_same_pam_codes_as_the_default():
     from embrapa_dashboard.config import Settings
 
     line = next(
-        ln for ln in Path(".env.example").read_text().splitlines()
+        ln
+        for ln in Path(".env.example").read_text().splitlines()
         if ln.startswith("PAM_PRODUCT_CODES=")
     )
     example = sorted(c.strip() for c in line.split("=", 1)[1].split(",") if c.strip())
