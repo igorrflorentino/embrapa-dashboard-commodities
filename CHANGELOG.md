@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.13] - 2026-08-28
+
+Auditoria de conteúdo dos 42 arquivos de documentação (a varredura anterior, v1.33.12,
+foi de *referências*; esta é do que os textos **afirmam**). Cinco achados.
+
+### Corrigido
+
+- **`frontend/src/ui/README.md` dizia que o diretório está "intentionally out of ESLint
+  scope" — e mandava conferir no `eslint.config.js`, que diz o contrário.** O config lista
+  `src/ui/**/*.{js,jsx}` explicitamente, `npm run lint` é
+  `eslint src/data src/charts src/ui`, e o ESLint analisa **106 arquivos** ali. O próprio
+  config registra que a isenção "lapsed once it became maintained prod code, and the gap
+  was hiding real dead-code + hook-deps findings" — o README preservou justamente o
+  racional que caducou, junto com o "avoid restyling it" que vinha colado nele.
+- **`PLANS/comtrade_flows_regimes_market.md` não declarava estado.** Abre com "**Objetivo.**
+  Habilitar…" e nada indica que a feature está **congelada** — o `CLAUDE.md` é explícito
+  ("do NOT treat it as activatable") e dois dos três objetivos estão bloqueados por dado
+  (o detalhe de procedimento aduaneiro não existe na base desde o redesenho totals-only).
+  Ganhou banner de estado com o motivo.
+- **6 das 8 auditorias em `docs/audits/` não tinham marcador de histórico.** São relatórios
+  datados sobre versões muito anteriores (v1.5.2, v1.6.0, PRs específicos); sem marcador,
+  os achados listados leem como pendências abertas. Foi o risco que corri ao começar esta
+  auditoria. Padronizadas com o banner que uma delas já usava.
+- **`PLANS/geo_subregions.md`, marcado DONE, ainda dizia que o município está "currently
+  gated (`topMunis` [])".** Ele é populado a partir do cubo, ranqueado e nomeado pela malha
+  (teste `GEO-1`); o `[]` que sobrou no código é o fallback de snapshot vazio.
+- **`scripts/README.md` se declara "the index" e não listava `refresh_ibge_municipio_geojson.py`**
+  — o script que vendoriza as malhas municipais sem as quais o mapa não desce abaixo da UF.
+  Indexado. Na mesma passada: a célula "quando usar" do `test_setup.py` mandava rodar o
+  setup "via `setup.sh`/`setup.ps1`", scripts que a coluna ao lado, na mesma linha, lista
+  como **substituídos** e que não existem.
+
+### Testes
+
+- **`tests/test_doc_status_markers.py`**: toda auditoria em `docs/audits/` e todo plano em
+  `PLANS/` têm de declarar seu estado nas 10 primeiras linhas. A regra aceita o vocabulário
+  que o repositório já usa (HISTÓRICO · SUPERSEDED · STATUS · CONGELADO · DONE · COMPLETE ·
+  IMPLEMENTED) em vez de exigir uma palavra: dois planos lideram com um banner SUPERSEDED e
+  põem o Status logo abaixo, o que lê **melhor**, não pior. Validado por injeção nos dois
+  casos.
+
+### Verificado, sem achados
+
+- **Piso de cobertura**: `CONTRIBUTING.md` (98%) bate com o `Makefile` (`--cov-fail-under=98`);
+  o "99%" citado em `docs/testing.md` é a explicação de por que **não** é 99. Real hoje:
+  99,10% sobre 6.877 statements — o "~6.8k" da doc confere.
+- **`docs/frontend_data_contract.md` §3.6** cobre os três endpoints sub-UF, incluindo o
+  `products-by-municipio` de v1.29.0.
+- **`scripts/README.md`** agora fecha nos dois sentidos: nenhum script sem entrada, nenhuma
+  entrada sem arquivo.
+
+---
+
 ## [1.33.12] - 2026-08-28
 
 Varredura mecânica das docs: todo caminho de arquivo, alvo de `make` e comando da CLI

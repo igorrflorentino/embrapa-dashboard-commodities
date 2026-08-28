@@ -78,7 +78,9 @@ already has `city_code` (7-digit IBGE code) to join on.
    grain-correct at any breadth.
 
 ## Notes / accessory needs
-- The município universe is currently gated (`topMunis` []); activating it live is part of
-  this work (Q2 = "município vivo").
+- ~~The município universe is currently gated (`topMunis` []); activating it live is part
+  of this work (Q2 = "município vivo").~~ **Done** — `topMunis` is built from the
+  município cube, ranked and named via the mesh (`dataFilters.js`, test `GEO-1`). The
+  empty `topMunis: []` still in that file is the empty-snapshot fallback, not a gate.
 - `dbt build --full-refresh` (or at least `dbt seed` + the new models) is an operator step
   for prod; the seed + dim build offline against dev.

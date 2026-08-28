@@ -1,5 +1,7 @@
 # Auditoria Completa do Codebase — Embrapa Commodities Dashboard
 
+> ⚠️ **HISTÓRICO — relatório pontual, não é uma lista de pendências.** Auditoria de 2026-06-23, sobre a v1.5.2, muito anterior ao estado atual do repositório. Seus achados foram tratados na época (veja o `CHANGELOG`); trate caminhos, contagens e estrutura aqui como o retrato daquela data, **não** como o código de hoje. Mantido por proveniência — em especial os achados refutados, que não existem em nenhum outro lugar.
+
 **Data:** 2026-06-23 · **Versão auditada:** v1.5.2 · **Método:** workflow multi-agente
 (13 dimensões em fan-out → verificação adversarial por achado → síntese + crítico de
 completude). 88 agentes, ~6,1 M tokens. **59 achados brutos → 58 confirmados, 1 refutado.**

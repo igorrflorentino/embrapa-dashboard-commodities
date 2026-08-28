@@ -1,5 +1,7 @@
 # Manual-scan audit — 2026-06-23
 
+> ⚠️ **HISTÓRICO — relatório pontual, não é uma lista de pendências.** Auditoria de 2026-06-23, sobre o PR #157 (geografia sub-UF), muito anterior ao estado atual do repositório. Seus achados foram tratados na época (veja o `CHANGELOG`); trate caminhos, contagens e estrutura aqui como o retrato daquela data, **não** como o código de hoje. Mantido por proveniência — em especial os achados refutados, que não existem em nenhum outro lugar.
+
 A targeted **manual code-scan** audit (not a metrics sweep) of the freshly-shipped IBGE
 sub-UF geography feature (PR #157) + a documentation-coherence pass. Method: deep reads of
 the changed code, with every finding adversarially re-verified against the actual source.

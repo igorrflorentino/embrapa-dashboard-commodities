@@ -1,5 +1,7 @@
 # Quality Audit — 2026-06-22
 
+> ⚠️ **HISTÓRICO — relatório pontual, não é uma lista de pendências.** Auditoria de 2026-06-22, muito anterior ao estado atual do repositório. Seus achados foram tratados na época (veja o `CHANGELOG`); trate caminhos, contagens e estrutura aqui como o retrato daquela data, **não** como o código de hoje. Mantido por proveniência — em especial os achados refutados, que não existem em nenhum outro lugar.
+
 **Scope:** repository hygiene · codebase quality · cloud infrastructure (infrastructure-as-code).
 **Question asked:** *are the repo, the codebase, and the cloud infra following high quality standards?*
 **Verdict:** **Yes, across all three.** 0 critical / 0 high. 2 MEDIUM (both narrow, both with a clean minimal fix), 9 LOW (mostly docs/ops/supply-chain hardening). The security core was re-confirmed clean for the Nth audit running.

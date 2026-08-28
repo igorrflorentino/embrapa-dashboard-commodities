@@ -1,5 +1,7 @@
 # Curadoria PR — pre-merge bug audit (2026-06-26)
 
+> ⚠️ **HISTÓRICO — relatório pontual, não é uma lista de pendências.** Auditoria de 2026-06-26, sobre o PR da Curadoria (pré-merge), muito anterior ao estado atual do repositório. Seus achados foram tratados na época (veja o `CHANGELOG`); trate caminhos, contagens e estrutura aqui como o retrato daquela data, **não** como o código de hoje. Mantido por proveniência — em especial os achados refutados, que não existem em nenhum outro lugar.
+
 Adversarial multi-agent audit of the Curadoria feature PR (branch
 `claude/charming-brown-bc2a4d`, base `main`; 42 files, +3976/−806, commits P0–P5)
 run **before merge**. Six dimension-finders (catalog writer / orphan-purge /

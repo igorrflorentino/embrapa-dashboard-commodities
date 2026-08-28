@@ -11,9 +11,17 @@ Cloud Run. **This is not a prototype** — it ships to users.
 
 The code was originally delivered as the **Claude Design System handoff prototype**
 ("Embrapa Commodities Design System") and adopted into the repo verbatim, so the
-build no longer depends on an external bundle. We keep it close to the handoff (it
-is intentionally **out of ESLint scope** — see `frontend/eslint.config.js` — and we
-avoid restyling it), but it runs in production like any other source.
+build no longer depends on an external bundle. It has since diverged substantially —
+the synthetic data layer became API calls, `proto/` became `ui/`, and new views were
+added — and it runs in production like any other source.
+
+It **is** linted, with the same correctness ruleset as `src/data/` and `src/charts/`:
+`npm run lint` is `eslint src/data src/charts src/ui`, and `frontend/eslint.config.js`
+lists `src/ui/**/*.{js,jsx}` explicitly (106 files today). This README said the opposite
+until 2026-08-28 — "intentionally out of ESLint scope", citing the very config that
+includes it. The exemption was real once and lapsed when the directory became maintained
+production code; per that config's own note, the gap "was hiding real dead-code +
+hook-deps findings".
 
 ## What it does NOT contain
 
