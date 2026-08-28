@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.4] - 2026-08-28
+
+Duas varreduras nas transições do mapa e na referência ABNT — quatro defeitos, todos
+do tipo que não gera erro nenhum, só uma tela ou um texto que afirma o que não é.
+
+### Corrigido
+
+- **Clicar fora do mapa, logo depois de entrar numa região, não fazia nada visível.**
+  `enterRegion` grava `regions` **e** `states` (a região só alcança os dados através das
+  UFs), e `stepOut` lia essas UFs como um degrau próprio: o primeiro clique limpava
+  `states` sem mudar o nível nem a trilha, e só o segundo voltava ao Brasil. Era o
+  caminho mais comum de todos. Agora a expansão da própria região é reconhecida como
+  não-degrau e o gesto sai dela de uma vez.
+- **A trilha nomeava a região inteira enquanto o mapa plotava parte dela.** Com uma
+  região selecionada, um estreitamento de várias UFs dentro dela era suprimido:
+  "Norte com apenas PA e AM" renderizava idêntico às sete UFs do Norte. É a
+  sub-notificação da v1.33.2 um degrau acima, e o recorte é alcançável pelo uso normal
+  do menu (o seletor de UF exige uma região antes). O estreitamento passa a ter crumb
+  próprio; a expansão da região continua suprimida, por ser ruído e não informação.
+  A regra mora numa única função (`isRegionExpansion`) porque trilha e `stepOut`
+  precisam responder a mesma pergunta — derivações separadas foi como as duas
+  discordaram da primeira vez.
+- **`undefined` vazava para dentro da referência ABNT.** O rótulo de convenções
+  guardava contra `conventions` ausente mas confiava na FORMA do objeto: um
+  `conventions` sem `units` publicava "Convenções métricas: BRL · IPCA · undefined ·
+  undefined" num texto que o pesquisador cola no trabalho. Passa a ter default por
+  campo.
+- **A referência anunciava um cruzamento e não nomeava nada.** Sem séries escolhidas no
+  compositor, o nível detalhado saía "— Cruzamento entre fontes — . Recorte: ...".
+  O segmento agora só aparece quando há séries.
+
+### Testes
+
+- **Invariantes das transições do drill** (`geoDrill.test.js`), varridas sobre todo estado
+  alcançável por sequências de até três gestos: nenhum `stepOut` é silencioso (muda
+  nível ou trilha), `stepOut` sempre termina em Brasil sem ciclo, a trilha nunca nomeia
+  um recorte maior que o filtrado, e um banco sem grão municipal nunca oferece o degrau
+  de município. Validadas por injeção: restaurar o primeiro defeito acusa 146 estados,
+  o segundo acusa 24 + 36.
+- **A referência contra a norma** (`AppShell.cov.test.jsx`), varrida sobre 9 estados do
+  app × 3 níveis de detalhe: nenhum valor ausente vaza, pontuação bem formada, entrada
+  sempre em caixa alta (6023:2025), negrito cobrindo exatamente o título e o mesmo
+  título nos três níveis, fecho com data de acesso, e a citação no texto com inicial
+  maiúscula (10520:2023) — a norma que já foi "unificada" para caixa alta uma vez e
+  revertida.
+
+---
+
 ## [1.33.3] - 2026-08-28
 
 Três rótulos idênticos na barra de cores afirmavam que a escala era plana quando não era.

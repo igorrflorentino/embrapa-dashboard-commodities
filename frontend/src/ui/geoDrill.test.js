@@ -339,3 +339,147 @@ describe('subUfLabel — never describes a wider recorte than the data', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------------
+// As TRANSIÇÕES, não só os destinos.
+//
+// Os dois defeitos anteriores (v1.33.1, v1.33.2) foram achados olhando estados finais,
+// e ambos moravam no caminho até eles. Estas invariantes varrem o espaço alcançável por
+// sequências de gestos, em vez de mais um caso escolhido a dedo:
+//
+//   I1  nenhum gesto silencioso — se stepOut devolve um patch, a tela MUDA (nível ou
+//       trilha). Um clique que não muda nada lê como quebrado, e foi exatamente o que
+//       acontecia no caminho mais comum: clicar numa região e clicar fora para voltar.
+//   I2  stepOut sempre termina em Brasil, sem ciclo.
+//   I3  a trilha nunca descreve um conjunto MAIOR que o filtrado (a regra da v1.33.2,
+//       generalizada do degrau sub-UF para o degrau de UF).
+//   I4  num banco sem grão municipal, a trilha nunca oferece o degrau de município.
+const UFS = {
+  N:  ['AC', 'AM', 'AP', 'PA', 'RO', 'RR', 'TO'],
+  NE: ['AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'],
+  CO: ['DF', 'GO', 'MS', 'MT'],
+  SE: ['ES', 'MG', 'RJ', 'SP'],
+  S:  ['PR', 'RS', 'SC'],
+};
+const MESH = [
+  { meso: { code: '1504', name: 'Nordeste Paraense' } },
+  { intermediaria: { code: '1501', name: 'Belém' } },
+];
+const apply = (s, patch) => (patch ? { ...s, ...patch } : s);
+// A view sempre passa a MESMA lista para a trilha e para o stepOut; o teste faz igual,
+// porque a invariante é sobre os dois concordando.
+const regionUfsOf = (s) => {
+  const r = Array.isArray(s.regions) && s.regions.length === 1 ? s.regions[0] : null;
+  return r ? UFS[r] || null : null;
+};
+const screen = (s, muniCapable = true) => {
+  const label = subUfLabel(s, MESH);
+  const trail = drillTrail(
+    s,
+    { regionLabel: `região ${s.regions && s.regions[0]}`, ufName: s.states && s.states[0],
+      cityName: s.munis && s.munis[0], subUfLabel: label, regionUfs: regionUfsOf(s) },
+    muniCapable,
+  );
+  return {
+    level: drillLevel(s, muniCapable, !!label),
+    trail: trail.map((c) => `${c.level}:${c.label}`).join(' › '),
+    crumbs: trail,
+  };
+};
+
+// Todo estado que uma sequência de gestos consegue produzir, até 4 gestos.
+const reachable = () => {
+  const gestos = [
+    ['enterRegion N', () => enterRegion('N', UFS.N)],
+    ['enterRegion S', () => enterRegion('S', UFS.S)],
+    ['enterUf PA', () => enterUf('PA')],
+    ['enterUf SP', () => enterUf('SP')],
+    ['enterCity', () => enterCity('1501402')],
+    // Do menu de filtros, não do mapa: o seletor de UF exige uma região antes, então
+    // "região + subconjunto de UFs" é o uso NORMAL do menu, não uma borda.
+    ['menu 2 UFs', () => ({ states: ['PA', 'AM'] })],
+    ['menu meso', () => ({ mesos: ['1504'] })],
+    ['menu intermediária', () => ({ inters: ['1501'] })],
+  ];
+  const out = [];
+  const walk = (s, trilha, resta) => {
+    out.push({ estado: s, gestos: trilha });
+    if (!resta) return;
+    for (const [nome, g] of gestos) walk(apply(s, g()), [...trilha, nome], resta - 1);
+  };
+  walk({}, [], 3);
+  return out;
+};
+
+describe('geoDrill — invariantes das transições', () => {
+  const estados = reachable();
+
+  it('I1: nenhum stepOut é silencioso — todo patch muda nível ou trilha', () => {
+    const falhas = [];
+    for (const { estado, gestos } of estados) {
+      const antes = screen(estado);
+      const patch = stepOut(estado, regionUfsOf(estado));
+      if (!patch) continue;                       // já em Brasil — nada acima
+      const depois = screen(apply(estado, patch));
+      if (antes.level === depois.level && antes.trail === depois.trail) {
+        falhas.push(`[${gestos.join(' → ') || 'Brasil'}]  ${antes.trail}  (nível ${antes.level})`);
+      }
+    }
+    expect(falhas).toEqual([]);
+  });
+
+  it('I2: stepOut sempre chega a Brasil, sem ciclo', () => {
+    const falhas = [];
+    for (const { estado, gestos } of estados) {
+      let s = estado;
+      let n = 0;
+      const vistos = new Set();
+      for (;;) {
+        const chave = JSON.stringify(s);
+        if (vistos.has(chave)) { falhas.push(`ciclo em [${gestos.join(' → ')}]`); break; }
+        vistos.add(chave);
+        const patch = stepOut(s, regionUfsOf(s));
+        if (!patch) break;
+        s = apply(s, patch);
+        if (++n > 8) { falhas.push(`nao termina em [${gestos.join(' → ')}]`); break; }
+      }
+      if (drillLevel(s) !== 'region') falhas.push(`parou fora de Brasil em [${gestos.join(' → ')}]`);
+    }
+    expect(falhas).toEqual([]);
+  });
+
+  it('I3: a trilha nunca nomeia um recorte MAIOR do que o filtrado', () => {
+    const falhas = [];
+    for (const { estado, gestos } of estados) {
+      const regionUfs = regionUfsOf(estado);
+      const states = Array.isArray(estado.states) ? estado.states : [];
+      // Um estreitamento manual DENTRO da região: nem uma UF só (que ganha crumb
+      // próprio) nem a expansão inteira da região.
+      const estreitou = !!regionUfs && states.length > 1
+        && !regionUfs.every((u) => states.includes(u));
+      if (!estreitou) continue;
+      const { trail } = screen(estado);
+      // Sem um crumb que denuncie o estreitamento, a trilha para na região — e nomear a
+      // região inteira enquanto se plota parte dela é afirmar um conjunto maior que o real.
+      if (!/uf:\d+ UFs/.test(trail)) {
+        falhas.push(`[${gestos.join(' → ')}]  ${trail}  ← ${states.length} de ${regionUfs.length} UFs`);
+      }
+    }
+    expect(falhas.length ? falhas : ['ok']).toEqual(['ok']);
+  });
+
+  it('I3b: a expansão da própria região NÃO vira crumb (ruído, não informação)', () => {
+    const s = apply({}, enterRegion('N', UFS.N));
+    expect(screen(s).trail).toBe('region:Brasil › uf:região N');
+  });
+
+  it('I4: banco sem grão municipal nunca oferece o degrau de município', () => {
+    const falhas = [];
+    for (const { estado, gestos } of estados) {
+      const { crumbs, level } = screen(estado, false);
+      if (level === 'municipio') falhas.push(`nível município em [${gestos.join(' → ')}]`);
+      if (crumbs.some((c) => c.level === 'focus')) falhas.push(`crumb focus em [${gestos.join(' → ')}]`);
+    }
+    expect(falhas).toEqual([]);
+  });
+});

@@ -438,8 +438,13 @@ function ViewGeography({ families, conventions, summary, database }) {
   // same invariant test: the trail must account for EVERY active narrowing, not the
   // first one it finds.
   const subUfLabel = filtered.subUfActive ? window.subUfLabel(summary, mesh) : null;
+  // The active region's full UF list. The trail and stepOut must answer "is this
+  // selection the region's own expansion?" the SAME way — they read it from here, never
+  // each from its own derivation, which is how the two came to disagree before (v1.33.2).
+  const activeRegionUfs = selectedRegion ? ufsOfRegion(selectedRegion) : null;
   const drillTrail = window.drillTrail(summary, {
     subUfLabel,
+    regionUfs: activeRegionUfs,
     regionLabel: selectedRegion ? regionLabelOf(selectedRegion) : null,
     ufName: selectedSingleUf
       ? ((scaledUFs.find((u) => u.uf === selectedSingleUf) || {}).name || selectedSingleUf)
@@ -461,6 +466,15 @@ function ViewGeography({ families, conventions, summary, database }) {
     }
     if (crumb.region) { window.patchFilter(window.enterRegion(crumb.region, ufsOfRegion(crumb.region))); return; }
     if (crumb.uf) { window.patchFilter(window.enterUf(crumb.uf)); return; }
+    // The multi-UF crumb keeps the states it names and drops everything BELOW them;
+    // without this it fell through to enterCity(undefined), which cleared only munis and
+    // left a sub-UF facet narrowing a level the researcher had just stepped back above.
+    if (crumb.ufs) {
+      window.patchFilter({
+        mesos: null, micros: null, inters: null, imediatas: null, munis: null,
+      });
+      return;
+    }
     window.patchFilter(window.enterCity(crumb.muni));
   };
   // Drilling IN. Each level enters the next one rather than toggling a filter: the
@@ -482,7 +496,7 @@ function ViewGeography({ families, conventions, summary, database }) {
   // than making an empty click look like it did something.
   const handleMapBackground = () => {
     if (!window.patchFilter) return;
-    const patch = window.stepOut(summary);
+    const patch = window.stepOut(summary, activeRegionUfs);
     if (patch) window.patchFilter(patch);
   };
 
