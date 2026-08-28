@@ -269,9 +269,9 @@ def test_pam_abacaxi_is_configured_and_lands_in_mass():
     Table 5457 delivers Toneladas (verified against the API in 2026-08, alongside the
     equally-asterisked Coco-da-baía). A contagem override would silently divide the
     series by a thousand-fruit factor that does not apply."""
-    from embrapa_dashboard.config import Settings
-
-    codes = Settings().pam_product_codes_list
+    # _make_settings pins _env_file=None: the assertion is about the DECLARED default,
+    # not about whatever the machine running the tests happens to have in its .env.
+    codes = _make_settings().pam_product_codes_list
     assert "40092" in codes
     # The asterisked pair travels together; if one is ever moved to a count family the
     # other almost certainly must be too.
@@ -284,12 +284,10 @@ def test_env_example_lists_the_same_pam_codes_as_the_default():
     set than the deployed job."""
     from pathlib import Path
 
-    from embrapa_dashboard.config import Settings
-
+    # Anchored on the repo, not the cwd: pytest's working directory is not a contract.
+    example_file = Path(__file__).resolve().parent.parent / ".env.example"
     line = next(
-        ln
-        for ln in Path(".env.example").read_text().splitlines()
-        if ln.startswith("PAM_PRODUCT_CODES=")
+        ln for ln in example_file.read_text().splitlines() if ln.startswith("PAM_PRODUCT_CODES=")
     )
     example = sorted(c.strip() for c in line.split("=", 1)[1].split(",") if c.strip())
-    assert example == sorted(Settings().pam_product_codes_list)
+    assert example == sorted(_make_settings().pam_product_codes_list)
