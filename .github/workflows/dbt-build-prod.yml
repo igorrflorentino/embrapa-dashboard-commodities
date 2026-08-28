@@ -110,7 +110,16 @@ on:
     # after the 11:00 UTC freshness check. A PLAIN (non --full-refresh) build is
     # enough — silver_ibge_pevs re-scans Bronze by ingestion_timestamp, not by
     # year, so an upstream correction to an OLD year flows all the way to Gold.
-    - cron: '30 11 * * *'
+    # 2×/semana (seg e qui, 08:30 BRT), não diário. Medido 2026-08-28: o build responde por
+    # 98,9% do BigQuery faturado (121,3 GB/semana contra 1,3 GB da ingestão inteira), e a
+    # maior parte disso reconstruía entradas idênticas — as fontes não-câmbio avançam
+    # mensal ou anualmente, e o câmbio entra no Gold como MÉDIA ANUAL (val_yearfx_* =
+    # val_raw / brl_per_usd_avg), então um dia a mais de PTAX mal move o número exibido.
+    # Duas vezes por semana, e não uma, porque os gatilhos mensais caem em DIAS FIXOS do
+    # mês (PAM dia 2, PPM dia 3, COMTRADE dia 15) — que caem em qualquer dia da semana.
+    # Com seg+qui, um dado que pousa fora do ciclo espera no máximo 3-4 dias; com segunda
+    # apenas, esperaria 6.
+    - cron: '30 11 * * 1,4'
   workflow_dispatch:
     inputs:
       full_refresh:

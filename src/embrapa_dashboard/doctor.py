@@ -870,9 +870,10 @@ def _check_ingest_heartbeat(settings: Settings) -> CheckResult:
     publication windows. This asks whether the RUN happened, which must be true every
     window regardless of whether the source had anything to give.
 
-    Expected window per source comes from `cli.INGESTS`: a source in the nightly batch
-    (`in_all=True`) must have a heartbeat within `heartbeat_daily_slack_days`; the ones
-    outside it run monthly, so they get `heartbeat_monthly_slack_days`.
+    Expected window per source is its own `IngestSpec.cadence_days` plus
+    `HEARTBEAT_SLACK_DAYS` of grace. The cadence is declared per source rather than
+    inferred from `in_all`, which stopped meaning "daily" when the batch went weekly
+    (2026-08-28) and only bcb-currency kept a daily trigger.
 
     A source that has NEVER reported is not flagged: the table only starts filling after
     this ships, and calling a not-yet-observed source "broken" would cry wolf on day one.
@@ -908,13 +909,11 @@ def _check_ingest_heartbeat(settings: Settings) -> CheckResult:
             if last is None:
                 continue  # never observed — see the docstring
             age_days = (now - last).total_seconds() / 86400
-            slack = (
-                settings.heartbeat_daily_slack_days
-                if spec.in_all
-                else settings.heartbeat_monthly_slack_days
-            )
-            if age_days > slack:
-                overdue.append(f"{spec.name} {age_days:.0f}d ago (> {slack}d)")
+            # The window is the source's OWN cadence plus a grace margin — not a guess
+            # from `in_all`, which stopped meaning "daily" when the batch went weekly.
+            window = spec.cadence_days + settings.heartbeat_slack_days
+            if age_days > window:
+                overdue.append(f"{spec.name} {age_days:.0f}d ago (> {window}d)")
             else:
                 seen.append(f"{spec.name}={age_days:.0f}d")
 

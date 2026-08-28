@@ -61,10 +61,14 @@ make precommit-install                        # optional: ruff + file-hygiene on
 
 Ingestion (Python → GCS Parquet → BigQuery Bronze):
 ```bash
-make ingest-all                               # IBGE PEVS + both BCB series + COMEX — FOUR sources (IBGE + BCB = delta)
+make ingest-all                               # IBGE PEVS + both BCB series + COMEX — FOUR sources (delta)
+# CADENCE (revised 2026-08-28, measured): this batch is now WEEKLY (Monday 05:00 BRT,
+# `embrapa-ingest-all-weekly`). Only BCB câmbio advances daily — 22 of 30 days, vs 2 for
+# inflação, 3 for COMEX and 2 for PEVS — so it kept a daily trigger of its own
+# (`embrapa-ingest-all-currency-daily`, `make ingest-job-currency-schedule`).
 # `all` deliberately EXCLUDES three (in_all=False in cli.INGESTS): ibge-pam and ibge-ppm
-# (annual, slow-changing, ~1yr publication lag — own monthly cadence) and comtrade
-# (key-gated + quota-gated). Refreshing PAM/PPM needs `embrapa ingest ibge-pam|ibge-ppm`.
+# (annual, ~1yr publication lag — own monthly triggers) and comtrade (key + quota gated).
+# Each source declares its expected `cadence_days`, which doctor's heartbeat check reads.
 make ingest-ibge-historical                   # auto-chunked for large year windows
 uv run embrapa ingest {ibge|ibge-pam|ibge-ppm|bcb-inflation|bcb-currency|comex|comtrade|all}
 uv run embrapa ingest bcb-inflation --full    # force refetch from BCB_START_YEAR
