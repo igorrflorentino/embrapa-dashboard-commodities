@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.8] - 2026-08-28
+
+### Alterado
+
+- **Removidos os overrides de cobertura que apenas duplicavam o registry.** `ibge_pam`
+  (`cobertura_years`) e `ibge_ppm` (`cobertura_years`, `cobertura_atualizacao`,
+  `cobertura_granularidade`) carregavam em `research_inputs.banco_metadata` valores
+  **byte-idênticos** aos de `registries.py` e `bancos.js` — conferido campo a campo antes
+  de apagar. Não era defeito hoje; era a condição que produziu o defeito do COMTRADE na
+  v1.33.7, onde as duas cópias diziam "1989" e portanto nada parecia inconsistente até
+  que ambas ficassem erradas.
+
+  Limpeza de **coluna, não de linha**: `maturity` não tem fallback no registry, então uma
+  linha apagada deixaria o banco exibindo a etiqueta neutra "…" para sempre. As seis
+  linhas seguem com sua `maturity`, e só o `sefaz_nf` mantém `maturity_note` — a única
+  ressalva legítima da tabela. Nenhum override de cobertura resta: o registry é a cópia
+  única.
+
+  Verificado depois: os cinco bancos com dados devolvem exatamente os mesmos três campos
+  de cobertura de antes da limpeza. No-op para quem lê, por construção.
+
+### Documentação
+
+- **O runbook mandava dobrar a mudança de volta no registry "para que o default e o
+  override concordem" — e parava aí.** Esse é o passo que faltava: uma vez dobrada, o
+  override vira cópia redundante, e cópia que concorda hoje é a que envelhece amanhã.
+  `docs/operations_runbook.md` agora manda **apagar o override** depois de dobrar,
+  cita o caso do COMTRADE como o que acontece quando não se apaga, e avisa para nunca
+  anular `maturity` (sem fallback ⇒ banco preso em "…").
+
+---
+
 ## [1.33.7] - 2026-08-28
 
 Varredura atrás de erros da mesma família do PPM — dado estático afirmando o que os dados

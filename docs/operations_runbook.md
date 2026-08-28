@@ -209,6 +209,15 @@ Override columns: `maturity`, `maturity_note`, `maturity_date`, `cobertura_years
   `planejado` rendering in the SPA). Keep the registry the long-term source of
   truth: fold a lasting change back into `registries.py` + `bancos.js` at the next
   release so the default and the override agree.
+- **Then DROP the override** (`SET <col> = NULL`) — do not leave it duplicating the
+  value you just folded back. A duplicate that agrees today is precisely what goes
+  stale tomorrow: `un_comtrade` carried `cobertura_years = '1989 → presente'` next to a
+  registry that said the same, so nothing looked inconsistent, and when the v1.13.0
+  redesign moved the real floor to 2000 BOTH copies were wrong and neither could notice
+  (v1.33.7). `ibge_pam`/`ibge_ppm` were dropped the same way in v1.33.8 while still
+  matching — the cleanup is a no-op for the reader by design. **Never NULL `maturity`
+  itself**: it has no registry fallback, so an emptied row leaves the banco showing the
+  neutral "…" loading tag forever. Clear the `cobertura_*` / note columns, keep the row.
 
 ## IAP author verification — set `IAP_AUDIENCE` in prod
 
