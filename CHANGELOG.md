@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.1] - 2026-08-28
+
+Achado de auditoria da própria sessão: o drill-down (v1.32.0) **ignorava as facetas
+sub-UF**, e o mapa passou a afirmar o oposto dos dados.
+
+### Fixed
+- **Um recorte por mesorregião produzia um mapa dizendo "Brasil".** Com a mesorregião
+  *Nordeste Paraense* aplicada e nenhuma UF selecionada:
+
+      trilha:  "Brasil"                     <- o dado era uma meso do Pará
+      título:  "Distribuição por região"
+      heatmap: "ano × região (1 região)"
+
+  `drillLevel` inspecionava apenas `munis`, `states` e `regions`. As quatro facetas entre
+  a UF e o município — mesorregião, microrregião, intermediária, imediata — não entravam
+  na conta, então um recorte **abaixo** da UF caía no nível mais **grosso** que existe.
+  Regressão do propósito declarado do `PLANS/geo_subregions.md`: *"a sub-UF selection
+  must finally reach the MAP"*.
+
+  Pior que o rótulo errado: `scope` também dirige o **grão da exportação CSV**
+  (`window.geoExportScope`), então o download saía por região — casando com a legenda,
+  não com as linhas.
+
+  `drillLevel` passa a receber `subUfActive` de quem sabe: um facet key pode estar
+  presente cobrindo o **universo inteiro**, o que não estreita nada, e só o `dataFilters`
+  conhece o universo. Verificado no navegador: a mesma seleção agora dá
+  `Brasil › Nordeste Paraense`, "Distribuição por município" e "ano × município".
+
+- **A trilha ganhou a migalha do recorte**, nomeada pela malha, no degrau entre a UF e o
+  município — sem ela a trilha parava em "Brasil", com o dispositivo de orientação
+  afirmando o contrário do que estava embaixo.
+
+- **`stepOut` ganhou o mesmo degrau:** clicar fora com uma meso ativa pulava direto para
+  limpar a UF, descartando um estreitamento que o pesquisador não pediu para deixar.
+
+### Nota de auditoria
+- O "Perfil do território" foi conferido no mesmo passo e **não** tem o defeito — lê
+  `scopedCityCodes` e `subUfActive` diretamente.
+- **Método de bump corrigido:** eu vinha reescrevendo `"version"` no `package-lock.json`
+  por substituição de texto. Nesta versão havia **14** ocorrências de `"version":
+  "1.33.0"` — 2 do projeto e 12 de dependências que por acaso estão nessa versão. A
+  asserção de contagem barrou a torto e a direito antes que 12 pinos fossem reescritos.
+  Passa a usar `npm version`, que altera só as duas entradas do projeto. Auditados os 25
+  commits anteriores: nenhum bump meu tocou em dependência (os dois que alteram muitas
+  versões são PRs do dependabot, que é o trabalho deles).
+
+---
+
 ## [1.33.0] - 2026-08-28
 
 **Abacaxi disponível no dashboard** (IBGE PAM, SIDRA 40092) — e o registro dessa

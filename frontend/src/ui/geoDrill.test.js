@@ -196,3 +196,71 @@ describe('drillTrail — never offers a level the banco cannot reach', () => {
     }
   });
 });
+
+// ── Sub-UF facets are a level, not an invisible narrowing ────────────────────
+//
+// mesorregião / microrregião / intermediária / imediata sit BELOW the UF. Deriving the
+// level from `summary` alone missed them entirely: a mesorregião of Pará produced a map
+// captioned "Distribuição por região" under a trail reading "Brasil" — the orientation
+// device asserting the opposite of the data — and it drove the CSV export's grain too,
+// so the download matched the label rather than the rows.
+//
+// It cannot be read off `summary`: a facet key can be present while covering its whole
+// universe, which narrows nothing. Only dataFilters knows the universe, so the caller
+// passes `subUfActive` and this trusts it.
+
+describe('drillLevel — a sub-UF facet is município level', () => {
+  it('reaches município grain even with no UF selected', () => {
+    expect(drillLevel({ mesos: ['1504'] }, true, true)).toBe('municipio');
+    expect(drillLevel({ inters: ['1502'] }, true, true)).toBe('municipio');
+  });
+
+  it('ignores a facet key that narrows nothing', () => {
+    // Present but covering its whole universe ⇒ subUfActive false ⇒ still Brasil.
+    expect(drillLevel({ mesos: ['1504'] }, true, false)).toBe('region');
+  });
+
+  it('still stops at UF for a banco without the grain', () => {
+    expect(drillLevel({ mesos: ['1504'] }, false, true)).toBe('uf');
+  });
+
+  it('a UF plus a sub-UF facet stays at município level', () => {
+    expect(drillLevel({ states: ['PA'], mesos: ['1504'] }, true, true)).toBe('municipio');
+  });
+});
+
+describe('drillTrail — the sub-UF narrowing gets a crumb', () => {
+  it('names it instead of stopping at Brasil', () => {
+    const t = drillTrail({ mesos: ['1504'] }, { subUfLabel: 'Nordeste Paraense' });
+    expect(t.map((c) => c.label)).toEqual(['Brasil', 'Nordeste Paraense']);
+  });
+
+  it('sits between the UF and the município', () => {
+    const t = drillTrail(
+      { states: ['PA'], mesos: ['1504'], munis: ['1500107'] },
+      { ufName: 'Pará', subUfLabel: 'Nordeste Paraense', cityName: 'Abaetetuba' },
+    );
+    expect(t.map((c) => c.label)).toEqual(['Brasil', 'Pará', 'Nordeste Paraense', 'Abaetetuba']);
+  });
+});
+
+describe('stepOut — the sub-UF rung', () => {
+  it('clears the facets before touching the UF', () => {
+    // Stepping past them straight to the UF would discard a narrowing the researcher
+    // never asked to leave.
+    const out = stepOut({ states: ['PA'], mesos: ['1504'] });
+    expect(out).toEqual({ mesos: null });
+    expect(out).not.toHaveProperty('states');
+  });
+
+  it('still terminates at Brasil through the extra rung', () => {
+    let s = { regions: ['N'], states: ['PA'], mesos: ['1504'], munis: ['1500107'] };
+    let guard = 0;
+    while (drillLevel(s, true, (s.mesos || []).length > 0) !== 'region' && guard < 10) {
+      s = { ...s, ...stepOut(s) };
+      guard += 1;
+    }
+    expect(drillLevel(s, true, (s.mesos || []).length > 0)).toBe('region');
+    expect(guard).toBeLessThan(10);
+  });
+});
