@@ -19,6 +19,28 @@
          dedupe `qualify` needs the full natural-key partition to pick the
          latest ingestion_timestamp).
       3. insert_overwrite replaces only the affected reference_year partitions.
+
+    MEASURED SCOPE (2026-08-28) — this does NOT behave incrementally today, and the
+    `>=` note below explains why. `affected_years` currently returns ALL 39 years
+    (1986-2024) on every build, so step 2 re-reads the whole of Bronze and step 3
+    overwrites every partition. Billed bytes for this model are flat at 3.22 GB/build
+    (3.88 GB after 2026-08-19), identical every day — the signature of a full rebuild,
+    not an incremental one.
+
+    Why: the boundary is `ingestion_timestamp >= max(Silver)`, and the batch sitting AT
+    that boundary keeps qualifying until a NEWER Bronze ingestion arrives. Two things make
+    that batch huge and long-lived here: the monthly `reconcile` re-ingests the entire
+    history by design, and PEVS itself only writes to Bronze ~2 days a month. So a
+    full-history batch stays on the boundary for weeks, and every build in between redoes
+    it.
+
+    NOT fixed, deliberately. The `>=` is what stops a same-second append from being
+    skipped forever (see the note in the CTE), so tightening it needs a different
+    correctness argument, not just a different operator — a per-year comparison of Bronze
+    vs Silver (max ingestion_timestamp AND row count, so the same-second case is still
+    caught) would do it. It is not worth the risk today: the whole project sits at ~15% of
+    BigQuery's free 1 TiB/month, so this costs nothing. Revisit if that changes — these
+    two models are ~36% of the build's bytes and would drop to near zero.
     On `--full-refresh` (or first build), the {% if is_incremental() %} block
     is skipped and we scan all of Bronze.
 
