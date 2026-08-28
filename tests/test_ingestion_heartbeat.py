@@ -70,16 +70,16 @@ def test_heartbeat_check_passes_when_every_source_ran_in_window(settings) -> Non
 
 
 def test_heartbeat_check_warns_when_a_daily_source_stopped(settings) -> None:
-    """The blind spot itself: nightly source silent for a week, no failure anywhere."""
-    with _patch(_rows(("ibge", 7), ("ibge-pam", 10))):
+    """The blind spot itself: the daily FX trigger silent for a week, no failure anywhere."""
+    with _patch(_rows(("bcb-currency", 7), ("ibge-pam", 10))):
         result = doctor._check_ingest_heartbeat(settings)
     assert "⚠" in result.detail
-    assert "ibge " in result.detail + " "
+    assert "bcb-currency" in result.detail
     assert "ibge-pam" not in result.detail.split("(")[0]
 
 
 def test_heartbeat_check_gives_monthly_sources_a_monthly_window(settings) -> None:
-    """10 days silent is fine for a monthly trigger and broken for a nightly one."""
+    """10 days silent is fine for a monthly trigger and broken for a daily one."""
     with _patch(_rows(("ibge-pam", 10))):
         assert "⚠" not in doctor._check_ingest_heartbeat(settings).detail
     with _patch(_rows(("ibge-pam", 40))):

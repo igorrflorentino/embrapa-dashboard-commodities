@@ -44,8 +44,13 @@ PROJECT="${GCP_PROJECT_ID:-$(get_env GCP_PROJECT_ID)}"
 [ -n "$PROJECT" ] || { echo "ERROR: GCP_PROJECT_ID not set"; exit 1; }
 REGION="$(INGEST_JOB_REGION="${INGEST_JOB_REGION:-$(get_env INGEST_JOB_REGION)}" resolve_region)"
 JOB_NAME="${INGEST_JOB_NAME:-embrapa-ingest-all}"
-SCHED_NAME="${INGEST_SCHEDULE_NAME:-${JOB_NAME}-nightly}"
-CRON="${INGEST_SCHEDULE_CRON:-0 5 * * *}"
+SCHED_NAME="${INGEST_SCHEDULE_NAME:-${JOB_NAME}-weekly}"
+# WEEKLY (Monday 05:00 BRT), not nightly. Measured 2026-08-28: of the four sources in
+# `ingest all`, only BCB câmbio advances daily (22 of 30 days) — and it now has its own
+# daily trigger (schedule_currency.sh). The other three advance monthly or yearly:
+# inflação moved twice in 30 days, COMEX wrote on 3 days, PEVS on 2. A weekly batch polls
+# each of them well above its real publication rate while bounding staleness at 7 days.
+CRON="${INGEST_SCHEDULE_CRON:-0 5 * * 1}"
 SCHED_TZ="${INGEST_SCHEDULE_TZ:-America/Sao_Paulo}"
 # Same .env fallback chain as schedule_reconcile.sh / schedule_comtrade.sh.
 SCHED_SA="${INGEST_SCHEDULE_SA:-$(get_env INGEST_SCHEDULE_SA)}"

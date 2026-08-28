@@ -447,11 +447,10 @@ class Settings(BaseSettings):
     # WITHOUT the new year arriving. Lower it to tighten, raise it for a slower publisher.
     source_freshness_annual_slack_years: int = Field(default=2, ge=1)
 
-    # `doctor`'s Ingest heartbeat windows. Daily = the nightly batch (2 days of slack
-    # absorbs one skipped night); monthly = the sources triggered on their own day of the
-    # month (35 days spans the longest month plus a few days of drift).
-    heartbeat_daily_slack_days: int = Field(default=2, ge=1)
-    heartbeat_monthly_slack_days: int = Field(default=35, ge=1)
+    # Grace added to each source's own `IngestSpec.cadence_days` before `doctor` calls a
+    # missing heartbeat overdue. 3 days absorbs one skipped run plus clock drift on every
+    # cadence: a daily source trips at 4 days, a weekly one at 10, a monthly one at 34.
+    heartbeat_slack_days: int = Field(default=3, ge=1)
     comtrade_end_year: int = Field(default_factory=_current_year)
     # How many recent years (at/below comtrade_end_year) get RE-FETCHED on every run so
     # late reporter submissions and revisions are absorbed. UN Comtrade reporters file an

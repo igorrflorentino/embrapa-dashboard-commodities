@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.20] - 2026-08-28
+
+Reorganização das cadências, guiada por medição — e não pela intuição de que "diário é
+caro". A intuição estava certa no diagnóstico e errada no alvo.
+
+### Alterado
+
+- **O build do dbt passa de diário para 2×/semana (seg e qui).** É aqui que está o
+  dinheiro: medido em 7 dias parados, `sa-dbt-build-ci` faturou **121,3 GB** contra
+  **1,3 GB** de toda a ingestão — **98,9% do custo**. E a maior parte disso reconstruía
+  entradas idênticas, porque as fontes não-câmbio avançam mensal ou anualmente e o câmbio
+  entra no Gold como **média anual** (`val_yearfx_* = val_raw / brl_per_usd_avg`), de modo
+  que um dia a mais de PTAX mal move o número exibido. Duas vezes por semana e não uma
+  porque os gatilhos mensais caem em **dias fixos do mês** (PAM 2, PPM 3, COMTRADE 15),
+  que caem em qualquer dia da semana: com seg+qui, dado fora do ciclo espera no máximo
+  3–4 dias; com segunda apenas, esperaria 6.
+- **O lote de ingestão passa de diário para semanal** (`embrapa-ingest-all-weekly`,
+  segunda 05:00 BRT), e **o câmbio ganha gatilho diário próprio**
+  (`embrapa-ingest-all-currency-daily`, `make ingest-job-currency-schedule`). Medido em 30
+  dias de sondagem diária, o avanço real da referência: câmbio **22×** (dias úteis),
+  inflação **2×**, COMEX escreveu em 3 dias, PEVS em 2. Ou seja: três das quatro fontes do
+  lote eram sondadas ~15× mais do que publicam.
+
+  A economia dessa parte é ~1% — ingestão nunca foi o custo. O motivo é parar de pedir a
+  quatro APIs dado que três delas só publicam mensal ou anualmente.
+
+  O agendador `-nightly` foi **pausado**, não removido: apagar agendador é bloqueado para
+  o agente por hook do projeto. Removê-lo de vez é um passo humano.
+
+- **`IngestSpec` ganha `cadence_days`.** A janela do check de batimento era derivada de
+  `in_all` — "no lote ⇒ diário" — o que deixou de ser verdade no instante em que o lote
+  virou semanal, e teria feito o check acusar PEVS, inflação e COMEX toda semana. Agora
+  cada fonte declara a sua cadência (câmbio 1, lote 7, mensais 31) e o `doctor` soma
+  `HEARTBEAT_SLACK_DAYS` (padrão 3), substituindo as duas folgas anteriores por uma.
+
+### Testes
+
+- **`tests/test_ingest_cadence_matches_schedulers.py`**: a `cadence_days` declarada tem de
+  bater com o cron do script que cria o gatilho — parseando `deploy/ingestion/schedule*.sh`.
+  Uma fonte pode ter **mais de um** gatilho (o câmbio tem o próprio diário **e** anda no
+  lote semanal), então o esperado é o **menor** intervalo: tomar o do lote deixaria o
+  câmbio ficar 7 dias no escuro antes de alguém reclamar. Validado por injeção. Mais uma
+  invariante de que toda fonte é coberta por algum agendador.
+
+### Verificado em produção
+
+O gatilho novo de câmbio foi disparado e conferido: **330 linhas** em `bcb_cambio` e
+**zero** em inflação e COMEX — escopo correto. E ele produziu o **primeiro batimento real**
+(`bcb-currency · ok · 10,6s`), provando a feature da v1.33.19 ponta a ponta em prod.
+
+---
+
 ## [1.33.19] - 2026-08-28
 
 ### Adicionado

@@ -98,29 +98,49 @@ class IngestSpec:
     accepts_full: bool  # True when .run accepts full=bool (delta-aware pipelines)
     label: str  # label shown in `ingest all`
     in_all: bool = True  # False = only runnable via `ingest <name>` (outside the default batch)
+    # How often a SCHEDULER is expected to run this source, in days. Read by doctor's
+    # "Ingest heartbeat" check to decide when silence stops being normal. It is a separate
+    # fact from `in_all`: since 2026-08-28 the batch itself is WEEKLY, so "in the batch" no
+    # longer implies "runs daily" — only bcb-currency does, on its own trigger. Keep this in
+    # step with deploy/ingestion/schedule*.sh; it is the only place the code knows the
+    # cadence the cloud was configured with.
+    cadence_days: int = 7
 
 
 # `module` attribute, not a function: spec.module.run(...) does the lookup at
 # call time, keeping monkeypatch.setattr(cli.bcb_inflation, "run", ...)
 # working (see tests/test_cli.py).
 INGESTS: list[IngestSpec] = [
-    IngestSpec("ibge", ibge_pipeline, accepts_full=True, label="IBGE PEVS"),
+    IngestSpec("ibge", ibge_pipeline, accepts_full=True, label="IBGE PEVS", cadence_days=7),
     # PAM is ANNUAL, slow-changing data (~1yr publication lag): kept OUT of the nightly
     # `ingest all` (in_all=False) so the daily cron stays fast — polling an annual source
     # 365×/year to catch one publication buys nothing. It is NOT unscheduled, though:
     # `embrapa-ingest-all-pam-monthly` (cron `0 4 2 * *`, from `make ingest-job-pam-schedule`)
     # is ENABLED and firing — verified 2026-08-28. Also on demand via `ingest ibge-pam`.
-    IngestSpec("ibge-pam", pam_pipeline, accepts_full=True, label="IBGE PAM", in_all=False),
+    IngestSpec(
+        "ibge-pam", pam_pipeline, accepts_full=True, label="IBGE PAM", in_all=False, cadence_days=31
+    ),
     # PPM (livestock) is the same kind of source as PAM: ANNUAL, slow-changing,
     # freshly-shipped — OUT of the nightly `ingest all` (in_all=False). Runs on
     # demand via `ingest ibge-ppm`; its own monthly cadence via schedule_ppm.sh.
-    IngestSpec("ibge-ppm", ppm_pipeline, accepts_full=True, label="IBGE PPM", in_all=False),
-    IngestSpec("bcb-inflation", bcb_inflation, accepts_full=True, label="BCB inflation"),
-    IngestSpec("bcb-currency", bcb_currency, accepts_full=True, label="BCB FX"),
-    IngestSpec("comex", comex_pipeline, accepts_full=True, label="MDIC COMEX"),
+    IngestSpec(
+        "ibge-ppm", ppm_pipeline, accepts_full=True, label="IBGE PPM", in_all=False, cadence_days=31
+    ),
+    IngestSpec(
+        "bcb-inflation", bcb_inflation, accepts_full=True, label="BCB inflation", cadence_days=7
+    ),
+    IngestSpec("bcb-currency", bcb_currency, accepts_full=True, label="BCB FX", cadence_days=1),
+    IngestSpec("comex", comex_pipeline, accepts_full=True, label="MDIC COMEX", cadence_days=7),
     # COMTRADE stays out of `ingest all`: it is key-gated (RuntimeError without a key) and
     # quota-gated/massive (252 reporters × years) — runs only via `ingest comtrade`.
-    IngestSpec("comtrade", comtrade_pipeline, accepts_full=True, label="UN COMTRADE", in_all=False),
+    IngestSpec(
+        "comtrade",
+        comtrade_pipeline,
+        accepts_full=True,
+        label="UN COMTRADE",
+        in_all=False,
+        cadence_days=31,
+    ),
 ]
 
 
