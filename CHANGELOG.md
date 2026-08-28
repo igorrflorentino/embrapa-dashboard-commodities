@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.12] - 2026-08-28
+
+Varredura mecânica das docs: todo caminho de arquivo, alvo de `make` e comando da CLI
+citado em `*.md`, `docs/`, `PLANS/` e `.claude/skills/` conferido contra o que existe.
+
+### Corrigido
+
+- **A skill `lint-and-test` mandava rodar cinco testes que não existem.** Os arquivos
+  ganharam o prefixo `test_webapi_` em algum momento e a lista ficou para trás:
+  `test_seam.py`, `test_serializers.py`, `test_format.py`, `test_registries.py` e
+  `test_cache_resilience.py`. Quem seguisse a skill — pessoa ou agente — recebia
+  "file not found" cinco vezes. Corrigidos para os nomes reais, mais os dois
+  `test_cov_*` que não constavam.
+- **A mesma skill afirmava "the suite has ~31 files"; são 63.** Trocado por `make test` e
+  `ls tests/test_*.py`, que é a única contagem que não apodrece.
+
+### Testes
+
+- **`tests/test_doc_file_references.py`**: todo caminho `tests/test_*.py` citado numa doc
+  ou skill tem de existir, e todo glob citado (`tests/test_comex_*.py`) tem de casar com
+  algo. Validado por injeção nos dois casos. `CHANGELOG.md` fica de fora de propósito:
+  ele registra o que era verdade em cada versão, então um caminho depois renomeado está
+  **correto** ali.
+
+  Caminhos de teste são o subconjunto que vale prender automaticamente — são inequívocos,
+  ao contrário de um termo de glossário ou do `column:` de um filtro, onde tentar adivinhar
+  pelo formato da string gera falso-positivo (foi o que quase me fez "corrigir"
+  `valor_producao` na v1.33.9).
+
+### Verificado, sem achados
+
+- **312 caminhos de arquivo** citados nas docs: os demais sem correspondência são
+  referências históricas ou exemplos deliberados — o `ARCHITECTURE.md` cita `docs/auth.md`
+  e `scripts/check_dashboard_size.py` numa lista do que foi **deletado**, o `PLANS/README.md`
+  dá exemplos de nomenclatura, o `README.md` diz que o Roadmap no Drive **substitui**
+  `ROADMAP.md`/`TODO.md`, e `profiles.yml` é criado pelo usuário em `~/.dbt/`.
+- **Todo `embrapa <comando>`** citado em qualquer doc resolve num comando real (13 comandos).
+- **Todo `make <alvo>`** citado em bloco de código resolve num alvo real (40 alvos).
+
+---
+
 ## [1.33.11] - 2026-08-28
 
 ### Documentação

@@ -65,7 +65,8 @@ def test_something():
     # ... call the function under test ...
 ```
 
-Key test files (representative subset — the suite has ~31 files; this lists the core ones):
+Key test files (a representative subset — the suite is much larger; `make test` runs all of
+them, and `ls tests/test_*.py` is the only count that will not rot):
 
 | File | Tests |
 |------|-------|
@@ -79,7 +80,7 @@ Key test files (representative subset — the suite has ~31 files; this lists th
 | `tests/test_monitor.py` | Monitoring module |
 | `tests/test_observability.py` | Observability/logging |
 
-The post-migration `webapi`/serving/source suites (e.g. `tests/test_webapi_routes.py`, `tests/test_seam.py`, `tests/test_serializers.py`, `tests/test_format.py`, `tests/test_registries.py`, `tests/test_cache_resilience.py`, `tests/test_serving.py`, `tests/test_comex_*.py`, `tests/test_comtrade_*.py`, `tests/test_pam_pipeline.py`, `tests/test_cli.py`, `tests/test_config.py`, `tests/test_core_*.py`) are not listed above but are part of the same `make test` run.
+The post-migration `webapi`/serving/source suites (e.g. `tests/test_webapi_routes.py`, `tests/test_webapi_seam.py`, `tests/test_webapi_serializers.py`, `tests/test_webapi_format.py`, `tests/test_webapi_registries.py`, `tests/test_webapi_cache_resilience.py`, `tests/test_cov_seam.py`, `tests/test_cov_serializers.py`, `tests/test_serving.py`, `tests/test_comex_*.py`, `tests/test_comtrade_*.py`, `tests/test_pam_pipeline.py`, `tests/test_cli.py`, `tests/test_config.py`, `tests/test_core_*.py`) are not listed above but are part of the same `make test` run. (The webapi files carried no prefix until they were renamed; this list said `test_seam.py` / `test_serializers.py` / `test_format.py` / `test_registries.py` / `test_cache_resilience.py` until 2026-08-28, so following it gave "file not found". `tests/test_doc_file_references.py` now holds every test path named in a doc or skill to the files that exist.)
 
 The frontend has its own Vitest suite: run `npm test` in `frontend/` (test files are `*.test.jsx` / `*.test.js`).
 
