@@ -339,7 +339,11 @@ BANCOS: list[Banco] = [
         },
         metrics=_COMTRADE_METRICS,
         cobertura={
-            "years": "1989 → presente",
+            # 2000, not 1989: the v1.13.0 totals-only redesign ingests from
+            # COMTRADE_START_YEAR=2000 and silver_comtrade_flows floors reference_year
+            # at var('comtrade_min_year', 2000). Measured: no COMTRADE row before 2000
+            # exists in Bronze, Silver OR Gold. Keep in step with bancos.js.
+            "years": "2000 → presente",
             "atualizacao": "anual + revisões",
             "granularidade": "HS6 × par de países × ano",
         },
