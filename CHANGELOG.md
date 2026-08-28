@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.31.4] - 2026-08-27
+
+### Fixed
+- **Um resize recusado pelo Plotly escapava como rejeição não tratada.** O
+  `ResizeObserver` de `_base.jsx` chamava `Plotly.Plots.resize(el)` dentro de um
+  `try/catch` — **síncrono**, e portanto incapaz de ver o que a função devolve.
+  Confirmado lendo `plotly.js/src/plots/plots.js`:
+
+  ```js
+  plots.resize = function(gd) {
+      var p = new Promise(function(resolve, reject) {
+          if(!gd || Lib.isHidden(gd)) {
+              reject(new Error('Resize must be passed a displayed plot div element.'));
+  ```
+
+  Um `ResizeObserver` dispara exatamente quando o elemento colapsa, então o caminho de
+  rejeição é alcançável e sobe ao console como `Uncaught (in promise)`.
+
+  Duas guardas: a chamada é pulada quando o elemento está desconectado ou oculto
+  (espelhando o próprio `Lib.isHidden`, que é `getComputedStyle(gd).display` vazio ou
+  `'none'`), e um `.catch` fecha a corrida em que o elemento é escondido **entre** essa
+  checagem e a do Plotly.
+
+### Nota de método
+- **A premissa que motivou esta correção não se confirmou.** Ela dizia que "toda view
+  com gráfico registra erros no console ao carregar" — texto escrito a partir de uma
+  sessão de horas com HMR e trocas de branch acumulados. Num servidor limpo o erro não
+  reproduz: nem em carga inicial, nem em trocas de perspectiva, nem sob HMR, nem com a
+  aba em segundo plano, nem sob redimensionamento do viewport.
+
+  A correção fica porque o defeito é verificável **lendo o fonte da biblioteca** — um
+  `try/catch` síncrono não captura uma promessa rejeitada. Mas não deve ser creditada
+  por consertar um sintoma reproduzível: o gatilho exato permanece desconhecido, e
+  provavelmente não afeta produção.
+
+---
+
 ## [1.31.3] - 2026-08-27
 
 ### Fixed

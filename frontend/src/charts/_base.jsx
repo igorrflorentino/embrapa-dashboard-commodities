@@ -267,8 +267,29 @@ export function Plot({ traces, layout, config, height = 240, style, className, o
     const handler = (e) => { const fn = onClickRef.current; if (fn) fn(e); };
     el.on?.('plotly_click', handler);
     const ro = new ResizeObserver(() => {
+      // Plotly.Plots.resize REJECTS A PROMISE when the div is hidden — verified in
+      // plotly.js/src/plots/plots.js:
+      //
+      //     plots.resize = function(gd) {
+      //         var p = new Promise(function(resolve, reject) {
+      //             if(!gd || Lib.isHidden(gd)) {
+      //                 reject(new Error('Resize must be passed a displayed plot div…
+      //
+      // The synchronous try/catch below cannot see that rejection, so it escapes as an
+      // unhandled "Uncaught (in promise)". A ResizeObserver fires precisely when an
+      // element collapses — a perspective torn down, a card hidden — so the reject path
+      // is reachable in normal use.
+      //
+      // Two guards, because neither alone is enough:
+      //   the isHidden mirror skips the call Plotly would refuse (Lib.isHidden is
+      //   `getComputedStyle(gd).display` empty or 'none'), and the .catch closes the
+      //   race where the element is hidden BETWEEN this check and Plotly's own.
+      if (!el.isConnected) return;
+      const display = el.ownerDocument?.defaultView?.getComputedStyle(el)?.display;
+      if (!display || display === 'none') return;
       try {
-        Plotly.Plots.resize(el);
+        const done = Plotly.Plots.resize(el);
+        if (done && typeof done.catch === 'function') done.catch(() => {});
       } catch {
         /* element detached mid-resize — ignore */
       }
