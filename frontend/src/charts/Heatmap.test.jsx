@@ -249,3 +249,110 @@ describe('Heatmap — colorbar anchors', () => {
     expect(trace().colorbar.tickvals).toBeUndefined();
   });
 });
+
+// ── Geometry invariants across the whole row-count space ─────────────────────
+//
+// Why this block exists, in one paragraph. The colorbar took FIVE fixes in a single day
+// (v1.29.3 adaptive bar, v1.29.5 remount on orientation, v1.30.0 anchors/span/title,
+// v1.30.1 threshold, v1.31.3 remount on height). Every one was correct and incomplete,
+// because each was verified against the two or three row counts that happened to be on
+// screen. Worse, the per-case tests written alongside them encoded the behaviour that
+// was ASSUMED — one of them ("does not remount for a row change on the same side of the
+// threshold") stated precisely the rule that produced the v1.31.3 bug.
+//
+// So these are not more cases. They are the properties that must hold for EVERY row
+// count, checked by sweeping the space instead of sampling it.
+
+describe('Heatmap — geometry invariants over 1..15 rows', () => {
+  const SPAN = Array.from({ length: 15 }, (_, i) => i + 1);
+  const rowsFor = (n) => Array.from({ length: n }, (_, i) => ({
+    id: `U${i}`, label: `U${i}`, values: [{ y: 2019, v: i + 1 }, { y: 2020, v: (i + 1) * 3 }],
+  }));
+
+  it('orientation follows the threshold with no exceptions', () => {
+    for (const n of SPAN) {
+      render(<Heatmap rows={rowsFor(n)} valueKey="v" valueLabel="R$" />);
+      const expected = n <= 5 ? 'h' : 'v';
+      expect(`${n}:${trace().colorbar.orientation}`).toBe(`${n}:${expected}`);
+      cleanup();
+    }
+  });
+
+  it('declares one colorbar key set, whatever the row count', () => {
+    // A key present in one branch and absent from the other survives a flip, because
+    // Plotly.react leaves an omitted nested attribute at its previous value.
+    let shape = null;
+    for (const n of SPAN) {
+      render(<Heatmap rows={rowsFor(n)} valueKey="v" valueLabel="R$" />);
+      const keys = Object.keys(trace().colorbar).sort().join(',');
+      if (shape === null) shape = keys;
+      expect(`${n}:${keys}`).toBe(`${n}:${shape}`);
+      cleanup();
+    }
+  });
+
+  it('always anchors on exactly the low end, the midpoint and the high end', () => {
+    for (const n of SPAN) {
+      render(<Heatmap rows={rowsFor(n)} valueKey="v" valueLabel="R$" />);
+      const t = trace();
+      expect(t.colorbar.tickvals).toHaveLength(3);
+      expect(t.colorbar.tickvals[0]).toBe(t.zmin);
+      expect(t.colorbar.tickvals[2]).toBe(t.zmax);
+      expect(t.colorbar.tickvals[1]).toBe((t.zmin + t.zmax) / 2);
+      cleanup();
+    }
+  });
+
+  it('spans the full extent in every case', () => {
+    for (const n of SPAN) {
+      render(<Heatmap rows={rowsFor(n)} valueKey="v" valueLabel="R$" />);
+      expect(`${n}:${trace().colorbar.len}`).toBe(`${n}:1`);
+      cleanup();
+    }
+  });
+
+  // THE invariant the v1.31.3 bug violated. Plotly.react does not re-lay-out for a
+  // changed container height, so a geometry change MUST reach a fresh element — whether
+  // or not the orientation happens to flip with it.
+  it('every step in row count lands on a new plot element', () => {
+    const { rerender } = render(<Heatmap rows={rowsFor(1)} valueKey="v" valueLabel="R$" />);
+    let prev = reactState.els.at(-1);
+    for (const n of SPAN.slice(1)) {
+      rerender(<Heatmap rows={rowsFor(n)} valueKey="v" valueLabel="R$" />);
+      const now = reactState.els.at(-1);
+      expect(`${n - 1}->${n}: ${now === prev ? 'REUSED' : 'fresh'}`).toBe(`${n - 1}->${n}: fresh`);
+      prev = now;
+    }
+  });
+
+  it('and shrinking back down does too — the reported direction', () => {
+    // 5 regiões → 1 região keeps the horizontal orientation, which is exactly why the
+    // orientation-only key missed it and the plot kept the five-row geometry.
+    const { rerender } = render(<Heatmap rows={rowsFor(5)} valueKey="v" valueLabel="R$" />);
+    const five = reactState.els.at(-1);
+    rerender(<Heatmap rows={rowsFor(1)} valueKey="v" valueLabel="R$" />);
+    expect(reactState.els.at(-1)).not.toBe(five);
+  });
+
+  it('but a pure data change never remounts, at any row count', () => {
+    // The other half: the key must not turn into a re-plot on every render.
+    for (const n of [1, 5, 6, 12]) {
+      const { rerender, unmount } = render(<Heatmap rows={rowsFor(n)} valueKey="v" valueLabel="R$" />);
+      const first = reactState.els.at(-1);
+      rerender(<Heatmap rows={rowsFor(n).map((r) => ({ ...r, values: [{ y: 2019, v: 42 }] }))}
+                        valueKey="v" valueLabel="R$" />);
+      expect(`${n}:${reactState.els.at(-1) === first ? 'same' : 'REMOUNTED'}`).toBe(`${n}:same`);
+      unmount();
+    }
+  });
+
+  it('an explicit height keeps the vertical bar at every row count', () => {
+    // A caller that sizes the plot has taken responsibility for it; second-guessing
+    // would move someone else's chart.
+    for (const n of SPAN) {
+      render(<Heatmap rows={rowsFor(n)} valueKey="v" valueLabel="R$" height={400} />);
+      expect(`${n}:${trace().colorbar.orientation}`).toBe(`${n}:v`);
+      cleanup();
+    }
+  });
+});

@@ -1,6 +1,6 @@
 [project]
 name = "embrapa-dashboard"
-version = "1.31.4"
+version = "1.31.5"
 description = "Medallion pipeline (IBGE PEVS + PAM + PPM + BCB + COMEX + UN Comtrade) → BigQuery → Looker Studio + React/Flask dashboard"
 readme = "README.md"
 requires-python = "==3.12.*"
