@@ -313,7 +313,7 @@ window.BANCOS = [
     scope:  'País → país (com ou sem filtro Brasil)',
     source: 'UN Statistics Division',
     table:  'gold_comtrade_flows',
-    // Estável: histórico completo do Brasil 1989+ (códigos HS aposentados —
+    // Estável: histórico do Brasil desde 2000 (códigos HS aposentados —
     // banana 080300, soja 120100 etc. — traduzidos para os atuais no silver). O
     // total mundial (world_exp) cobre só 2022–2023 até o backfill all-reporters,
     // mantido adiado — por isso os metrics years de world_exp ficam em [2022,2023].
@@ -330,11 +330,11 @@ window.BANCOS = [
       product: { codeLabel: 'Código HS6' },
     },
     metrics: [
-      { id: 'exp_value', label: 'Valor exportado (BR)', family: 'currency', unit: 'US$', agg: 'Exportações brasileiras declaradas à ONU', years: [1989, 2024] },
-      { id: 'imp_value', label: 'Valor importado (BR)', family: 'currency', unit: 'US$', agg: 'Importações brasileiras declaradas à ONU', years: [1989, 2024] },
+      { id: 'exp_value', label: 'Valor exportado (BR)', family: 'currency', unit: 'US$', agg: 'Exportações brasileiras declaradas à ONU', years: [2000, 2025] },
+      { id: 'imp_value', label: 'Valor importado (BR)', family: 'currency', unit: 'US$', agg: 'Importações brasileiras declaradas à ONU', years: [2000, 2025] },
       { id: 'world_exp', label: 'Exportação mundial',    family: 'currency', unit: 'US$', agg: 'Total mundial do produto (todos reporters)', years: [2022, 2023] },
     ],
-    // Provenance (live): the real Gold IS wired (gold_comtrade_flows, Brazil 1989+).
+    // Provenance (live): the real Gold IS wired (gold_comtrade_flows, Brazil 2000+).
     // The edition YEAR below is overlaid live from gold_source_metadata (real
     // yearEnd); the literal is only the pre-resolution fallback.
     // Country-level only → no UF dimension (ufsTotal = 0).
@@ -349,7 +349,12 @@ window.BANCOS = [
       { col: 'data_quality',                desc: 'Bandeira (final · preliminar · estimado · mirror).' },
     ],
     cobertura: {
-      years:      '1989 → presente',
+      // 2000, não 1989: o redesenho totals-only da v1.13.0 passou a ingerir a partir de
+      // COMTRADE_START_YEAR=2000 e o Silver tem piso rígido em var('comtrade_min_year')
+      // — não existe COMTRADE pré-2000 em Bronze, Silver nem Gold. Medido: Bronze
+      // 2000–2025 (21.110.724 linhas), Gold 2000–2025 (26 anos). O rótulo antigo
+      // afirmava onze anos que o painel não tem.
+      years:      '2000 → presente',
       atualizacao:'anual + revisões',
       granularidade: 'HS6 × par de países × ano',
     },

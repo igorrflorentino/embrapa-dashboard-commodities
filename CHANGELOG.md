@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.7] - 2026-08-28
+
+Varredura atrás de erros da mesma família do PPM — dado estático afirmando o que os dados
+não sustentam. Dois achados, ambos no UN COMTRADE.
+
+### Corrigido
+
+- **O painel anunciava cobertura do COMTRADE desde 1989; não existe nada antes de 2000.**
+  O redesenho *totals-only* da v1.13.0 moveu a ingestão para `COMTRADE_START_YEAR=2000` e
+  `silver_comtrade_flows` passou a pisar `reference_year` em `var('comtrade_min_year', 2000)`.
+  Medido nas três camadas: Bronze 2000–2025 (21.110.724 linhas), Silver 2000–2025, Gold
+  2000–2025 (26 anos, 2.053.708 linhas). **Nenhuma linha antes de 2000, em lugar nenhum.**
+  O rótulo ficou para trás em quatro cópias — `bancos.js` (cobertura + os anos das métricas
+  `exp_value`/`imp_value`, que também terminavam em 2024 com Gold em 2025), `registries.py`,
+  e a linha de override em `research_inputs.banco_metadata`. O override não estava sequer
+  sobrepondo: duplicava o mesmo valor errado do registry, o que é a condição exata que faz
+  uma cópia envelhecer sem ninguém notar. Limpo (o registry volta a ser a fonte única, como
+  o runbook pede). Conferido nos cinco bancos com dados: todos declaram agora um início
+  igual ao do Gold.
+- **O runbook do backfill mandava rodar com `COMTRADE_START_YEAR=1989`** em dois pontos
+  executáveis, contradizendo o próprio cabeçalho ("from **2000** … now the default ingest
+  scope"), o default da config e o piso do Silver. Seguir a instrução gastaria a cota diária
+  da API da ONU — que o documento chama de "the only real constraint" — buscando anos que o
+  build descarta em seguida.
+
+### Testes
+
+- **`tests/test_banco_coverage_claims.py`**: o início declarado na cobertura tem de ser igual
+  ao piso de ingestão configurado, nos dois registries (PAM, PPM, COMEX, COMTRADE — PEVS
+  descobre o seu e SEFAZ NFe não tem pipeline, então ficam fora de propósito); os dois
+  registries têm de declarar a mesma cobertura; e nenhuma métrica pode reivindicar dado mais
+  antigo que a cobertura do seu banco. Validado por injeção nos três pontos (2, 2 e 1 falha).
+
+  A invariante existe porque nem o rótulo se recalcula, nem a concordância entre os dois
+  registries provava algo — **os dois estavam errados juntos**. O que decide o início de
+  verdade é o piso configurado, e é a ele que o rótulo passa a responder.
+
+---
+
 ## [1.33.6] - 2026-08-28
 
 ### Corrigido

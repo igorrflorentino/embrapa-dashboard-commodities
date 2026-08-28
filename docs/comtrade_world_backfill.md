@@ -103,9 +103,16 @@ env only (never printed, never in shell history). The local ADC principal needs
 
 ```bash
 COMTRADE_API_KEY="$(gcloud secrets versions access latest --secret=comtrade-un-key --project=<GCP_PROJECT_ID>)" \
-COMTRADE_REPORTERS=all COMTRADE_START_YEAR=1989 \
+COMTRADE_REPORTERS=all COMTRADE_START_YEAR=2000 \
 uv run embrapa ingest comtrade
 ```
+
+> `COMTRADE_START_YEAR` is **2000**, matching the config default and the header's
+> totals-only scope. This line said `1989` until 2026-08-28 — a leftover from the
+> pre-redesign procedure. `silver_comtrade_flows` floors `reference_year` at
+> `var('comtrade_min_year', 2000)`, so an earlier start fetches years the build then
+> drops: it spends the UN daily quota — the one real constraint of this runbook — on
+> rows that can never reach Silver, Gold or the dashboard.
 
 The inline `COMTRADE_*` vars override `.env`. The run is **resume-aware**: archived
 chunks skip, so re-run across days to finish. Use `--full` only to force-refetch
@@ -161,7 +168,7 @@ prereq table; the job currently lacks the all-reporters scope):
    ```bash
    COMTRADE_KEY_SECRET=comtrade-un-key   # forwards COMTRADE_* scope + mounts the key at deploy
    COMTRADE_REPORTERS=all                # baked into the job env at deploy time
-   COMTRADE_START_YEAR=1989
+   COMTRADE_START_YEAR=2000              # the Silver floor drops anything earlier
    ```
 2. Redeploy so the job env gets `COMTRADE_REPORTERS=all` + the comtrade scope:
    ```bash
