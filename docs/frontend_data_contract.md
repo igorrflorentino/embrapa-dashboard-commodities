@@ -142,8 +142,11 @@ One annual series per product, keyed by the same `code` as `products`.
   the frontend; backend ships only `id`+`count`).
 
 ### 3.6 Sub-UF geography cascade — `geo-mesh` + município cube (IBGE PEVS/PAM/PPM)
-The geography filter descends BELOW UF via two dedicated endpoints (the snapshot stays
-UF-grained). Two PARALLEL IBGE divisions sit between UF and município and do **not** nest:
+The geography filter descends BELOW UF via three dedicated endpoints (the snapshot stays
+UF-grained) — the mesh, the per-(município, year) cube, and the per-product breakdown
+WITHIN a município selection (`POST /api/products-by-municipio`, added v1.29.0: the cube
+groups by city and sums the produtos away, so it can draw a place's trajectory but never
+name what is behind it). Two PARALLEL IBGE divisions sit between UF and município and do **not** nest:
 classic **mesorregião → microrregião** and 2017 **região intermediária → imediata**; a
 município passes the cascade iff it clears every active facet (intersection).
 

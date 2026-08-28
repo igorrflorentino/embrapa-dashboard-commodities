@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.0] - 2026-08-28
+
+**Abacaxi disponível no dashboard** (IBGE PAM, SIDRA 40092) — e o registro dessa
+entrega, que saiu na v1.32.3 sem versão nem changelog.
+
+### Added
+- **Abacaxi no IBGE PAM.** É lavoura, então o banco é o PAM (produção agrícola), não o
+  PEVS (extração vegetal). Ingerido 1974–2024: **251.777 linhas** no Gold, 5.563
+  municípios, **1.376** no mart de consumo.
+
+  **Conferência de valor ponta a ponta:** 2023 fecha em **1.587.545 t** no Gold —
+  idêntico ao que a API do SIDRA devolve na fonte, sondada *antes* de ingerir.
+
+  Registrado na Curadoria como agrupamento `abacaxi` / **Abacaxi**, `ativa/visivel`.
+  Snapshot do Gold para rollback: `run=20260828T042743Z`.
+
+- **A unidade, que era a armadilha.** O SIDRA rotula o produto **"Abacaxi\*"**, e a
+  unidade clássica do PAM para abacaxi é **mil frutos** — que o seed
+  `unit_family_conversions` NÃO cobre (tem `un`, `dúzia`, `milheiro`, `cabeça`; nenhuma
+  linha para frutos). Se chegasse assim, a quantidade cairia em `desconhecida` e
+  sumiria em silêncio.
+
+  A tabela 5457 harmoniza em toneladas — verificado em dois caminhos independentes: no
+  dado já em produção (Coco-da-baía\*, igualmente asteriscado, gravado como
+  `Toneladas`/`massa`) e na própria API. O asterisco é nota de rodapé, não aviso de
+  unidade. Fixado em teste **com o raciocínio junto**, porque a leitura errada é a
+  plausível: alguém poderia "corrigir" adicionando uma linha `contagem` e dividir a
+  série por um fator de mil frutos que não se aplica.
+
+### Impacto analítico
+- **A cesta "Todos" do IBGE PAM foi de 10 para 11 produtos**, então qualquer agregado
+  de todos-os-produtos daquele banco mudou de valor. Num painel com citação ABNT que
+  carrega data de acesso e estado dos filtros, quem citou antes e quem cita agora
+  citaram universos diferentes — e este registro é o único lugar onde isso consta.
+
+### Fixed
+- **`.env.example` estava defasado**: listava 8 códigos PAM enquanto o default do
+  `config.py` listava 10, então quem partisse do exemplo ingeria um conjunto menor que o
+  do job publicado. Teste novo compara os dois.
+
+### Documentation
+- **`docs/frontend_data_contract.md` §3.6** dizia "via **two** dedicated endpoints"; são
+  três desde a v1.29.0, com a adição do `POST /api/products-by-municipio`.
+- **`CLAUDE.md`** descrevia a cascata sub-UF lendo o Gold direto apenas via
+  `municipio-yearly`. São dois leitores Gold-direto, ambos exigindo `cityCodes`
+  não-vazio — a escopagem por cidade É o controle de custo. Importa por ser o arquivo de
+  contexto: sem isso, uma sessão futura não saberia que o segundo existe.
+
+---
+
 ## [1.32.3] - 2026-08-27
 
 ### Fixed
