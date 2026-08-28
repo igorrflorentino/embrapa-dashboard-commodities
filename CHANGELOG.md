@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.6] - 2026-08-28
+
+### Corrigido
+
+- **O aviso de beta do IBGE PPM não era o dos outros bancos.** Em vez de "Beta. Disponível
+  para testes e validações, resultados podem mudar." o PPM exibia "Beta. Pecuária
+  municipal — rebanho + produção de origem animal".
+
+  A causa é **dado**, não código: a linha do PPM em `research_inputs.banco_metadata` tinha
+  `maturity_note` preenchido com uma descrição de escopo, escrita em 2026-06-20 por
+  `updated_by='ppm-activation'`. E `maturity_note` **substitui** o texto padrão do estágio
+  (`MaturityBanner`: `banco.maturityNote || m.desc`), então a descrição tomou o lugar da
+  ressalva. Corrigido em produção com um `UPDATE` de um campo — os outros cinco bancos já
+  tinham `NULL`, exceto `sefaz_nf`, cuja note é uma ressalva legítima e ficou intacta.
+  Conferido nos cinco bancos com dados: todos exibem agora a mesma mensagem.
+
+  O texto removido não tinha lugar nessa tabela — o schema só tem maturidade e cobertura —
+  e já vivia em `bancos.js` como `sub`, `about` e `domain`.
+
+### Documentação
+
+- **O lado da ESCRITA não dizia que `maturity_note` substitui a mensagem padrão** — o
+  runbook a chamava apenas de "the caveat note", e foi essa a lacuna que permitiu o erro.
+  `docs/operations_runbook.md` § "Changing a banco's maturity / note / coverage" e a
+  docstring de `ensure_banco_metadata_table` agora dizem que a note **substitui** (não
+  acrescenta), que ela serve só para uma ressalva verdadeira daquele banco (como a do
+  `sefaz_nf`), que descrição de escopo pertence a `bancos.js`, e como limpar uma.
+
+---
+
 ## [1.33.5] - 2026-08-28
 
 ### Alterado
