@@ -35,7 +35,13 @@ export function drillLevel(summary, muniCapable = true) {
   // ANY município selection sits at município level — not just a single one. A
   // multi-city facet (several municípios, possibly across UFs) is still a municipal
   // question; sending it back to 'region' would answer a different one.
-  if (munis.length >= 1) return 'municipio';
+  //
+  // But only where the banco HAS that grain. The geography filter is shared, so a
+  // município facet survives a banco switch: drilling into a city on IBGE PEVS and then
+  // moving to MDIC COMEX (origin-UF only) used to leave COMEX at município level,
+  // serving a grain it does not have. The segmented control had an explicit effect for
+  // this; deriving the level dropped it, and this branch is where it belongs.
+  if (munis.length >= 1) return muniCapable ? 'municipio' : 'uf';
   if (states.length === 1) return muniCapable ? 'municipio' : 'uf';
   if (states.length > 1) return 'uf';
   if (regions.length >= 1) return 'uf';
@@ -47,7 +53,7 @@ export function drillLevel(summary, muniCapable = true) {
  *  "Click outside to go back" is invisible until someone discovers it, and a map with
  *  no visible notion of depth leaves the researcher unsure whether they are looking at
  *  a country or a state. Each crumb is also the way back to that level. */
-export function drillTrail(summary, { regionLabel, ufName, cityName } = {}) {
+export function drillTrail(summary, { regionLabel, ufName, cityName } = {}, muniCapable = true) {
   const s = summary || {};
   const states = Array.isArray(s.states) ? s.states : [];
   const munis = Array.isArray(s.munis) ? s.munis : [];
@@ -61,10 +67,16 @@ export function drillTrail(summary, { regionLabel, ufName, cityName } = {}) {
   if (states.length === 1) {
     trail.push({ level: 'municipio', label: ufName || states[0], uf: states[0] });
   }
-  if (munis.length === 1) {
-    trail.push({ level: 'focus', label: cityName || String(munis[0]), muni: String(munis[0]) });
-  } else if (munis.length > 1) {
-    trail.push({ level: 'focus', label: `${munis.length} municípios` });
+  // The trail must not offer a level the banco cannot reach. A município facet survives
+  // a banco switch, and on a UF-only banco (COMEX) drillLevel already degrades to 'uf' —
+  // leaving the crumb behind showed a raw 7-digit code as the current level, and offered
+  // a way "back" to somewhere the map never went.
+  if (muniCapable) {
+    if (munis.length === 1) {
+      trail.push({ level: 'focus', label: cityName || String(munis[0]), muni: String(munis[0]) });
+    } else if (munis.length > 1) {
+      trail.push({ level: 'focus', label: `${munis.length} municípios` });
+    }
   }
   return trail;
 }

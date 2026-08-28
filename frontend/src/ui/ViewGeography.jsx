@@ -437,7 +437,7 @@ function ViewGeography({ families, conventions, summary, database }) {
       ? ((scaledUFs.find((u) => u.uf === selectedSingleUf) || {}).name || selectedSingleUf)
       : null,
     cityName: selectedSingleCity ? cityNameOf(selectedSingleCity) : null,
-  });
+  }, muniCapable);
   // Jumping to a crumb rebuilds the selection AT that level rather than stepping out
   // repeatedly — one patch, so the dashboard re-reads once instead of N times.
   const goToCrumb = (i) => {
