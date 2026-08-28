@@ -790,6 +790,78 @@ def _check_backup_freshness(settings: Settings) -> CheckResult:
         return CheckResult("Gold backup freshness", False, str(exc)[:120])
 
 
+def _check_source_data_freshness(settings: Settings) -> CheckResult:
+    """Is each source's latest REFERENCE PERIOD as recent as its cadence implies?
+
+    The gap this closes: the ingestion alert fires on a FAILED Cloud Run execution, so a
+    monthly job that runs green and ingests nothing looks exactly like "the source has not
+    published yet". Nothing else told anyone the difference. For annual sources that quiet
+    state is normal ~11 months a year, which is precisely why a silent stall could sit
+    unnoticed until someone happened to look.
+
+    So this does NOT ask "did the scheduler run" — that lives in Cloud Run/Logging, not in
+    BigQuery, and the pipelines' own events go to a log file. It asks the question the
+    researcher actually has: **is the newest reference period here as new as it should be?**
+    A stalled cadence eventually shows up as exactly that, when a publication window passes
+    and `year_end` does not move.
+
+    Honest limit, stated so nobody over-trusts a green line: between publication windows
+    this check CANNOT distinguish a healthy quiet source from a broken one, because the
+    data is identical in both cases. It catches the stall at the window, not before it.
+
+    Reads `gold_source_metadata` (one row per source, with `cadence` and `year_end`), so it
+    costs one small query and extends automatically when a source is added there.
+    """
+    try:
+        client = bigquery.Client(
+            project=settings.gcp_project_id,
+            location=settings.bq_location,
+            credentials=get_credentials(settings),
+        )
+        fqn = f"{settings.gcp_project_id}.{settings.bq_gold_dataset}.gold_source_metadata"
+        rows = list(client.query(f"select source, cadence, year_end from `{fqn}`").result())
+        if not rows:
+            return CheckResult(
+                "Source data freshness", True, f"⚠ {fqn} is empty — nothing to check yet"
+            )
+
+        this_year = datetime.now(UTC).year
+        slack = settings.source_freshness_annual_slack_years
+        overdue: list[str] = []
+        fresh: list[str] = []
+        for row in rows:
+            cadence = (row.cadence or "annual").strip().lower()
+            year_end = row.year_end
+            if year_end is None:
+                overdue.append(f"{row.source} (no year_end)")
+                continue
+            # 'monthly' sources should always carry the current year — except in January,
+            # when the newest closed month can still belong to the previous one (COMEX is
+            # D+30). Anything older than that has stopped arriving.
+            floor = this_year - (slack if cadence == "annual" else 1)
+            if int(year_end) < floor:
+                overdue.append(f"{row.source} {cadence} ends {year_end} < {floor}")
+            else:
+                fresh.append(f"{row.source}={year_end}")
+
+        if overdue:
+            return CheckResult(
+                "Source data freshness",
+                True,  # warn, not fail — a lagging source is a signal to look, not a broken env
+                "⚠ behind its cadence: "
+                + " · ".join(sorted(overdue))
+                + f" (annual slack={slack}y; check the source's publication calendar and "
+                "the monthly trigger before assuming the pipeline broke)",
+            )
+        return CheckResult(
+            "Source data freshness",
+            True,
+            f"every source current: {' · '.join(sorted(fresh))} (annual slack={slack}y)",
+        )
+    except Exception as exc:
+        return CheckResult("Source data freshness", False, str(exc)[:120])
+
+
 _INFRA_CHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
     ("env", _check_env),
     ("inflation-codes", _check_inflation_pivot_codes),
@@ -904,6 +976,7 @@ _POSTCHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
     ("orphans", _check_orphan_lifecycle),
     ("catalog-arrival", _check_catalog_data_arrival),
     ("backup", _check_backup_freshness),
+    ("source-freshness", _check_source_data_freshness),
 ]
 
 # Total ordering of the checks. Each block can be extended without changing this alias.

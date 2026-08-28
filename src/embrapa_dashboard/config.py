@@ -439,6 +439,13 @@ class Settings(BaseSettings):
     # silver_comtrade_flows — see comtrade_cmd_codes above. silver_comtrade_flows also
     # floors reference_year at var('comtrade_min_year', 2000) — keep the two in sync.
     comtrade_start_year: int = Field(default=2000)
+
+    # `doctor`'s per-source freshness tolerance, in reference YEARS, for sources whose
+    # gold_source_metadata.cadence is 'annual'. Default 2 = one full year of slack beyond
+    # the ~1yr publication lag these sources already carry (IBGE publishes a reference year
+    # roughly a year later), so a source only trips after a publication window has passed
+    # WITHOUT the new year arriving. Lower it to tighten, raise it for a slower publisher.
+    source_freshness_annual_slack_years: int = Field(default=2, ge=1)
     comtrade_end_year: int = Field(default_factory=_current_year)
     # How many recent years (at/below comtrade_end_year) get RE-FETCHED on every run so
     # late reporter submissions and revisions are absorbed. UN Comtrade reporters file an
