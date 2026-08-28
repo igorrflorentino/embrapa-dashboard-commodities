@@ -163,8 +163,12 @@ class Settings(BaseSettings):
     # 40330 "Caju" (the pseudofruit) is deliberately NOT included: it is a different produto
     # from the nut, and folding it into the "Castanha-de-caju" agrupamento would conflate
     # fruit with nut. It deserves its own agrupamento if a researcher wants it.
+    # 40092 Abacaxi added 2026-08. SIDRA labels it "Abacaxi*" — the asterisk is a
+    # footnote marker, NOT a unit warning: table 5457 delivers it in Toneladas, verified
+    # against the API alongside the equally-asterisked Coco-da-baía (both 'Toneladas',
+    # 2023). So it lands in massa/t like the rest and needs no unit-family seed entry.
     pam_product_codes: str = Field(
-        default="40124,40122,40139,40106,40102,40136,40119,45982,40143,40145"
+        default="40124,40122,40139,40106,40102,40136,40119,45982,40143,40145,40092"
     )
     # Full PAM history (SIDRA 5457 runs to 1974). The monetary value is now
     # reform-correct via the historical_currency_factors join in silver_ibge_pam,
