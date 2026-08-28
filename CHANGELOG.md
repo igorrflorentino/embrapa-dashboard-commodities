@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.22] - 2026-08-28
+
+### Documentação
+
+- **Os dois modelos incrementais mais caros não são incrementais na prática — e o
+  comentário deles afirmava o contrário.** `silver_ibge_pevs` dizia que o re-scan do limite
+  é *"bounded: only the year(s) tied at the max timestamp re-run, **not the full
+  history**"*. Medido em 2026-08-28: `affected_years` devolve **os 39 anos (1986–2024) em
+  todo build**, e os bytes faturados são **planos** — 3,22 GB/build por 13 dias seguidos,
+  depois 3,88 GB/build por mais 9. Isso é a assinatura de reconstrução completa, não de
+  build incremental. `silver_ibge_pam` tem o mesmo padrão (~3,1 GB/build).
+
+  A causa: o limite é `ingestion_timestamp >= max(Silver)`, e o lote que está **em cima**
+  do limite continua qualificando até chegar algo mais novo. Duas coisas tornam esse lote
+  grande e duradouro aqui — o `reconcile` mensal re-ingere a história inteira por desenho,
+  e o próprio PEVS só escreve em Bronze ~2 dias por mês. Um lote de história inteira fica
+  semanas no limite, e todo build no intervalo o refaz.
+
+  **Não corrigido, de propósito.** O `>=` é o que impede um append de mesmo segundo de ser
+  pulado para sempre; apertá-lo exige um argumento de corretude diferente, não um operador
+  diferente — uma comparação por ano entre Bronze e Silver (máximo de `ingestion_timestamp`
+  **e** contagem de linhas, para o caso de mesmo segundo seguir coberto) resolveria. Não
+  vale o risco hoje: o projeto está em ~15% da cota grátis de 1 TiB/mês do BigQuery, então
+  isso custa **zero**. Os dois modelos são ~36% dos bytes do build e cairiam para perto de
+  nada — é o primeiro alvo se a conta um dia sair do gratuito.
+
+  Nenhuma linha de SQL executável mudou: só os cabeçalhos, agora com a medição.
+
+### Nota sobre a análise que gerou isto
+
+A pergunta era "e se o build for a cada 15 dias?". A resposta medida foi **não**: os três
+cenários (diário 52%, 2×/semana 15%, quinzenal 4%) cabem na cota grátis, então a economia é
+**zero em dinheiro** — e o custo seria real, porque PAM e PPM pousam nos dias 2 e 3 e
+esperariam 14 e 13 dias para aparecer, justamente as fontes que carregam a publicação anual
+do IBGE.
+
+Ao investigar a alternativa, minha primeira hipótese (falta de poda de partição na consulta
+de descoberta) estava **errada**: medida, ela custa 380 MB e cairia para 61 MB — ~2% do
+build, não 36%. O tamanho do prêmio que eu estimara estava certo; o mecanismo, não.
+
+---
+
 ## [1.33.21] - 2026-08-28
 
 ### Corrigido

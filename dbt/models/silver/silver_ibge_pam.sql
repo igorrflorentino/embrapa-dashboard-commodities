@@ -17,7 +17,13 @@
 
     Same incremental + dedupe shape as silver_ibge_pevs (insert_overwrite by
     reference_year; keep the latest ingestion per natural key), but for PAM's five
-    measures (área plantada, área colhida, quantidade, rendimento, valor). LONG
+    measures (área plantada, área colhida, quantidade, rendimento, valor). It also
+    shares the MEASURED SCOPE caveat documented in silver_ibge_pevs's header: this does not
+    behave incrementally today — billed bytes are flat at ~3.1 GB/build, the signature of a
+    full rebuild, because the `>=` boundary keeps re-including a whole-history ingestion
+    batch (the monthly `reconcile`) until something newer displaces it. Not fixed on
+    purpose: the `>=` is what prevents a same-second append from being skipped forever, and
+    the project sits at ~15% of BigQuery's free tier, so this costs nothing today. LONG
     format — one row per (year, city, product, variable); gold_pam_production
     pivots it into measure columns.
 
