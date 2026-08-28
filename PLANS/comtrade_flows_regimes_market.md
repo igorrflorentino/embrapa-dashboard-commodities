@@ -1,5 +1,23 @@
 # COMTRADE — todos os fluxos, regime aduaneiro e tipo de mercado
 
+> ⚠️ **Status: CONGELADO — não implementar a partir deste plano.** A Engenharia de
+> Atributos (de onde vem o eixo *tipo de mercado*) está **construída porém congelada**,
+> adiada para *Versão Futura* e escondida da UI (PRs #168/#169); o `CLAUDE.md` é explícito:
+> "do NOT treat it as activatable". Além do congelamento de produto, dois dos três
+> objetivos abaixo estão **bloqueados por dado**:
+>
+> - **Regime aduaneiro** e **tipo de mercado** dependem da dimensão de procedimento
+>   aduaneiro, que a base **não tem**: desde o redesenho *totals-only* da v1.13.0 a
+>   ingestão pede `customsCode=C00` (só os totais) para manter a base homogênea e evitar
+>   duplas contagens, e o detalhe por regime é ausente na maioria dos países reportantes.
+> - Só o objetivo (1) — **todos os tipos de fluxo** — é alcançável com o dado atual, e
+>   mesmo assim a base hoje ingere apenas `X`/`M`.
+>
+> O texto abaixo é preservado como o **desenho**, não como uma fila de trabalho: ele
+> continua correto sobre o que seria preciso, e é o ponto de partida se algum dia a fonte
+> passar a reportar o detalhe. Antes de retomar, releia o `CLAUDE.md` (§ Engenharia de
+> Atributos) e o cabeçalho de `docs/comtrade_world_backfill.md`.
+
 **Objetivo.** Habilitar, no banco `un_comtrade`, os filtros de: (1) **todos os tipos de fluxo**
 (os 10 regimes de comércio do UN Comtrade), (2) **regime aduaneiro** (`customsCode`), e (3) **tipo
 de mercado** (natureza derivada pela Engenharia de Atributos). Ver o diagnóstico de origem em

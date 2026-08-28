@@ -1,5 +1,7 @@
 # Deep audit — v1.6.0 (post-release)
 
+> ⚠️ **HISTÓRICO — relatório pontual, não é uma lista de pendências.** Auditoria de 2026-06-24, sobre a v1.6.0 (pós-release), muito anterior ao estado atual do repositório. Seus achados foram tratados na época (veja o `CHANGELOG`); trate caminhos, contagens e estrutura aqui como o retrato daquela data, **não** como o código de hoje. Mantido por proveniência — em especial os achados refutados, que não existem em nenhum outro lugar.
+
 **Date:** 2026-06-24
 **Scope:** full codebase at `v1.6.0` (commit `f141d0f`), with extra scrutiny on the v1.6.0
 changes: the in-app **feedback channel** (+ GitHub loop), the **Curadoria freeze**, the

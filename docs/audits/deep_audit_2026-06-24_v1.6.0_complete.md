@@ -1,5 +1,7 @@
 # Complete audit — v1.6.0 (post-remediation)
 
+> ⚠️ **HISTÓRICO — relatório pontual, não é uma lista de pendências.** Auditoria de 2026-06-24, sobre a v1.6.0 remediada, muito anterior ao estado atual do repositório. Seus achados foram tratados na época (veja o `CHANGELOG`); trate caminhos, contagens e estrutura aqui como o retrato daquela data, **não** como o código de hoje. Mantido por proveniência — em especial os achados refutados, que não existem em nenhum outro lugar.
+
 **Date:** 2026-06-24
 **Scope:** the **remediated** v1.6.0 codebase (branch `claude/audit-v1.6.0-remediation`, on top of
 release `f141d0f`) — a follow-up to the partial `deep_audit_2026-06-24_v1.6.0.md`, intended to
