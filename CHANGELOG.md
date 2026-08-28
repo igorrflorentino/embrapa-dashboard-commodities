@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.32.0] - 2026-08-27
+
+O mapa da Geografia vira **uma superfície só, navegável por zoom**, no lugar de três
+modos escolhidos num seletor.
+
+### Changed
+- **A granularidade deixou de ser um controle: ela é onde você está.**
+
+      Brasil              → as cinco macrorregiões
+      dentro de uma região → as UFs dela
+      dentro de uma UF     → os municípios dela
+      dentro de um município → aquele município
+
+  Clicar entra; clicar no espaço vazio sai um nível. Os botões `+`/`-` seguem sendo
+  ampliação pura — movem a câmera, nunca o grão.
+
+  **Isso elimina o beco sem saída por construção.** Escolher "Município" com nada
+  selecionado abria um card explicando que era preciso ir configurar um filtro antes: o
+  mapa sabia para onde você queria ir e pedia que você dissesse de novo em outro lugar.
+  Com o nível derivado da seleção, "município sem UF" deixa de ser um estado alcançável
+  — só se entra em município **entrando numa UF** —, então não há o que explicar.
+
+- **Drill É filtro, de propósito.** O clique no mapa já estreitava o dashboard inteiro
+  (v1.27.0) e todos os outros cards seguem o filtro geográfico. Manter uma segunda noção
+  paralela de "onde estou" deixaria o mapa e os cards ao lado discordando sobre o que
+  está sendo olhado.
+
+### Added
+- **Trilha de navegação** (`Brasil › Norte › Pará › Abaetetuba`) no lugar do seletor.
+  "Clique fora para voltar" é invisível até ser descoberto, e um mapa sem noção visível
+  de profundidade deixa o pesquisador sem saber se olha um país ou um estado. Cada
+  migalha também é o caminho de volta àquele nível — um único patch, então o dashboard
+  relê uma vez em vez de N.
+
+- **`geoDrill.js`** — a derivação do nível e a escada de saída, puras e testadas à
+  parte: um banco só-UF (COMEX) para na UF; várias UFs selecionadas ficam no nível de
+  UF (a malha municipal é por UF, e escolher uma delas em silêncio seria mentir sobre a
+  seleção); sair sempre termina em Brasil em passos finitos.
+
+- **`onBackground`** nos dois choropleths: um handler ligado ao mapa inteiro que
+  pergunta se o ponto acertou o preenchimento — a única forma, no maplibre, de
+  distinguir "cliquei em nada" de "cliquei em algo".
+
+### Verificação
+Escada completa medida no navegador, nos dois sentidos: `Brasil` → `Brasil › Norte`
+(Distribuição por UF) → `Brasil › Norte › Pará` (**Distribuição por município**, direto,
+sem passar por filtro) → `Brasil › Norte › Pará › Abaetetuba`; e o clique fora
+devolvendo `{munis: null}` de volta para `Brasil › Norte › Pará`.
+
+---
+
 ## [1.31.6] - 2026-08-27
 
 ### Added

@@ -98,7 +98,7 @@ class ResetViewControl {
 // runtime, and it would buy nothing here. Nothing fake is drawn either — no boundary is
 // invented, one is only hidden where both sides are the same colour anyway.
 export function BrazilChoropleth({
-  data, valueKey, label, height = 360, onSelect, selectedUf, seamless = false,
+  data, valueKey, label, height = 360, onSelect, selectedUf, seamless = false, onBackground,
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
@@ -134,6 +134,8 @@ export function BrazilChoropleth({
   // on the map always calls the CURRENT one, never the one from first mount.
   const onSelectRef = useRef(onSelect);
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
+  const onBackgroundRef = useRef(onBackground);
+  useEffect(() => { onBackgroundRef.current = onBackground; }, [onBackground]);
 
   // Create the map once (lazy-loading maplibre). Guarded so an unmount mid-load
   // doesn't init a detached map or setState after teardown.
@@ -238,6 +240,17 @@ export function BrazilChoropleth({
         map.on('mousemove', 'uf-fill', onMove);
         map.on('mouseleave', 'uf-fill', onLeave);
         map.on('click', 'uf-fill', onClick);
+  // Clicking EMPTY space (ocean, a neighbouring country, the padding around the mesh)
+  // is the gesture for stepping back out of a drill-down. A layer-scoped click handler
+  // never fires there by definition, so this one is bound map-wide and asks whether the
+  // point actually hit the fill — the only way to tell "clicked nothing" from "clicked
+  // something" in maplibre.
+        map.on('click', (e) => {
+          const fn = onBackgroundRef.current;
+          if (!fn) return;
+          const hits = map.queryRenderedFeatures(e.point, { layers: ['uf-fill'] });
+          if (!hits.length) fn();
+        });
       });
 
       function onMove(e) {

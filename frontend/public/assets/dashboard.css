@@ -3878,3 +3878,19 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
 }
 /* Keyboard focus must stay visible even though the input itself is hidden. */
 .cite-level:focus-within { outline: 2px solid var(--embrapa-green); outline-offset: 2px; }
+
+/* Geografia's drill trail — Brasil › Norte › Pará › Abaetetuba. Replaces the old
+   Região|UF|Município segmented control: the level is no longer a setting, so what the
+   header shows is WHERE YOU ARE, and each crumb is the way back to that level. */
+.geo-trail { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+.geo-crumb-wrap { display: inline-flex; align-items: center; }
+.geo-crumb-sep { color: var(--fg-3); margin: 0 4px; font-size: 13px; }
+.geo-crumb {
+  background: none; border: none; padding: 2px 4px; cursor: pointer;
+  font: 500 13px var(--font-body); color: var(--embrapa-green);
+  border-radius: var(--radius-sm);
+}
+.geo-crumb:hover:not(:disabled) { background: var(--bg-surface-2); text-decoration: underline; }
+/* The current level is not a link — it is where you already are. */
+.geo-crumb.on { color: var(--fg-1); cursor: default; font-weight: 600; }
+.geo-crumb:disabled { cursor: default; }
