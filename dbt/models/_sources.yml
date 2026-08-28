@@ -11,12 +11,15 @@ sources:
         description: "IBGE PEVS table (raw STRING columns)."
         config:
           loaded_at_field: ingestion_timestamp
-          # Nightly delta ingest (in_all=True): each successful run appends rows
-          # with a fresh ingestion_timestamp, so max(ts) tracks the pipeline, not
-          # the (annual) data period. Warn at 2 days, error after a week of misses.
+          # WEEKLY delta ingest: each successful run appends rows with a fresh
+          # ingestion_timestamp, so max(ts) tracks the pipeline, not the (annual) data
+          # period. The batch moved from nightly to weekly on 2026-08-28 (PEVS advanced
+          # its reference on 2 of 30 days — see deploy/ingestion/schedule.sh), so the old
+          # 2d/7d window would now warn EVERY day and error just before each healthy run.
+          # 10d = one missed run plus slack; 17d = two missed runs.
           freshness:
-            warn_after: {count: 2, period: day}
-            error_after: {count: 7, period: day}
+            warn_after: {count: 10, period: day}
+            error_after: {count: 17, period: day}
 
   - name: bronze_pam
     description: "Raw SIDRA PAM (table 5457) payloads ingested by `embrapa ingest ibge-pam`."
@@ -28,9 +31,12 @@ sources:
         description: "IBGE PAM crop production table (raw STRING columns)."
         config:
           loaded_at_field: ingestion_timestamp
-          # PAM is refreshed MANUALLY (in_all=False — excluded from the nightly
-          # batch; annual, slow-changing data). Warn-only after a long gap so it
-          # never false-alarms the nightly check; no error threshold (manual cadence).
+          # PAM runs on its OWN MONTHLY trigger (in_all=False — outside the batch;
+          # annual, slow-changing data). `embrapa-ingest-all-pam-monthly` is ENABLED and
+          # firing — the "refreshed MANUALLY" this said until 2026-08-28 predates it.
+          # Warn-only after a long gap: whether the TRIGGER fired is answered precisely by
+          # doctor's Ingest heartbeat check (a 31d cadence + slack), so this window only
+          # needs to be loose enough never to false-alarm.
           freshness:
             warn_after: {count: 60, period: day}
 
@@ -44,7 +50,8 @@ sources:
         description: "IBGE PPM efetivo dos rebanhos (table 3939 — herd headcount, raw STRING columns)."
         config:
           loaded_at_field: ingestion_timestamp
-          # Manual cadence like PAM (in_all=False); warn-only, no error threshold.
+          # Own MONTHLY trigger like PAM (in_all=False); warn-only, no error threshold —
+          # trigger health is doctor's Ingest heartbeat check.
           freshness:
             warn_after: {count: 60, period: day}
       - name: animal_raw
@@ -65,16 +72,21 @@ sources:
         description: "Monthly inflation indices (variation %)."
         config:
           loaded_at_field: ingestion_timestamp
-          # Nightly delta ingest (in_all=True) — see sidra_raw rationale.
+          # WEEKLY delta ingest — see sidra_raw rationale. The IPCA/IGP series publish
+          # MONTHLY (measured: the reference advanced twice in 30 days), so weekly polling
+          # is already well above the publication rate.
           freshness:
-            warn_after: {count: 2, period: day}
-            error_after: {count: 7, period: day}
+            warn_after: {count: 10, period: day}
+            error_after: {count: 17, period: day}
       - name: currency_raw
         identifier: "{{ env_var('BQ_BRONZE_BCB_CURRENCY_TABLE', 'currency_series_raw') }}"
         description: "Daily FX rates BRL per foreign unit."
         config:
           loaded_at_field: ingestion_timestamp
-          # Nightly delta ingest (in_all=True) — see sidra_raw rationale.
+          # DAILY delta ingest, and the only source that still is: PTAX advances on
+          # business days (measured: 22 of 30), which is why it kept a trigger of its own
+          # (`embrapa-ingest-all-currency-daily`) when the batch went weekly. The tight
+          # 2d/7d window is therefore still the right one here — 2 days spans a weekend.
           freshness:
             warn_after: {count: 2, period: day}
             error_after: {count: 7, period: day}
@@ -110,9 +122,10 @@ sources:
         description: "Annual reporter→partner flows at source grain (raw STRING columns). One row per (refYear, reporter, partner, partner2, cmd, flow, customs, mos, mot, qtyUnit)."
         config:
           loaded_at_field: ingestion_timestamp
-          # Key-gated, refreshed MANUALLY (in_all=False — excluded from the nightly
-          # batch). Warn-only after a long gap so it never false-alarms the
-          # nightly check; no error threshold (manual cadence is expected).
+          # Key-gated, on its OWN MONTHLY trigger (in_all=False — outside the batch).
+          # `embrapa-ingest-all-comtrade-monthly` is ENABLED and firing; "refreshed
+          # MANUALLY" here predated it. Warn-only after a long gap — trigger health is
+          # doctor's Ingest heartbeat check, not this window.
           freshness:
             warn_after: {count: 60, period: day}
 

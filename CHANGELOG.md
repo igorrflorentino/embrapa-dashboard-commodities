@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.21] - 2026-08-28
+
+### Corrigido
+
+- **A mudança de cadência da v1.33.20 teria feito o `dbt source freshness` avisar todo
+  dia.** `bronze_ibge.sidra_raw` (PEVS) e `bronze_bcb.inflation_raw` carregavam
+  `warn_after: 2d / error_after: 7d` com o comentário "Nightly delta ingest" — correto até
+  o lote virar semanal. A partir daí 2 dias tripariam em quase todo dia saudável, e 7 dias
+  errariam pouco antes de cada rodada normal. Passam a **10d / 17d** (uma rodada perdida
+  avisa, duas erram).
+
+  `bronze_bcb.currency_raw` **fica em 2d/7d**: é a única fonte que segue diária, e 2 dias
+  cobrem um fim de semana. `bronze_comex` já estava em 30/60 por desenho próprio (o ETag
+  faz o `ingestion_timestamp` rastrear **dado**, não pipeline) e não foi tocado.
+
+  Pego antes de disparar: o workflow roda às 08:00 BRT e a mudança foi à noite.
+
+- **Comentários diziam que PAM, PPM e COMTRADE são atualizados "MANUALMENTE".** Não são —
+  têm gatilho mensal próprio, ativo e disparando (verificado hoje). Os comentários
+  precederam esses gatilhos. Corrigidos, e agora apontam que **saúde de gatilho é o check
+  de batimento do `doctor`**, não a janela de frescor — que por isso pode seguir warn-only.
+
+### Testes
+
+- **`tests/test_source_freshness_matches_cadence.py`**: a janela de frescor de cada fonte
+  tem de caber na cadência com que o agendador realmente dispara — `warn_after` maior que a
+  cadência, e `error_after`, **quando existe**, maior que um ciclo inteiro perdido.
+
+  O `error_after` é opcional **de propósito**, e minha primeira versão do teste exigia-o,
+  reprovando PAM/PPM/COMTRADE. Fui ler: o warn-only ali é decisão registrada. Ajustei a
+  regra ao desenho, não o desenho à regra. COMEX e COMTRADE ficam isentos da comparação com
+  cadência, com o motivo escrito. Validado por injeção (repor 2d/7d no PEVS acusa).
+
+---
+
 ## [1.33.20] - 2026-08-28
 
 Reorganização das cadências, guiada por medição — e não pela intuição de que "diário é
