@@ -531,6 +531,7 @@ def test_run_all_executes_every_probe(settings: Settings) -> None:
         "Catalog → Gold arrival",
         "Gold backup freshness",
         "Source data freshness",
+        "Ingest heartbeat",
     ]
 
 
