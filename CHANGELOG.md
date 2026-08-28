@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.5] - 2026-08-28
+
+### Alterado
+
+- **"Convenções métricas" passa a ser simétrica a "Filtros ativos".** As duas tiras ficam
+  uma sobre a outra e têm o mesmo peso — uma diz quais linhas entram, a outra como os
+  números daquelas linhas são exibidos — mas destoavam em quatro pontos, e a diferença
+  lia como hierarquia onde não há: padding `14px 18px 16px` contra `12px 16px`, gap 14
+  contra 12, rótulo em azul peso 600 contra cinza `--fg-3` peso 500, e um filete azul de
+  3px à esquerda que a tira de filtros não tem. Tudo alinhado pelo desenho de "Filtros
+  ativos".
+
+  O filete saiu por não codificar nada: neste código uma `border-left: 3px` marca
+  **categoria** (níveis de maturidade, live/soon, painel de leitura vs. de escrita), e uma
+  cor fixa única na única tira do seu tipo não distinguia coisa alguma. As duas regras
+  ficam com um comentário pedindo que andem juntas.
+
+  Medido no app: padding, borda, raio, fundo, largura e **altura** idênticos, e o rótulo
+  resolvendo para o mesmo `rgb(102, 102, 102)` / peso 500 / `letter-spacing` 1,2px nas
+  duas tiras. Estado expandido conferido junto.
+
+---
+
 ## [1.33.4] - 2026-08-28
 
 Duas varreduras nas transições do mapa e na referência ABNT — quatro defeitos, todos
