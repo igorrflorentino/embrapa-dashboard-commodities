@@ -486,7 +486,7 @@ wheels = [
 
 [[package]]
 name = "embrapa-dashboard"
-version = "1.33.8"
+version = "1.33.9"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
@@ -525,6 +525,7 @@ dev = [
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "pyyaml" },
     { name = "radon" },
     { name = "responses" },
     { name = "ruff" },
@@ -565,6 +566,7 @@ dev = [
     { name = "pre-commit", specifier = ">=3.7" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-cov", specifier = ">=5" },
+    { name = "pyyaml", specifier = ">=6" },
     { name = "radon", specifier = ">=6" },
     { name = "responses", specifier = ">=0.25" },
     { name = "ruff", specifier = ">=0.6" },
