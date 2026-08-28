@@ -101,15 +101,18 @@ function ViewGeography({ families, conventions, summary, database }) {
   const mapYearTag  = mapPartial ? `${mapYear} (parcial)` : `${mapYear}`;
 
   const [dim, setDim]     = useGeoState('value');
-  const [scope, setScope] = useGeoState('uf');
-  // The "Município" granularity is only meaningful for a banco with a município grain
-  // (IBGE production). For UF-only trade bancos (COMEX/Comtrade) the button is hidden
-  // so it never presents an always-empty panel. Defensive fallback: assume capable if
-  // the helper is unavailable.
+  // A banco with no município grain (COMEX/Comtrade is origin-UF only) stops at UF:
+  // a state there is the end of the road, not a doorway. Defensive fallback: assume
+  // capable if the helper is unavailable.
   const muniCapable = window.geoLevelFor ? window.geoLevelFor(database) === 'municipio' : true;
-  useGeoEffect(() => {
-    if (!muniCapable && scope === 'municipio') setScope('uf');
-  }, [muniCapable, scope]);
+  // THE GRANULARITY IS NO LONGER A CONTROL — it is where you are.
+  //
+  // It used to be a segmented Região|UF|Município picker, and choosing "Município" with
+  // nothing narrowed produced a dead end: a card explaining you had to go configure a
+  // filter first. The map knew where you wanted to go and asked you to say it again
+  // somewhere else. Deriving the level from the selection makes that state unreachable
+  // — município is only ever entered BY entering a UF, so it can never open empty.
+  const scope = window.drillLevel(summary, muniCapable);
   const [ufViz, setUfViz] = useGeoState('map'); // 'map' = maplibre choropleth, 'tiles' = SVG tile-grid
   // Região gets the same Mapa/Barras choice UF has. Bars stay one click away: five
   // blocks read a ranking worse than five bars do, so neither view is the answer alone.
@@ -176,8 +179,6 @@ function ViewGeography({ families, conventions, summary, database }) {
   // facets, so a stale narrowing can't silently intersect with a click the
   // researcher made on the map.
   const selectedSingleUf = window.selectedSingleUf(summary);
-  const handleUfClick = window.ufClickHandler(summary);
-  const handleTileSelect = window.tileSelectHandler(summary);
 
   // EST-5: município scope shouldn't require first drilling into a mesorregião to
   // be useful. When exactly one UF is selected and dataFilters' OWN sub-UF cascade
@@ -401,18 +402,59 @@ function ViewGeography({ families, conventions, summary, database }) {
   const regionOfUf = (uf) => (scaledUFs.find((u) => u.uf === uf) || {}).region || null;
   const selectedRegion = (Array.isArray(summary && summary.regions) && summary.regions.length === 1)
     ? summary.regions[0] : null;
-  const handleRegionClick = (uf) => {
+  // ── The drill trail: where you are, and every way back ────────────────────
+  const ufsOfRegion = (reg) => scaledUFs.filter((u) => u.region === reg).map((u) => u.uf);
+  const regionLabelOf = (id) =>
+    ((filtered.regions || window.REGIONS || []).find((r) => r.id === id) || {}).label || id;
+  const cityNameOf = (code) =>
+    ((mesh || []).find((m) => String(m.cityCode) === String(code)) || {}).cityName || code;
+  const drillTrail = window.drillTrail(summary, {
+    regionLabel: selectedRegion ? regionLabelOf(selectedRegion) : null,
+    ufName: selectedSingleUf
+      ? ((scaledUFs.find((u) => u.uf === selectedSingleUf) || {}).name || selectedSingleUf)
+      : null,
+    cityName: selectedSingleCity ? cityNameOf(selectedSingleCity) : null,
+  });
+  // Jumping to a crumb rebuilds the selection AT that level rather than stepping out
+  // repeatedly — one patch, so the dashboard re-reads once instead of N times.
+  const goToCrumb = (i) => {
+    if (!window.patchFilter) return;
+    const crumb = drillTrail[i];
+    if (!crumb) return;
+    if (i === 0) {
+      window.patchFilter({
+        regions: null, states: null, nations: null,
+        mesos: null, micros: null, inters: null, imediatas: null, munis: null,
+      });
+      return;
+    }
+    if (crumb.region) { window.patchFilter(window.enterRegion(crumb.region, ufsOfRegion(crumb.region))); return; }
+    if (crumb.uf) { window.patchFilter(window.enterUf(crumb.uf)); return; }
+    window.patchFilter(window.enterCity(crumb.muni));
+  };
+  // Drilling IN. Each level enters the next one rather than toggling a filter: the
+  // gesture that used to mean "narrow to this" now also means "go inside this", which
+  // is the whole point of one map replacing three modes.
+  const handleRegionEnter = (uf) => {
     if (!uf || !window.patchFilter) return;
     const reg = regionOfUf(uf);
     if (!reg) return;
-    const cleared = { mesos: null, micros: null, inters: null, imediatas: null, munis: null };
-    if (selectedRegion === reg) {
-      window.patchFilter({ regions: null, states: null, ...cleared });
-      return;
-    }
-    const ufs = scaledUFs.filter((u) => u.region === reg).map((u) => u.uf);
-    window.patchFilter({ regions: [reg], states: ufs.length ? ufs : null, ...cleared });
+    window.patchFilter(window.enterRegion(reg, ufsOfRegion(reg)));
   };
+  const handleUfEnter = (uf) => {
+    if (!uf || !window.patchFilter) return;
+    window.patchFilter(window.enterUf(uf));
+  };
+  const handleTileEnter = (row) => handleUfEnter(row && row.uf);
+  // Clicking empty space steps out ONE level — the gesture the researcher reaches for
+  // before finding the trail above. Null at Brasil, which leaves the map inert rather
+  // than making an empty click look like it did something.
+  const handleMapBackground = () => {
+    if (!window.patchFilter) return;
+    const patch = window.stepOut(summary);
+    if (patch) window.patchFilter(patch);
+  };
+
   const heatMax     = Math.max(...heatRows.flatMap(r => r.values.map(v => v.v)));
   const heatScaled  = (() => {
     if (!conv.autoScale) return { rows: heatRows, label: unit };
@@ -502,15 +544,31 @@ function ViewGeography({ families, conventions, summary, database }) {
             ))}
           </div>
         </div>
+        {/* Where you are, and the way back. "Click outside to zoom out" is invisible
+            until discovered, and a map with no visible depth leaves the researcher
+            unsure whether they are looking at a country or a state. Each crumb is
+            also the way back to that level. */}
         <div className="geo-control-grp">
-          <span className="overline">Granularidade</span>
-          <div className="seg" role="group" aria-label="Granularidade">
-            <button className={'seg-opt ' + (scope === 'region' ? 'on' : '')} aria-pressed={scope === 'region'} onClick={() => setScope('region')}>Região</button>
-            <button className={'seg-opt ' + (scope === 'uf' ? 'on' : '')} aria-pressed={scope === 'uf'} onClick={() => setScope('uf')}>UF</button>
-            {muniCapable && (
-              <button className={'seg-opt ' + (scope === 'municipio' ? 'on' : '')} aria-pressed={scope === 'municipio'} onClick={() => setScope('municipio')}>Município</button>
-            )}
-          </div>
+          <span className="overline">Território</span>
+          <nav className="geo-trail" aria-label="Navegação territorial">
+            {drillTrail.map((crumb, i) => {
+              const last = i === drillTrail.length - 1;
+              return (
+                <span key={crumb.level + i} className="geo-crumb-wrap">
+                  {i > 0 && <span className="geo-crumb-sep" aria-hidden="true">›</span>}
+                  <button
+                    type="button"
+                    className={'geo-crumb' + (last ? ' on' : '')}
+                    aria-current={last ? 'true' : undefined}
+                    disabled={last}
+                    onClick={() => goToCrumb(i)}
+                  >
+                    {crumb.label}
+                  </button>
+                </span>
+              );
+            })}
+          </nav>
         </div>
       </div>
 
@@ -556,7 +614,8 @@ function ViewGeography({ families, conventions, summary, database }) {
             </div>
             {regViz === 'map'
               ? <window.BrazilChoropleth data={regionUfRows} valueKey={valueKey}
-                                         label={regScaled.label} onSelect={handleRegionClick}
+                                         label={regScaled.label} onSelect={handleRegionEnter}
+                                         onBackground={handleMapBackground}
                                          seamless />
               : <window.RegionBars data={regScaled.data} valueKey={valueKey}
                                    label={regScaled.label} height={280} />}
@@ -576,8 +635,10 @@ function ViewGeography({ families, conventions, summary, database }) {
                 auto-scale problem) and big ones never overflow the cell. Clicking a UF
                 filters the whole dashboard to it (click again to clear). */}
             {ufViz === 'map'
-              ? <window.BrazilChoropleth data={scaledUFs} valueKey={valueKey} label={valueUnitLabel} onSelect={handleUfClick} selectedUf={selectedSingleUf} />
-              : <window.BrazilTileMap data={scaledUFs} valueKey={valueKey} label={valueUnitLabel} onSelect={handleTileSelect} selectedUf={selectedSingleUf} />}
+              ? <window.BrazilChoropleth data={scaledUFs} valueKey={valueKey} label={valueUnitLabel}
+                                         onSelect={handleUfEnter} selectedUf={selectedSingleUf}
+                                         onBackground={handleMapBackground} />
+              : <window.BrazilTileMap data={scaledUFs} valueKey={valueKey} label={valueUnitLabel} onSelect={handleTileEnter} selectedUf={selectedSingleUf} />}
             {filtered.ufYearPartial && (
               <p className="caption" style={{ padding: '8px 4px 0' }}>
                 <strong>{mapYear} (parcial):</strong> o último ano com dados por UF disponíveis fica
@@ -648,6 +709,7 @@ function ViewGeography({ families, conventions, summary, database }) {
                   label={valueUnitLabel}
                   selectedCity={selectedSingleCity}
                   onSelect={handleCityClick}
+                  onBackground={handleMapBackground}
                   // With a sub-UF/município facet active the un-shaded municípios are
                   // OUTSIDE the selection, not municípios without production.
                   narrowed={filtered.subUfActive}

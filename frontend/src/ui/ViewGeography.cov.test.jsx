@@ -12,6 +12,11 @@
 
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// The REAL drill module, not a stub: it is pure and dependency-free, and a stubbed
+// level derivation would let the view and the test disagree about where the researcher
+// is — the exact class of divergence that shipped bugs earlier today.
+import './geoDrill.js';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 
 // The click-a-UF-to-filter rule lives in geoSelect.js (shared with Visão geral and
@@ -21,7 +26,7 @@ import { cleanup, fireEvent, render } from '@testing-library/react';
 import './geoSelect.js';
 
 // Captured props from the stubbed chart widgets, so we can assert what each branch fed.
-let regionBarsProps, choroProps, tileMapProps, heatmapProps, barChartCalls, productsByUfCalls, muniMapProps;
+let choroProps, tileMapProps, heatmapProps, barChartCalls, productsByUfCalls, muniMapProps;
 
 function stubGlobals(filtered, opts = {}) {
   const {
@@ -92,7 +97,7 @@ function stubGlobals(filtered, opts = {}) {
       <span className="sh-action">{action}</span>
     </div>
   );
-  window.RegionBars = (props) => { regionBarsProps = props; return <div className="regionbars" />; };
+  window.RegionBars = () => <div className="regionbars" />;
   window.MunicipioChoropleth = (props) => { muniMapProps = props; return <div className="munimap" />; };
   window.BrazilChoropleth = (props) => { choroProps = props; return <div className="choro" />; };
   window.BrazilTileMap = (props) => { tileMapProps = props; return <div className="tilemap" />; };
@@ -103,7 +108,7 @@ function stubGlobals(filtered, opts = {}) {
 let ViewGeography;
 
 beforeEach(async () => {
-  regionBarsProps = choroProps = tileMapProps = heatmapProps = muniMapProps = undefined;
+  choroProps = tileMapProps = heatmapProps = muniMapProps = undefined;
   barChartCalls = [];
   productsByUfCalls = [];
   globalThis.React = React;
@@ -137,6 +142,13 @@ const UF_YEARLY = [
 // A representative snapshot: two UFs, two regions, two top municípios, plus the real
 // (UF × year) heatmap history. Carries value + mass + volume + count so the metric
 // toggle has every dimension available.
+// The granularity is no longer a control — it is derived from the selection (geoDrill).
+// These say, in the test's own words, WHERE the view is: nothing selected is Brasil (the
+// região level), a region puts you among its UFs, one UF puts you among its municípios.
+const AT_REGIAO = {};
+const AT_UF = { regions: ['N'] };
+const atMunicipio = (uf = 'PA') => ({ states: [uf] });
+
 function fullFixture(overrides = {}) {
   return {
     ufData: [
@@ -165,8 +177,17 @@ function fullFixture(overrides = {}) {
 }
 
 describe('ViewGeography — smoke + main branches', () => {
-  it('renders the default (value · UF) view with the choropleth and the real heatmap', () => {
-    stubGlobals(fullFixture());
+  it('opens at Brasil — the região level — with no filter configured', () => {
+    // The default used to be UF, chosen by a segmented control that also offered a
+    // Município option leading nowhere. Now the view opens at the top of the trail
+    // and the researcher drills DOWN by clicking, so there is no unreachable state
+    // to explain away.
+    stubGlobals(fullFixture({
+      ufData: [
+        { uf: 'PA', region: 'N', value: 75, q_mass: 30, q_vol: 8, q_count: 12, real: true },
+        { uf: 'SP', region: 'SE', value: 25, q_mass: 10, q_vol: 4, q_count: 6, real: true },
+      ],
+    }));
     const { container } = render(
       <ViewGeography
         families={['mass', 'volume']}
@@ -175,11 +196,12 @@ describe('ViewGeography — smoke + main branches', () => {
         conventions={{ currency: 'BRL', correction: 'IPCA', autoScale: true }}
       />
     );
-    // Default scope = UF, default ufViz = map → choropleth gets the scaled UF rows.
+    expect(container.textContent).toContain('Distribuição por região');
+    // The trail is the new orientation device, and it starts at Brasil.
+    expect(container.querySelector('.geo-trail').textContent).toBe('Brasil');
+    // Region map over UF geometry: each UF painted with ITS region's total.
     expect(choroProps).toBeTruthy();
     expect(choroProps.data.map((u) => u.uf)).toEqual(['PA', 'SP']);
-    // value × valueMul (1e6) → PA 75 → 75e6
-    expect(choroProps.data.find((u) => u.uf === 'PA').value).toBe(75e6);
     // Heatmap built from filtered.ufYearlySeries (two states kept).
     expect(heatmapProps).toBeTruthy();
     expect(heatmapProps.rows.length).toBe(2);
@@ -196,7 +218,7 @@ describe('ViewGeography — smoke + main branches', () => {
   it('CONF-1: the heatmap reads filtered.ufYearlySeries, not dataStore.get(db).ufYearly', () => {
     stubGlobals(fullFixture({ ufYearlySeries: UF_YEARLY }));
     window.dataStore.get = () => ({ ufYearly: [] }); // a stale/decoy snapshot field
-    render(<ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />);
+    render(<ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: true }} />);
     expect(heatmapProps.rows.length).toBe(2); // came from ufYearlySeries, not the decoy
   });
 
@@ -212,7 +234,7 @@ describe('ViewGeography — smoke + main branches', () => {
       ],
     });
     stubGlobals(fx);
-    render(<ViewGeography families={['mass']} summary={{}} database="mdic_comex" conventions={{ autoScale: true }} />);
+    render(<ViewGeography families={['mass']} summary={AT_UF} database="mdic_comex" conventions={{ autoScale: true }} />);
     expect(choroProps.data.map((u) => u.uf)).toEqual(['PA', 'SP']); // ND dropped
     expect(choroProps.data.some((u) => u.uf === 'ND')).toBe(false);
   });
@@ -220,7 +242,7 @@ describe('ViewGeography — smoke + main branches', () => {
   it('switching the metric to massa rescales the maps by the mass multiplier', () => {
     stubGlobals(fullFixture());
     const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
     const massBtn = [...container.querySelectorAll('.seg-opt')].find((b) => b.textContent.includes('massa'));
     expect(massBtn).toBeTruthy();
@@ -232,7 +254,7 @@ describe('ViewGeography — smoke + main branches', () => {
   it('the "Blocos" toggle swaps the choropleth for the SVG tile map', () => {
     stubGlobals(fullFixture());
     const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
     const blocos = [...container.querySelectorAll('.seg-opt')].find((b) => b.textContent === 'Blocos');
     fireEvent.click(blocos);
@@ -243,11 +265,11 @@ describe('ViewGeography — smoke + main branches', () => {
   it('the "Região" granularity renders RegionBars once, WITHOUT the redundant ranking/soma cards (EST-2)', () => {
     stubGlobals(fullFixture());
     const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+      <ViewGeography families={['mass']} summary={AT_REGIAO} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
-    const regiaoBtn = [...container.querySelectorAll('.seg-opt')].find((b) => b.textContent === 'Região');
-    fireEvent.click(regiaoBtn);
-    expect(regionBarsProps).toBeTruthy();
+    // The região level opens as a MAP (the Barras toggle is one click away, covered
+    // separately); what EST-2 is about is the DUPLICATION below it.
+    expect(choroProps).toBeTruthy();
     // EST-2: scope=região used to ALSO render "Soma por região" below — the SAME
     // chart, same data, a second time on one screen. That card (and the UF-ranking
     // card, equally redundant with the top card in this scope) must be gone.
@@ -266,10 +288,9 @@ describe('ViewGeography — smoke + main branches', () => {
       ],
       subUfActive: true, subUfLoaded: true,
     }), { geoLevel: 'municipio' });
-    const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+    render(
+      <ViewGeography families={['mass']} summary={atMunicipio()} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
-    fireEvent.click([...container.querySelectorAll('.seg-opt')].find((b) => b.textContent === 'Município'));
     expect(muniMapProps).toBeTruthy();
     expect(muniMapProps.uf).toBe('PA');
     expect(muniMapProps.data.map((m) => m.cityCode)).toEqual(['1500107', '1500131']);
@@ -284,51 +305,44 @@ describe('ViewGeography — smoke + main branches', () => {
     // breadth) is what renders.
     stubGlobals(fullFixture(), { geoLevel: 'municipio' });
     const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+      <ViewGeography families={['mass']} summary={{ munis: ['1500140', '3548500'] }}
+                     database="ibge_pevs" conventions={{ autoScale: true }} />
     );
-    const muniBtn = [...container.querySelectorAll('.seg-opt')].find((b) => b.textContent === 'Município');
-    expect(muniBtn).toBeTruthy();
-    fireEvent.click(muniBtn);
     expect(muniMapProps).toBeUndefined();
     expect(container.querySelector('.muni-list')).toBeTruthy();
     expect(container.textContent).toContain('Belém');
     expect(container.textContent).toContain('Santos');
   });
 
-  it('the município granularity shows the recorte-a-geografia note + an "abrir filtro" button when there are no rows (EST-5)', () => {
-    stubGlobals(fullFixture({ topMunis: [] }), { geoLevel: 'municipio' });
+  it('the município granularity the município level is UNREACHABLE without a UF — the old dead end is gone', () => {
+    // This used to assert a card that told the researcher to go configure a filter.
+    // With the level derived from the selection, "município with nothing selected" is
+    // not a state the view can be in, so the card has nothing to explain.
+    stubGlobals(fullFixture({ topMunis: [], muniYearlySeries: [] }));
     const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+      <ViewGeography families={['mass']} summary={AT_REGIAO} database="ibge_pevs" conventions={{ autoScale: true }} />,
     );
-    const muniBtn = [...container.querySelectorAll('.seg-opt')].find((b) => b.textContent === 'Município');
-    fireEvent.click(muniBtn);
-    expect(container.querySelector('.muni-list')).toBeFalsy();
-    expect(container.textContent).toContain('recortar a geografia');
-    // EST-5: the empty state used to be a dead-end paragraph — now a button straight
-    // into the filter modal, via the SAME global bridge patchFilter/openFilterMenu use.
-    const cta = container.querySelector('.geo-empty-cta button');
-    expect(cta).toBeTruthy();
-    fireEvent.click(cta);
-    expect(window.openFilterMenu).toHaveBeenCalledTimes(1);
+    expect(container.textContent).not.toContain('recortar a geografia');
+    expect(container.textContent).toContain('Distribuição por região');
   });
 });
 
 describe('ViewGeography — gating and honest-note branches', () => {
-  it('hides the Município button for a UF-only trade banco (geoLevel=uf)', () => {
+  it('a UF-only banco stops AT the UF level — a state there is not a doorway', () => {
+    // COMEX is origin-UF only. Selecting a state must not drill into municípios it has
+    // no data for; the trail simply ends there.
     stubGlobals(fullFixture(), { geoLevel: 'uf' });
     const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="mdic_comex" conventions={{ autoScale: true }} />
+      <ViewGeography families={['mass']} summary={atMunicipio()} database="mdic_comex" conventions={{ autoScale: true }} />,
     );
-    const labels = [...container.querySelectorAll('.seg-opt')].map((b) => b.textContent);
-    expect(labels).not.toContain('Município');
-    expect(labels).toContain('UF');
-    expect(labels).toContain('Região');
+    expect(container.textContent).toContain('Distribuição por UF');
+    expect(container.textContent).not.toContain('Distribuição por município');
   });
 
   it('shows the basket note when the territorial split is not basket-filtered', () => {
     stubGlobals(fullFixture({ notFilteredByBasket: true }));
     const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
     expect(container.textContent).toContain('todos os produtos');
   });
@@ -344,7 +358,7 @@ describe('ViewGeography — gating and honest-note branches', () => {
     });
     stubGlobals(fx);
     const { container } = render(
-      <ViewGeography families={['mass', 'volume']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+      <ViewGeography families={['mass', 'volume']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
     // Both mass + volume families present but all-zero per UF → the combined plural note.
     expect(container.textContent).toContain('ainda não estão disponíveis');
@@ -377,7 +391,7 @@ describe('ViewGeography — gating and honest-note branches', () => {
   it('renders the ufYearPartial caption and "(parcial)" tag when the UF year lags the window', () => {
     stubGlobals(fullFixture({ ufYearPartial: true, ufLatestYear: 2019, yearEnd: 2020 }));
     const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
     expect(container.textContent).toContain('(parcial)');
     expect(container.textContent).toContain('o último ano com dados por UF');
@@ -388,7 +402,7 @@ describe('ViewGeography — gating and honest-note branches', () => {
       meta: { latest: { yearComplete: false, completeYear: 2023 } },
     });
     const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
     expect(container.textContent).toContain('2024 (parcial)');
   });
@@ -400,7 +414,7 @@ describe('ViewGeography — gating and honest-note branches', () => {
     });
     stubGlobals(fx);
     const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
     expect(container.textContent).toContain('Estado produtor');
     expect(container.textContent).not.toContain('Maiores estados produtores');
@@ -411,7 +425,7 @@ describe('ViewGeography — empty geo + products-by-UF base table', () => {
   it('renders an honest empty-state instead of a blank Heatmap when there is no history', () => {
     stubGlobals(fullFixture({ ufYearlySeries: [] }));
     const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: true }} />
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: true }} />
     );
     // Empty history → no window.Heatmap call at all (an honest caption instead of an
     // empty chart), but the rest of the view still mounts.
@@ -480,7 +494,7 @@ describe('ViewGeography — empty geo + products-by-UF base table', () => {
   it('honors autoScale=false on the heatmap (rows passed through unscaled)', () => {
     stubGlobals(fullFixture());
     render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs" conventions={{ autoScale: false }} />
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: false }} />
     );
     // autoScale off → heatScaled returns the raw rows + the bare unit label.
     expect(heatmapProps.rows.length).toBe(2);
@@ -559,11 +573,10 @@ describe('ViewGeography — the região map', () => {
 
   it('paints every UF with its REGION total, so the five regions read as blocks', () => {
     stubGlobals(regionFixture());
-    const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs"
+    render(
+      <ViewGeography families={['mass']} summary={AT_REGIAO} database="ibge_pevs"
                      conventions={{ autoScale: true }} />,
     );
-    fireEvent.click([...container.querySelectorAll('button')].find((b) => b.textContent === 'Região'));
     // Every UF of a region carries the SAME value — that is what makes it a region map
     // rather than a UF map with region labels.
     const byUf = Object.fromEntries(choroProps.data.map((d) => [d.uf, d[choroProps.valueKey]]));
@@ -576,10 +589,9 @@ describe('ViewGeography — the região map', () => {
   it('offers Barras too — five blocks rank worse than five bars', () => {
     stubGlobals(regionFixture());
     const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs"
+      <ViewGeography families={['mass']} summary={AT_REGIAO} database="ibge_pevs"
                      conventions={{ autoScale: true }} />,
     );
-    fireEvent.click([...container.querySelectorAll('button')].find((b) => b.textContent === 'Região'));
     expect(container.querySelector('[aria-label="Visualização da região"]')).toBeTruthy();
     fireEvent.click([...container.querySelectorAll('button')].find((b) => b.textContent === 'Barras'));
     expect(container.querySelector('.region-bars, .regionbars')).toBeTruthy();
@@ -591,11 +603,10 @@ describe('ViewGeography — the região map', () => {
     stubGlobals(regionFixture());     // stubGlobals installs its own patchFilter mock…
     const patch = vi.fn();
     window.patchFilter = patch;       // …so ours has to land AFTER it
-    const { container } = render(
-      <ViewGeography families={['mass']} summary={{}} database="ibge_pevs"
+    render(
+      <ViewGeography families={['mass']} summary={AT_REGIAO} database="ibge_pevs"
                      conventions={{ autoScale: true }} />,
     );
-    fireEvent.click([...container.querySelectorAll('button')].find((b) => b.textContent === 'Região'));
     choroProps.onSelect('PA');
     const arg = patch.mock.calls.at(-1)[0];
     expect(arg.regions).toEqual(['N']);

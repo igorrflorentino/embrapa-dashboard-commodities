@@ -56,7 +56,7 @@ function fmtCompact(v) {
 }
 
 export function MunicipioChoropleth({
-  uf, data, valueKey, label, height = 420, onSelect, selectedCity, narrowed = false,
+  uf, data, valueKey, label, height = 420, onSelect, selectedCity, narrowed = false, onBackground,
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
@@ -95,6 +95,8 @@ export function MunicipioChoropleth({
 
   const onSelectRef = useRef(onSelect);
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
+  const onBackgroundRef = useRef(onBackground);
+  useEffect(() => { onBackgroundRef.current = onBackground; }, [onBackground]);
 
   // Fetch (or reuse) the UF's mesh. Guarded so a UF switch mid-flight doesn't paint
   // the previous state's polygons.
@@ -181,6 +183,17 @@ export function MunicipioChoropleth({
         map.on('mousemove', 'mun-fill', onMove);
         map.on('mouseleave', 'mun-fill', onLeave);
         map.on('click', 'mun-fill', onClick);
+  // Clicking EMPTY space (ocean, a neighbouring country, the padding around the mesh)
+  // is the gesture for stepping back out of a drill-down. A layer-scoped click handler
+  // never fires there by definition, so this one is bound map-wide and asks whether the
+  // point actually hit the fill — the only way to tell "clicked nothing" from "clicked
+  // something" in maplibre.
+        map.on('click', (e) => {
+          const fn = onBackgroundRef.current;
+          if (!fn) return;
+          const hits = map.queryRenderedFeatures(e.point, { layers: ['mun-fill'] });
+          if (!hits.length) fn();
+        });
       });
 
       function onMove(e) {
