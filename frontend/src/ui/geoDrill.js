@@ -27,7 +27,7 @@
  *  selected at once (from the filter menu, not by clicking) sit at UF level — there is
  *  no single municipal mesh to drill into, and pretending otherwise would either show
  *  one state's cities or silently pick one. */
-export function drillLevel(summary, muniCapable = true) {
+export function drillLevel(summary, muniCapable = true, subUfNarrowed = false) {
   const s = summary || {};
   const states = Array.isArray(s.states) ? s.states : [];
   const munis = Array.isArray(s.munis) ? s.munis : [];
@@ -42,6 +42,18 @@ export function drillLevel(summary, muniCapable = true) {
   // serving a grain it does not have. The segmented control had an explicit effect for
   // this; deriving the level dropped it, and this branch is where it belongs.
   if (munis.length >= 1) return muniCapable ? 'municipio' : 'uf';
+  // A sub-UF facet (mesorregião / microrregião / intermediária / imediata) describes a
+  // grain BELOW the UF, so it belongs at município level — that is the whole point of
+  // the vendored municipal meshes (PLANS/geo_subregions.md: "a sub-UF selection must
+  // finally reach the MAP").
+  //
+  // It cannot be derived from `summary` alone: a facet key can be present while covering
+  // its ENTIRE universe, which narrows nothing. dataFilters already resolves that into
+  // `subUfActive`, so the caller passes the answer rather than this re-deriving it wrong.
+  //
+  // Missing this shipped a map that said "Brasil" over one mesorregião of Pará — and it
+  // also drove the CSV export's grain, so the download matched the label, not the data.
+  if (subUfNarrowed) return muniCapable ? 'municipio' : 'uf';
   if (states.length === 1) return muniCapable ? 'municipio' : 'uf';
   if (states.length > 1) return 'uf';
   if (regions.length >= 1) return 'uf';
@@ -53,7 +65,11 @@ export function drillLevel(summary, muniCapable = true) {
  *  "Click outside to go back" is invisible until someone discovers it, and a map with
  *  no visible notion of depth leaves the researcher unsure whether they are looking at
  *  a country or a state. Each crumb is also the way back to that level. */
-export function drillTrail(summary, { regionLabel, ufName, cityName } = {}, muniCapable = true) {
+export function drillTrail(
+  summary,
+  { regionLabel, ufName, cityName, subUfLabel } = {},
+  muniCapable = true,
+) {
   const s = summary || {};
   const states = Array.isArray(s.states) ? s.states : [];
   const munis = Array.isArray(s.munis) ? s.munis : [];
@@ -71,6 +87,10 @@ export function drillTrail(summary, { regionLabel, ufName, cityName } = {}, muni
   // a banco switch, and on a UF-only banco (COMEX) drillLevel already degrades to 'uf' —
   // leaving the crumb behind showed a raw 7-digit code as the current level, and offered
   // a way "back" to somewhere the map never went.
+  // A sub-UF narrowing sits between the UF and the município. Without a crumb the trail
+  // stopped at "Brasil" (or at the UF) while the data underneath was one mesorregião —
+  // the orientation device asserting the opposite of the truth.
+  if (subUfLabel) trail.push({ level: 'municipio', label: subUfLabel, subUf: true });
   if (muniCapable) {
     if (munis.length === 1) {
       trail.push({ level: 'focus', label: cityName || String(munis[0]), muni: String(munis[0]) });
@@ -113,6 +133,13 @@ export function stepOut(summary) {
   const munis = Array.isArray(s.munis) ? s.munis : [];
   const regions = Array.isArray(s.regions) ? s.regions : [];
   if (munis.length) return { munis: null };
+  // Sub-UF facets sit between the município and the UF, so they are the next rung down
+  // from the top — stepping past them straight to the UF would discard a narrowing the
+  // researcher never asked to leave.
+  const subUf = ['mesos', 'micros', 'inters', 'imediatas'].filter(
+    (k) => Array.isArray(s[k]) && s[k].length,
+  );
+  if (subUf.length) return Object.fromEntries(subUf.map((k) => [k, null]));
   if (states.length) {
     // Back to the region that contains it when we came through one; else to Brasil.
     return regions.length

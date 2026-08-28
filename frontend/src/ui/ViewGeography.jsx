@@ -112,7 +112,10 @@ function ViewGeography({ families, conventions, summary, database }) {
   // filter first. The map knew where you wanted to go and asked you to say it again
   // somewhere else. Deriving the level from the selection makes that state unreachable
   // — município is only ever entered BY entering a UF, so it can never open empty.
-  const scope = window.drillLevel(summary, muniCapable);
+  // `filtered.subUfActive` is passed in rather than re-derived: a facet key can be
+  // present while covering its whole universe, which narrows nothing, and only
+  // dataFilters knows the universe.
+  const scope = window.drillLevel(summary, muniCapable, filtered.subUfActive);
   const [ufViz, setUfViz] = useGeoState('map'); // 'map' = maplibre choropleth, 'tiles' = SVG tile-grid
   // Região gets the same Mapa/Barras choice UF has. Bars stay one click away: five
   // blocks read a ranking worse than five bars do, so neither view is the answer alone.
@@ -431,7 +434,28 @@ function ViewGeography({ families, conventions, summary, database }) {
     ((filtered.regions || window.REGIONS || []).find((r) => r.id === id) || {}).label || id;
   const cityNameOf = (code) =>
     ((mesh || []).find((m) => String(m.cityCode) === String(code)) || {}).cityName || code;
+  // Name the active sub-UF narrowing for the trail, resolving the code through the mesh.
+  // Falls back to the count so the crumb still says SOMETHING narrows — a silent trail
+  // is what let the map claim "Brasil" over one mesorregião.
+  const subUfLabel = (() => {
+    if (!filtered.subUfActive) return null;
+    const byKey = [
+      ['mesos', 'meso'], ['micros', 'micro'],
+      ['inters', 'intermediaria'], ['imediatas', 'imediata'],
+    ];
+    for (const [key, meshKey] of byKey) {
+      const sel = summary && summary[key];
+      if (!Array.isArray(sel) || !sel.length) continue;
+      if (sel.length > 1) return `${sel.length} recortes`;
+      const hit = (mesh || []).find(
+        (m) => m[meshKey] && String(m[meshKey].code) === String(sel[0]),
+      );
+      return (hit && hit[meshKey] && hit[meshKey].name) || String(sel[0]);
+    }
+    return null;
+  })();
   const drillTrail = window.drillTrail(summary, {
+    subUfLabel,
     regionLabel: selectedRegion ? regionLabelOf(selectedRegion) : null,
     ufName: selectedSingleUf
       ? ((scaledUFs.find((u) => u.uf === selectedSingleUf) || {}).name || selectedSingleUf)
