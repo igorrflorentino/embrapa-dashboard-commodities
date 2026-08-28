@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.11] - 2026-08-28
+
+### Documentação
+
+- **O backfill mundial do COMTRADE está concluído, mas a documentação ainda o descrevia
+  como a lacuna pendente do projeto.** Medido no Gold: os **26 anos** (2000–2025) estão em
+  todos os reporters, entre **90 e 174 por ano**; **nenhum** ano é só-Brasil. A seção
+  "Current state" do runbook, medida em 2026-06-17, listava `1989–2021, 2024–2025` como
+  só-Brasil e dizia que faltavam "35 missing years"; o `CLAUDE.md` chamava o arquivo de
+  "the last gap to max granularity".
+
+  O custo de acreditar nisso era concreto: seguir o runbook gastaria dias da cota da API
+  da ONU — que o próprio documento chama de "the only real constraint" — rebaixando dado
+  que já está lá.
+
+  Corrigidos: o subtítulo e a seção de estado (agora com a medição e a distribuição por
+  ano), a linha do `CLAUDE.md`, a verificação #1 (era `1989–2025` e a faixa de linhas
+  pré-redesenho `337–1.628`; hoje `2000–2025` e **641–1.956**, verificada), a linha de
+  risco que ainda falava em "current gap", e a verificação #6 — que mandava editar a
+  maturidade em `bancos.js`, quando a fonte única é `research_inputs.banco_metadata` desde
+  que o override entrou.
+
+  Acrescentado o que o backfill **de fato** custou, contra a previsão que o documento
+  trazia: Bronze **21.110.724** linhas (previsão ~29,7M), Silver **2.053.708** (~4,25M),
+  26 anos em vez de 35. O cabeçalho já avisava que a previsão era "a safe upper bound";
+  agora há o número real ao lado.
+
+  Nota: **eu editei este mesmo arquivo mais cedo hoje** (v1.33.7, corrigindo a instrução
+  `COMTRADE_START_YEAR=1989`) sem notar que a premissa dele estava vencida — corrigi a
+  receita e deixei o motivo errado. O documento registra por que a seção sobreviveu:
+  nada recalcula um estado escrito à mão.
+
+### Pendência deixada para o operador (não feita aqui)
+
+- A verificação #6 do runbook condiciona promover o `un_comtrade` de `beta` a `estavel` às
+  verificações (1) e (2) — **ambas satisfeitas** na medição de hoje. Se isso basta para
+  chamá-lo estável é julgamento de quem responde pelo dado: é uma afirmação ao pesquisador
+  sobre quanto os números ainda podem mudar. Deliberadamente não alterado.
+
+---
+
 ## [1.33.10] - 2026-08-28
 
 ### Corrigido

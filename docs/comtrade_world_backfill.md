@@ -1,9 +1,11 @@
 # UN Comtrade world (all-reporters) backfill — runbook
 
-How to fill the COMTRADE history for **all reporters × all partners**, from **2000**, at the
-**totals-only** grain — now the default ingest scope. Everything here was measured against live
-prod BigQuery + verified against the code (adversarially reviewed). Storage/compute cost is
-trivial; the only real constraint is the UN API daily quota (calendar time).
+How the COMTRADE history was filled for **all reporters × all partners**, from **2000**, at
+the **totals-only** grain — now the default ingest scope — and how to run it again if the
+scope ever changes. **It is done**: every year 2000–2025 is at all-reporters (see Current
+state below). Everything here was measured against live prod BigQuery + verified against the
+code (adversarially reviewed). Storage/compute cost is trivial; the only real constraint is
+the UN API daily quota (calendar time).
 
 > ### ⚠ 2026-07 — totals-only redesign (v1.13.0): read this first
 >
@@ -29,17 +31,33 @@ trivial; the only real constraint is the UN API daily quota (calendar time).
 > (never selected) — optionally purge them for storage (a **human-run** `bq query … DELETE`;
 > the safety hook blocks the agent from running it). See `docs/operations_runbook.md`.
 
-## Current state (measured 2026-06-17)
+## Current state — the backfill is DONE (measured 2026-08-28)
 
-`silver_comtrade_flows` per-year reporter coverage shows the gap precisely:
+**Every year in scope is at all-reporters. There is no Brazil-only year left**, so nothing
+below needs to be run; this runbook is kept as the record of how it was done and the
+procedure for a future re-run (a scope change, or a rebuild from scratch).
 
-| Years | Reporters | Meaning |
-|-------|-----------|---------|
-| 1989–2021, 2024–2025 | **1** (Brazil, M49 `76`) | Brazil-only — needs the world backfill |
-| **2022, 2023** | **165 / 163** (~272k rows each) | Already all-reporters (earlier "all" dev window) |
+Measured on `gold.gold_comtrade_flows`, distinct `reporter_code` per `reference_year`:
 
-So the backfill must fetch **35 missing years** at all-reporters. 2022–2023 already
-exist and serve as the measured "pilot" — no separate pilot run is needed.
+| Years | Reporters per year | Meaning |
+|-------|--------------------|---------|
+| **2000–2025** (26 years) | **90 – 174** | All-reporters throughout |
+| any year | **1** (Brazil-only) | **none** |
+
+The per-year count varies (90 in 2017, 96 in 2025) because not every country reports every
+year to the UN, and the most recent years are still filling in upstream. That is source
+behaviour, not a gap in the ingest.
+
+2000 is the floor by design: the v1.13.0 totals-only redesign ingests from
+`COMTRADE_START_YEAR=2000` and `silver_comtrade_flows` floors `reference_year` at
+`var('comtrade_min_year', 2000)`. No COMTRADE row before 2000 exists in Bronze, Silver or
+Gold.
+
+> The table above replaced a "measured 2026-06-17" snapshot that still listed
+> `1989–2021, 2024–2025` as Brazil-only and said the backfill "must fetch 35 missing
+> years". That was true when written and was overtaken by the work; it survived because
+> nothing recomputes a hand-written state section. Re-measure before trusting it again —
+> the query is one `count(distinct reporter_code) group by reference_year`.
 
 ### Prerequisites — status
 
@@ -94,6 +112,22 @@ issue any keyed call and read the countdown in the body.
 The commodity filter (~150 HS6 codes) keeps this ~10× below a naive dense-matrix
 estimate; per-chunk rows stay well under the 100k-row/call cap so adaptive splits
 rarely fire.
+
+### What it actually cost (measured 2026-08-28, after the run)
+
+The table above is the PRE-RUN forecast, taken on the old 1989+ scope WITH breakdown rows.
+The header's warning held — it over-estimated, and by more than the row counts alone
+suggest:
+
+| Metric | Forecast | Actual |
+|---|---|---|
+| Bronze rows | ~29.7M | **21,110,724** |
+| Silver rows | ~4.25M | **2,053,708** |
+| Gold rows | — | **2,053,708** (Gold is a projection of Silver at this grain) |
+| Years | 35 (from 1989) | **26** (2000–2025) |
+
+Keep the forecast row for a future re-run under a WIDER scope; use the actuals as the
+anchor for a re-run of the scope that is live today.
 
 ## Path A — LOCAL (recommended to drive the backfill)
 
@@ -190,7 +224,7 @@ prereq table; the job currently lacks the all-reporters scope):
 
 ## Verification after the backfill
 
-1. **Brazil intact** — `reporterCode = '76'` present every year 1989–2025 (counts in the measured 337–1,628 range).
+1. **Brazil intact** — `reporterCode = '76'` present every year 2000–2025. Measured 2026-08-28: all 26 years, **641–1,956** rows each. (The older "1989–2025 / 337–1,628" reading predates both the 2000 floor and the totals-only grain.)
 2. **World coverage complete** — every year shows `reporters` ≫ 1 in BOTH `bronze.comtrade_flows_raw` AND `gold.gold_comtrade_flows`.
 3. **Propagate to Silver/Gold/serving** (Bronze-only is refreshed by the ingest):
    ```bash
@@ -198,7 +232,16 @@ prereq table; the job currently lacks the all-reporters scope):
    ```
 4. **Value conservation** — `cd dbt && uv run dbt test --select gold_comtrade_flows`.
 5. **Confirm the incremental build stayed cheap** — once a couple of backfilled years have landed, check `INFORMATION_SCHEMA.JOBS` for the `silver_comtrade_flows` MERGE's `total_bytes_processed`.
-6. **Only then** flip `un_comtrade` `maturity: 'beta'` → `'estavel'` in `frontend/src/ui/bancos.js` — gated on (1)+(2) above AND the conservation test passing.
+6. **Only then** promote `un_comtrade` from `beta` to `estavel` — gated on (1)+(2) above AND
+   the conservation test passing. Two notes, both learned after this line was written:
+   - **Where.** Maturity is no longer a literal in `frontend/src/ui/bancos.js`; its single
+     source of truth is `research_inputs.banco_metadata` (see
+     `docs/operations_runbook.md` § "Changing a banco's maturity / note / coverage"). Fold
+     a lasting change back into the registries at the next release and then DROP the
+     override row, so the two copies cannot drift apart.
+   - **Status.** (1) and (2) are satisfied as measured on 2026-08-28. Whether that makes
+     the banco `estavel` is an operator judgement — it is a claim to the researcher about
+     how much the numbers can still move — so it is deliberately NOT done here.
 
 ## Risks + mitigations
 
@@ -206,7 +249,7 @@ prereq table; the job currently lacks the all-reporters scope):
 |---|---|
 | Daily dbt build query cost (Silver scanning a growing Bronze) | **Mitigated** — `silver_comtrade_flows` is incremental; the daily build scans only the partitions for years with new ingestions. Note: on the LOCAL path many years can land in one quota window, so the next build's `affected_years` may span several years (scan ≈ years-landed × bronze/year) — still bounded and very likely < 1 TB/month, but monitor `INFORMATION_SCHEMA.JOBS`. |
 | Quota exhaustion "looks like failure" | Expected; resumable. Read the summary banner, not the exit code (see Path A). |
-| Job deployed without all-reporters scope | Verified current gap — set `COMTRADE_REPORTERS=all` + `COMTRADE_KEY_SECRET` in `.env`, then `make ingest-job-deploy` (scope is baked at deploy). |
+| Job deployed without all-reporters scope | Only matters for a FUTURE re-run — the history is already at all-reporters. Since v1.13.0 the config defaults are `reporters=all` / `start_year=2000`, so a Job carrying no `COMTRADE_*` env already pulls that scope; to pin it explicitly, set `COMTRADE_REPORTERS=all` + `COMTRADE_KEY_SECRET` in `.env`, then `make ingest-job-deploy` (scope is baked at deploy). |
 | `gold`/`serving` are `materialized=table` (full daily rebuild) | Bounded by Silver size (~1–2 GB), not Bronze — cheap today; if Silver grows past several GB, consider making them incremental too. |
 
 ## Source references
