@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.31.6] - 2026-08-27
+
+### Added
+- **Invariantes de contagem do mapa municipal, varridos sobre o espaço malha × dados.**
+  Mesmo tratamento dado ao mapa de calor na v1.31.5, agora no `MunicipioChoropleth`.
+
+  A contagem em cinza é uma afirmação **contábil** feita ao pesquisador — "N municípios
+  sem produção registrada" — calculada subtraindo o que os dados cobrem do que a malha
+  desenha. Os dois conjuntos nem sempre coincidem: o IBGE lista ao menos um município
+  (Boa Esperança do Norte/MT, criado em 2023) cuja geometria a API de malhas não
+  publica, então um município pode ter dado e não ter polígono. Subtrair comprimentos
+  cegamente o dobrava no cinza, superestimando "sem produção" e, com vários, indo a
+  negativo.
+
+  As propriedades varridas:
+
+  - o cinza nunca excede o número de polígonos da malha, nem fica negativo;
+  - **cinza + desenhados-com-dado = malha**, sempre (a identidade contábil por trás da
+    frase; se falhar, o número na tela descreve um conjunto que não existe);
+  - município com dado e **sem** polígono é reportado à parte, nunca dobrado no cinza;
+  - valor zero conta como cinza, não como dado;
+  - `narrowed` muda a **redação** e nunca o número — "fora do recorte" e "sem produção"
+    são afirmações diferentes sobre os mesmos municípios;
+  - concordância de número (1 município / N municípios);
+  - nada é dito quando todo município desenhado tem dado (um "0 municípios sem produção"
+    seria ruído vestido de achado).
+
+  Validados por injeção de regressão, não presumidos: a subtração cega de comprimentos
+  (o bug original), aceitar zero como dado, e inverter a lógica de `narrowed` — as três
+  fazem a varredura falhar.
+
+### Nota
+- A varredura precisou de **uma UF distinta por caso**: `MESH_CACHE` é de nível de
+  módulo e chaveado por UF, então iterar com a mesma UF serve a primeira malha a todas
+  as iterações seguintes — o laço passaria a afirmar contra dados que não está
+  renderizando, e **passaria por acidente**. Encontrado ao escrever o teste; registrado
+  no próprio arquivo para não se repetir.
+
+---
+
 ## [1.31.5] - 2026-08-27
 
 ### Added

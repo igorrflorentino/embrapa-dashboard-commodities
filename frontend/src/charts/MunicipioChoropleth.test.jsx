@@ -173,3 +173,128 @@ describe('MunicipioChoropleth — degraded paths', () => {
     expect(resolve).toBeTypeOf('function'); // never resolved — the pending state is the assertion
   });
 });
+
+// ── Tally invariants over the mesh × data space ──────────────────────────────
+//
+// The grey tally is an ACCOUNTING claim made to a researcher: "N municípios sem
+// produção registrada". It is computed by subtracting what the data covers from what
+// the mesh draws, and the two sets do not always agree — IBGE's Localidades roster
+// lists at least one município (Boa Esperança do Norte/MT, created 2023) whose geometry
+// the malhas API does not publish, so a município can carry data and have no polygon.
+// Subtracting lengths blindly folded it into the grey count, over-claiming "sem
+// produção" and, with enough of them, going negative.
+//
+// The per-case tests above sample two or three shapes of that overlap. These sweep it,
+// because the failure mode is a wrong NUMBER on screen — the kind nobody notices.
+
+describe('MunicipioChoropleth — tally invariants over mesh × data', () => {
+  const codes = (n, from = 0) =>
+    Array.from({ length: n }, (_, i) => String(1500107 + from + i));
+  const rowsFor = (cs, value = 10e6) => cs.map((c) => ({ cityCode: c, city: `M${c}`, value }));
+  const withMesh = (cs) => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(meshFC(...cs)) }));
+  };
+  // The tally as the researcher reads it: the number in the grey caption, or 0 when the
+  // caption is absent (nothing grey to report).
+  const greyCount = (container) => {
+    const m = container.textContent.match(/(\d+)\s+municípios?\s+(?:sem produção|fora do recorte)/);
+    return m ? Number(m[1]) : 0;
+  };
+  const noMeshCount = (container) => {
+    const m = container.textContent.match(/(\d+)\s+municípios têm dado/);
+    if (m) return Number(m[1]);
+    return /tem dado no período mas o IBGE/.test(container.textContent) ? 1 : 0;
+  };
+
+  // A DISTINCT uf per case, deliberately: MESH_CACHE is module-level and keyed by UF, so
+  // reusing "PA" across iterations serves the FIRST mesh to every later one — the loop
+  // would then assert against data it is not actually rendering, and pass by accident.
+  let ufSeq = 0;
+  const render1 = async (props) => {
+    const uf = `U${ufSeq++}`;
+    const r = render(<MunicipioChoropleth uf={uf} valueKey="value" label="R$" {...props} />);
+    await waitFor(() => expect(fakeMap.loadHandler).toBeTypeOf('function'));
+    await fakeMap.fireLoad();
+    return r;
+  };
+
+  it('never reports more greys than the mesh has polygons, nor fewer than zero', async () => {
+    for (const meshN of [1, 3, 8]) {
+      for (const dataN of [0, 1, 3, 8]) {
+        const mesh = codes(meshN);
+        withMesh(mesh);
+        const { container, unmount } = await render1({ data: rowsFor(codes(dataN)) });
+        const g = greyCount(container);
+        expect(`mesh${meshN}/data${dataN}: ${g >= 0 && g <= meshN}`).toBe(`mesh${meshN}/data${dataN}: true`);
+        unmount();
+      }
+    }
+  });
+
+  it('the greys and the drawn-with-data always add up to the mesh', async () => {
+    // The accounting identity behind the sentence. If it ever fails, the number on
+    // screen is describing a set that does not exist.
+    for (const [meshN, dataN] of [[3, 0], [3, 1], [3, 3], [8, 2], [8, 8], [1, 1]]) {
+      const mesh = codes(meshN);
+      withMesh(mesh);
+      const data = rowsFor(codes(dataN));
+      const drawnWithData = data.filter((d) => mesh.includes(d.cityCode)).length;
+      const { container, unmount } = await render1({ data });
+      expect(`${meshN}/${dataN}: ${greyCount(container) + drawnWithData}`).toBe(`${meshN}/${dataN}: ${meshN}`);
+      unmount();
+    }
+  });
+
+  it('a município with data but NO polygon is reported apart, never folded into the greys', async () => {
+    // The Boa Esperança case. Two of the three data rows are outside the mesh.
+    const mesh = codes(3);                       // 1500107, 1500108, 1500109
+    withMesh(mesh);
+    const data = rowsFor([...mesh.slice(0, 1), '9999901', '9999902']);
+    const { container } = await render1({ data });
+    expect(noMeshCount(container)).toBe(2);
+    // Mesh has 3 polygons, 1 of them has data ⇒ 2 grey. The two orphans must NOT inflate it.
+    expect(greyCount(container)).toBe(2);
+  });
+
+  it('a zero value counts as grey, not as data', async () => {
+    // `> 0` is the filter; a row that exists with no production is exactly what the
+    // grey is FOR, and counting it as covered would understate the tally.
+    const mesh = codes(3);
+    withMesh(mesh);
+    const { container } = await render1({ data: rowsFor(mesh, 0) });
+    expect(greyCount(container)).toBe(3);
+  });
+
+  it('narrowed changes the WORDING and never the number', async () => {
+    // With a sub-UF facet the greys are outside the selection, not unproductive —
+    // a different claim about the same municípios.
+    const mesh = codes(5);
+    for (const narrowed of [false, true]) {
+      withMesh(mesh);
+      const { container, unmount } = await render1({ data: rowsFor(codes(2)), narrowed });
+      expect(`${narrowed}: ${greyCount(container)}`).toBe(`${narrowed}: 3`);
+      expect(container.textContent).toContain(narrowed ? 'fora do recorte' : 'sem produção registrada');
+      expect(container.textContent).not.toContain(narrowed ? 'sem produção registrada' : 'fora do recorte');
+      unmount();
+    }
+  });
+
+  it('agrees in number: one município is singular, several are plural', async () => {
+    for (const [meshN, dataN, singular] of [[1, 0, true], [2, 0, false], [4, 3, true]]) {
+      withMesh(codes(meshN));
+      const { container, unmount } = await render1({ data: rowsFor(codes(dataN)) });
+      const txt = container.textContent;
+      expect(`${meshN}/${dataN}: ${/\d+ município sem/.test(txt)}`).toBe(`${meshN}/${dataN}: ${singular}`);
+      unmount();
+    }
+  });
+
+  it('says nothing at all when every drawn município has data', async () => {
+    // A caption reading "0 municípios sem produção" would be noise dressed as a finding.
+    const mesh = codes(3);
+    withMesh(mesh);
+    const { container } = await render1({ data: rowsFor(mesh) });
+    expect(container.textContent).not.toMatch(/sem produção|fora do recorte/);
+  });
+});
