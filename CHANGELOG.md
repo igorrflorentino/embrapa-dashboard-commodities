@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.32.3] - 2026-08-27
+
+### Fixed
+- **Uma seleção municipal sobrevivia à troca de banco e levava um banco só-UF para um
+  grão que ele não tem.** O filtro geográfico é compartilhado: entrar num município no
+  IBGE PEVS e mudar para o MDIC COMEX (só origem-UF) deixava o COMEX no nível de
+  município.
+
+  O controle segmentado tinha um efeito explícito para isso; derivar o nível (v1.32.0)
+  o descartou, e o ramo de `munis` do `drillLevel` era onde ele deveria estar. Agora
+  degrada para UF, como o ramo de `states` sempre fez.
+
+- **A trilha não acompanhava a degradação.** Com o nível já corrigido para UF, a migalha
+  de município continuava lá — exibindo o **código cru de 7 dígitos** como nível atual e
+  oferecendo um caminho de volta a um lugar onde o mapa nunca esteve. `drillTrail` passa
+  a receber a capacidade do banco e a parar onde ele para.
+
+  Fixado como invariante: **a trilha nunca corre mais fundo que o nível**, varrido sobre
+  as formas de filtro nos dois tipos de banco. Uma migalha além do nível atual é uma
+  promessa que o mapa não pode cumprir.
+
+### Nota
+Encontrado ao andar um **percurso** que eu não tinha andado — trocar de banco estando
+fundo no drill —, e não um destino. Os dois bugs da v1.32.2 tinham a mesma natureza:
+dependem de estado acumulado pela navegação, que testes que montam cada nível
+diretamente nunca produzem.
+
+---
+
 ## [1.32.2] - 2026-08-27
 
 Dois defeitos do drill-down da v1.32.0, ambos reportados por uso.
