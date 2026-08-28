@@ -101,6 +101,53 @@ export function drillTrail(
   return trail;
 }
 
+/** The trail's name for the ACTIVE sub-UF narrowing — every facet of it.
+ *
+ *  The two IBGE sub-UF divisions are PARALLEL and do not nest (classic meso→micro, 2017
+ *  intermediária→imediata), and a município must clear EVERY active facet, so the
+ *  effective recorte is their INTERSECTION. Naming only the first one found — which is
+ *  what shipped in v1.33.1 — described a strictly larger set than the data: a reader
+ *  seeing "Nordeste Paraense" concluded that was the recorte, when it was actually
+ *  Nordeste Paraense ∩ Belém.
+ *
+ *  The rule never under-reports: one narrowing is named, two are named together, and
+ *  beyond that the count stands in — a count is vaguer than a name but it cannot claim
+ *  a recorte is wider than it is.
+ *
+ *  `mesh` resolves a facet code to its name; an unresolvable code falls back to the code
+ *  itself, which is still honest about how many narrowings are in play. */
+export function subUfLabel(summary, mesh) {
+  const s = summary || {};
+  const KEYS = [
+    ['mesos', 'meso'], ['micros', 'micro'],
+    ['inters', 'intermediaria'], ['imediatas', 'imediata'],
+  ];
+  const picked = [];
+  for (const [key, meshKey] of KEYS) {
+    const sel = Array.isArray(s[key]) ? s[key] : [];
+    for (const code of sel) picked.push({ meshKey, code: String(code) });
+  }
+  if (!picked.length) return null;
+  const nameOf = ({ meshKey, code }) => {
+    const hit = (mesh || []).find(
+      (m) => m[meshKey] && String(m[meshKey].code) === code,
+    );
+    return (hit && hit[meshKey] && hit[meshKey].name) || code;
+  };
+  if (picked.length === 1) return nameOf(picked[0]);
+  if (picked.length === 2) return `${nameOf(picked[0])} · ${nameOf(picked[1])}`;
+  return `${picked.length} recortes`;
+}
+
+/** How many sub-UF narrowings are in play — the number the trail must account for.
+ *  Exported so a test can hold the label to it without re-deriving the rule. */
+export function subUfCount(summary) {
+  const s = summary || {};
+  return ['mesos', 'micros', 'inters', 'imediatas'].reduce(
+    (n, k) => n + (Array.isArray(s[k]) ? s[k].length : 0), 0,
+  );
+}
+
 /** The filter patch that ENTERS a level. Every step also clears the facets below it,
  *  so a narrowing left over from a previous session can never silently intersect with
  *  a click the researcher just made (the rule geoSelect.js established). */
@@ -151,5 +198,8 @@ export function stepOut(summary) {
 }
 
 if (typeof window !== 'undefined') {
-  Object.assign(window, { drillLevel, drillTrail, enterRegion, enterUf, enterCity, stepOut });
+  Object.assign(window, {
+    drillLevel, drillTrail, enterRegion, enterUf, enterCity, stepOut,
+    subUfLabel, subUfCount,
+  });
 }
