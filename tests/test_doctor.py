@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -529,6 +530,7 @@ def test_run_all_executes_every_probe(settings: Settings) -> None:
         "Catalog orphan lifecycle",
         "Catalog → Gold arrival",
         "Gold backup freshness",
+        "Source data freshness",
     ]
 
 
@@ -826,3 +828,80 @@ def test_check_catalog_resolver_parity_falls_back_to_env_when_the_catalog_is_emp
 
     assert r.ok is True
     assert "vazio→.env(" in r.detail
+
+
+# ── Source data freshness ────────────────────────────────────────────────────
+# The check answers "is the newest reference period as new as the cadence implies?", NOT
+# "did the scheduler run" — see the docstring. These pin the cadence-dependent floor,
+# because that is the whole content of the check.
+def _freshness_rows(*triples):
+    return [SimpleNamespace(source=s, cadence=c, year_end=y) for s, c, y in triples]
+
+
+def _patch_freshness(rows):
+    """Stand in for the one BigQuery read the check makes."""
+    client = MagicMock()
+    client.query.return_value.result.return_value = rows
+    return patch("embrapa_dashboard.doctor.bigquery.Client", return_value=client)
+
+
+def test_source_freshness_all_current(settings: Settings) -> None:
+    year = datetime.now(UTC).year
+    settings.source_freshness_annual_slack_years = 2
+    with _patch_freshness(
+        _freshness_rows(("ibge_pevs", "annual", year - 2), ("mdic_comex", "monthly", year))
+    ):
+        result = doctor._check_source_data_freshness(settings)
+    assert result.ok is True
+    assert "⚠" not in result.detail
+    assert "every source current" in result.detail
+
+
+def test_source_freshness_warns_when_annual_source_falls_behind(settings: Settings) -> None:
+    """One year past the slack window: the publication window came and went."""
+    year = datetime.now(UTC).year
+    settings.source_freshness_annual_slack_years = 2
+    with _patch_freshness(
+        _freshness_rows(("ibge_ppm", "annual", year - 3), ("ibge_pevs", "annual", year - 1))
+    ):
+        result = doctor._check_source_data_freshness(settings)
+    assert result.ok is True  # warn, never fail — a lagging source is a signal to look
+    assert "⚠" in result.detail
+    assert "ibge_ppm" in result.detail
+    assert "ibge_pevs" not in result.detail  # the healthy one is not named as overdue
+
+
+def test_source_freshness_holds_monthly_sources_to_a_tighter_floor(settings: Settings) -> None:
+    """A monthly source one whole year behind is late even where an annual one is fine."""
+    year = datetime.now(UTC).year
+    settings.source_freshness_annual_slack_years = 2
+    with _patch_freshness(
+        _freshness_rows(("mdic_comex", "monthly", year - 2), ("ibge_pam", "annual", year - 2))
+    ):
+        result = doctor._check_source_data_freshness(settings)
+    assert "⚠" in result.detail
+    assert "mdic_comex" in result.detail
+    assert "ibge_pam" not in result.detail
+
+
+def test_source_freshness_flags_a_missing_year_end(settings: Settings) -> None:
+    with _patch_freshness(_freshness_rows(("sefaz_nf", "monthly", None))):
+        result = doctor._check_source_data_freshness(settings)
+    assert "⚠" in result.detail
+    assert "no year_end" in result.detail
+
+
+def test_source_freshness_handles_an_empty_metadata_table(settings: Settings) -> None:
+    with _patch_freshness([]):
+        result = doctor._check_source_data_freshness(settings)
+    assert result.ok is True
+    assert "empty" in result.detail
+
+
+def test_source_freshness_reports_a_query_failure(settings: Settings) -> None:
+    client = MagicMock()
+    client.query.side_effect = RuntimeError("permission denied on gold_source_metadata")
+    with patch("embrapa_dashboard.doctor.bigquery.Client", return_value=client):
+        result = doctor._check_source_data_freshness(settings)
+    assert result.ok is False
+    assert "permission denied" in result.detail

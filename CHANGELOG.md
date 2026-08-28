@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.18] - 2026-08-28
+
+### Adicionado
+
+- **`embrapa doctor` passa a checar o frescor de cada fonte.** O alerta de ingestão dispara
+  em execução **falha**; uma rodada mensal que roda verde e não ingere nada é
+  indistinguível de "a fonte ainda não publicou" — e para as fontes anuais esse estado
+  quieto é normal ~11 meses por ano, então um travamento real podia ficar sem ser notado.
+
+  O check lê `gold_source_metadata` (uma consulta pequena, e estende sozinho quando uma
+  fonte é acrescentada lá) e compara `year_end` com o que a `cadence` daquela linha implica:
+  `annual` precisa de ≥ `ano_atual − SOURCE_FRESHNESS_ANNUAL_SLACK_YEARS` (padrão **2** — um
+  ano inteiro de folga além da defasagem de ~1 ano que essas fontes já têm, de modo a só
+  acusar depois que uma janela de publicação passou **sem** o ano novo chegar); `monthly`
+  precisa de ≥ `ano_atual − 1` (janeiro ainda carrega dezembro). **Avisa, nunca falha.**
+
+  **O que ele deliberadamente NÃO faz**, registrado no código e no runbook: distinguir fonte
+  quieta saudável de fonte travada **entre** janelas de publicação — o dado é idêntico nos
+  dois casos. Ele pega o travamento na janela, não antes. Para saber se o gatilho disparou,
+  o sinal é a execução do Job, não o BigQuery.
+
+  Contra prod hoje: `ibge_pam=2024 · ibge_pevs=2024 · ibge_ppm=2024 · mdic_comex=2026 ·
+  un_comtrade=2025`, todas correntes.
+
+### Testes
+
+- 6 casos cobrindo o piso dependente de cadência (uma anual atrasada acusa e a saudável ao
+  lado não é nomeada; uma mensal um ano atrás acusa onde a anual passa), `year_end` nulo,
+  tabela vazia e falha de consulta. Validados por injeção: remover a dependência de cadência
+  quebra 1 teste; suprimir o aviso quebra 2. `test_run_all_executes_every_probe` — que fixa
+  a lista ordenada de checks — foi atualizado em vez de afrouxado.
+
+---
+
 ## [1.33.17] - 2026-08-28
 
 ### Corrigido

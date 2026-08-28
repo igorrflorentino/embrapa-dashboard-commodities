@@ -219,6 +219,31 @@ Override columns: `maturity`, `maturity_note`, `maturity_date`, `cobertura_years
   itself**: it has no registry fallback, so an emptied row leaves the banco showing the
   neutral "…" loading tag forever. Clear the `cobertura_*` / note columns, keep the row.
 
+## Is a source still arriving? — `embrapa doctor` § Source data freshness
+
+The ingestion alert (`deploy/ingestion/alert_policy.json`) fires on a **failed** Cloud Run
+execution. A monthly trigger that runs green and ingests **nothing** looks exactly like
+"the source has not published yet" — and for the annual sources (IBGE PEVS/PAM/PPM,
+COMTRADE) that quiet state is normal ~11 months a year, so a real stall could sit unnoticed.
+
+`embrapa doctor`'s **Source data freshness** check closes the half of that gap which is
+knowable from the data: for every row of `gold_source_metadata` it compares `year_end`
+against what the row's own `cadence` implies —
+
+- `annual` → must be ≥ `current_year − SOURCE_FRESHNESS_ANNUAL_SLACK_YEARS` (default **2**:
+  one full year of slack beyond the ~1yr publication lag, so it trips only after a
+  publication window passed WITHOUT the new year arriving);
+- `monthly` → must be ≥ `current_year − 1` (January still carries December).
+
+It **warns**, never fails: a lagging source is a reason to look, not a broken environment.
+
+**What it cannot do**, deliberately: tell a healthy quiet source from a broken one BETWEEN
+publication windows — the data is identical in both cases. It catches the stall at the
+window. To know whether the trigger itself fired, look at the Job's executions
+(`gcloud run jobs executions list --job=embrapa-ingest-all`): the monthly runs appear as
+EXTRA executions next to the nightly one (e.g. 2026-08-02 07:06 and 2026-08-03 07:04 UTC
+for PAM and PPM, beside the daily 08:0x).
+
 ## IAP author verification — set `IAP_AUDIENCE` in prod
 
 Curation writes attribute every edit to a person (`edited_by`). That author can
