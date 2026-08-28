@@ -258,3 +258,37 @@ def test_get_credentials_uses_get_settings_when_none_passed() -> None:
 
     gs.assert_called_once()
     creds_cls.assert_called_once()
+
+
+def test_pam_abacaxi_is_configured_and_lands_in_mass():
+    """40092 (Abacaxi) must be in the PAM set, and the reason it needs no unit-family
+    seed entry is worth pinning: SIDRA labels it "Abacaxi*", and the asterisk reads like
+    a unit warning — PAM's classic unit for pineapple is *mil frutos*, which the seed
+    does NOT cover, so a reader could reasonably "fix" that by adding a contagem row.
+
+    Table 5457 delivers Toneladas (verified against the API in 2026-08, alongside the
+    equally-asterisked Coco-da-baía). A contagem override would silently divide the
+    series by a thousand-fruit factor that does not apply."""
+    from embrapa_dashboard.config import Settings
+
+    codes = Settings().pam_product_codes_list
+    assert "40092" in codes
+    # The asterisked pair travels together; if one is ever moved to a count family the
+    # other almost certainly must be too.
+    assert "40145" in codes
+
+
+def test_env_example_lists_the_same_pam_codes_as_the_default():
+    """.env.example drifted once already: it carried eight codes while the default
+    carried ten, so anyone bootstrapping from it silently ingested a smaller product
+    set than the deployed job."""
+    from pathlib import Path
+
+    from embrapa_dashboard.config import Settings
+
+    line = next(
+        ln for ln in Path(".env.example").read_text().splitlines()
+        if ln.startswith("PAM_PRODUCT_CODES=")
+    )
+    example = sorted(c.strip() for c in line.split("=", 1)[1].split(",") if c.strip())
+    assert example == sorted(Settings().pam_product_codes_list)
