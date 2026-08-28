@@ -298,3 +298,68 @@ describe('MunicipioChoropleth — tally invariants over mesh × data', () => {
     expect(container.textContent).not.toMatch(/sem produção|fora do recorte/);
   });
 });
+
+// ── Focusing one município hides the rest of the state ───────────────────────
+
+describe('MunicipioChoropleth — focusCity', () => {
+  it('filters both layers down to the focused município', async () => {
+    render(<MunicipioChoropleth uf="PA" data={DATA} valueKey="value" label="R$"
+                                focusCity="1500107" />);
+    await waitFor(() => expect(fakeMap.loadHandler).toBeTypeOf('function'));
+    await fakeMap.fireLoad();
+    await waitFor(() => expect(fakeMap.filters['mun-fill']).toBeTruthy());
+    for (const layer of ['mun-fill', 'mun-line']) {
+      expect(fakeMap.filters[layer]).toEqual(['==', ['get', 'codarea'], '1500107']);
+    }
+  });
+
+  it('brings the whole state back when the focus clears', async () => {
+    render(<MunicipioChoropleth uf="PA" data={DATA} valueKey="value" label="R$" />);
+    await waitFor(() => expect(fakeMap.loadHandler).toBeTypeOf('function'));
+    await fakeMap.fireLoad();
+    await waitFor(() => expect(fakeMap.paintProps['mun-fill.fill-color']).toBeTruthy());
+    expect(fakeMap.filters['mun-fill']).toBeNull();
+    expect(fakeMap.filters['mun-line']).toBeNull();
+  });
+
+  it('coerces a numeric code — the cube and the mesh disagree on type', async () => {
+    // cityCode arrives as a string from /geo-mesh but a caller may hold a number; a
+    // strict maplibre comparison against the wrong type silently matches nothing,
+    // which looks exactly like "this município has no polygon".
+    render(<MunicipioChoropleth uf="PA" data={DATA} valueKey="value" label="R$"
+                                focusCity={1500107} />);
+    await waitFor(() => expect(fakeMap.loadHandler).toBeTypeOf('function'));
+    await fakeMap.fireLoad();
+    await waitFor(() => expect(fakeMap.filters['mun-fill']).toBeTruthy());
+    expect(fakeMap.filters['mun-fill'][2]).toBe('1500107');
+  });
+});
+
+describe('MunicipioChoropleth — the tally goes quiet when one município is focused', () => {
+  it('does not claim greys that are no longer drawn', async () => {
+    // Focusing HIDES the others rather than greying them. "143 municípios fora do
+    // recorte — em cinza" would then describe a map that is not on screen — the tally
+    // is an accounting claim, and it has to be about what the researcher can see.
+    global.fetch = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(meshFC('1500107', '1500131', '1500206')) }));
+    const { container } = render(
+      <MunicipioChoropleth uf="PA" data={DATA} valueKey="value" label="R$" focusCity="1500107" />,
+    );
+    await waitFor(() => expect(fakeMap.loadHandler).toBeTypeOf('function'));
+    await fakeMap.fireLoad();
+    expect(container.textContent).not.toMatch(/em cinza/);
+  });
+
+  it('still reports them when the whole state is on screen', async () => {
+    // The guard must be the FOCUS, not a blanket silence: with the state drawn, the
+    // grey municípios are visible and the count is the honest thing to say.
+    global.fetch = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(meshFC('1500107', '1500131', '1500206')) }));
+    const { container } = render(
+      <MunicipioChoropleth uf="PA" data={DATA} valueKey="value" label="R$" />,
+    );
+    await waitFor(() => expect(fakeMap.loadHandler).toBeTypeOf('function'));
+    await fakeMap.fireLoad();
+    expect(container.textContent).toMatch(/em cinza/);
+  });
+});
