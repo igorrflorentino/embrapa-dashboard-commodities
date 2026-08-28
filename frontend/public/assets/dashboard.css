@@ -2643,31 +2643,43 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
 /* ====================================================================
    Metric conventions strip (below filter trigger bar)
    ==================================================================== */
+/* Deliberately the SAME shell as .fm-trigger-bar (filter-menu.css): the two strips sit
+   one above the other and carry equal standing — one says which rows are in play, the
+   other how their numbers are rendered. Differing padding, gap and label colour read as
+   a hierarchy that is not there. The blue left accent went with it: in this codebase a
+   3px left border ENCODES a category (maturity tiers, live/soon, read-vs-write panels),
+   and a single fixed colour on the only bar of its kind encoded nothing.
+   Keep the two rules in step — if .fm-trigger-bar's padding or gap moves, move these. */
 .mc-bar {
   display: flex;
+  /* Column because the expanded state stacks the head above the option groups; the
+     compact head below is the row that has to line up with the filter strip. */
   flex-direction: column;
   gap: 10px;
-  padding: 14px 18px 16px;
+  padding: 12px 16px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-1);
-  border-left: 3px solid var(--embrapa-blue);
 }
 .mc-head {
   display: flex;
   align-items: baseline;
-  gap: 14px;
+  gap: 12px;   /* same chip rhythm as .fm-trigger-bar */
   flex-wrap: wrap;
 }
 /* Collapsed-by-default summary row (chips + "Editar métricas") — center-aligned like
    .fm-trigger-bar's chip row, not baseline like the expanded caption/checkbox row above. */
 .mc-head.mc-head-compact { align-items: center; }
+/* Mirrors .fm-trigger-bar .fm-tb-label exactly — same longhand, so neither picks up a
+   different line-height from a `font:` shorthand reset. */
 .mc-overline {
-  font: 600 10.5px var(--font-body);
+  font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--embrapa-blue);
+  color: var(--fg-3);
+  font-weight: 500;
+  margin-right: 4px;
 }
 .mc-caption {
   color: var(--fg-3);
