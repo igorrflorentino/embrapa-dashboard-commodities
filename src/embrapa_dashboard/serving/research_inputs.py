@@ -167,6 +167,13 @@ def ensure_banco_metadata_table(
         WHEN MATCHED THEN UPDATE SET maturity = s.maturity, updated_at = CURRENT_TIMESTAMP()
         WHEN NOT MATCHED THEN INSERT (banco_id, maturity, updated_at)
             VALUES (s.banco_id, s.maturity, CURRENT_TIMESTAMP());
+
+    ``maturity_note`` REPLACES the stage's standard caveat text for that banco (it is
+    not appended to it), so it must carry a caveat true of THAT banco — never a
+    description of what the banco covers, which belongs in the SPA registry. Pasted
+    here, such a description silently displaces "Disponível para testes e validações,
+    resultados podem mudar." for every reader. See docs/operations_runbook.md
+    § "Changing a banco's maturity / note / coverage".
     """
     cfg = settings or get_settings()
     bq = client or _bq_client(cfg)

@@ -190,6 +190,15 @@ DELETE FROM `<project>.research_inputs.banco_metadata` WHERE banco_id = 'un_comt
 
 Override columns: `maturity`, `maturity_note`, `maturity_date`, `cobertura_years`,
 `cobertura_atualizacao`, `cobertura_granularidade`. Notes:
+- `maturity_note` **REPLACES** the stage's standard caveat text for that banco — it is
+  not appended to it. So a banco with a note stops showing "Disponível para testes e
+  validações, resultados podem mudar." and shows the note instead, for every reader.
+  Use it ONLY for a caveat that is true of THAT banco and not of its stage — the way
+  `sefaz_nf` does ("Contrato provisório — sem fonte confirmada neste projeto."). A
+  description of what the banco **covers** is not a caveat and belongs in `bancos.js`
+  (`sub` / `about` / `domain`); pasted into this column it silently displaces the
+  standard message. That is what happened to `ibge_ppm` between 2026-06-20 and
+  2026-08-28 (v1.33.6). To clear one: `UPDATE … SET maturity_note = NULL WHERE banco_id = '…'`.
 - Changes take effect within the classification cache TTL
   (`CACHE_CLASSIFICATION_TIMEOUT`, ~30s) — no redeploy, no invalidation needed.
 - The table auto-creates on the **first `/api/source-meta` read**
