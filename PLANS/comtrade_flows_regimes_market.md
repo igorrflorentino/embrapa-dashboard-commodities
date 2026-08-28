@@ -1,10 +1,12 @@
 # COMTRADE — todos os fluxos, regime aduaneiro e tipo de mercado
 
-> ⚠️ **Status: CONGELADO — não implementar a partir deste plano.** A Engenharia de
-> Atributos (de onde vem o eixo *tipo de mercado*) está **construída porém congelada**,
-> adiada para *Versão Futura* e escondida da UI (PRs #168/#169); o `CLAUDE.md` é explícito:
-> "do NOT treat it as activatable". Além do congelamento de produto, dois dos três
-> objetivos abaixo estão **bloqueados por dado**:
+> ⚠️ **Status: CONGELADO — não implementar a partir deste plano.** O que está congelado é o
+> eixo **tipo de mercado** (natureza de mercado por regime × fluxo), não a Engenharia de
+> Atributos inteira: o outro eixo dela, **nível de industrialização, está no ar e
+> funcionando** (editor na barra lateral, view *Valor agregado* live, 303 classificações em
+> 5 níveis em prod). A entrada de UI deste eixo é que está comentada, e
+> `serving_comtrade_annual.market_nature` tem 0 valores distintos (PRs #168/#169).
+> Dois dos três objetivos abaixo estão **bloqueados por dado**:
 >
 > - **Regime aduaneiro** e **tipo de mercado** dependem da dimensão de procedimento
 >   aduaneiro, que a base **não tem**: desde o redesenho *totals-only* da v1.13.0 a

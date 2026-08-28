@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.15] - 2026-08-28
+
+### Corrigido
+
+- **`CLAUDE.md` e `ARCHITECTURE.md` diziam que a Engenharia de Atributos inteira está
+  congelada e escondida da UI. Só um dos seus dois eixos está.** Correção apontada pelo
+  usuário e confirmada no código e em prod:
+
+  | eixo | estado real |
+  |---|---|
+  | **Nível de industrialização** (por código) | **NO AR** — editor na barra lateral, view *Valor agregado* `status: 'live'`, `serving.dim_code_industrialization_scd2` com **303 classificações em 5 níveis** em prod |
+  | **Tipo de mercado** (regime × fluxo) | **CONGELADO** — entrada de UI comentada, `curated_market_nature` deliberadamente não mapeada, `serving_comtrade_annual.market_nature` com **0 valores distintos** |
+
+  Três afirmações erradas na mesma frase: o escopo ("hidden from the UI" — o editor de
+  industrialização está visível), o gate (`enable_curation` "default false" — é **`true`**
+  em `dbt_project.yml:122`) e a receita de revival (`--vars 'enable_curation: true'` — já
+  ligado; o que falta para o tipo de mercado é **dado**, não configuração: a base
+  totals-only `customsCode=C00` não traz o detalhe de procedimento aduaneiro).
+
+  O comentário do `AppShell.jsx` sempre escopou certo ("the **'Tipo de Mercado'** matrix is
+  hidden"), e a memória do projeto também. Quem generalizava era a documentação de topo —
+  e na v1.33.13 **eu propaguei essa generalização** para o banner que acrescentei em
+  `PLANS/comtrade_flows_regimes_market.md`, citando o `CLAUDE.md` como autoridade. Banner
+  reescrito junto.
+
+---
+
 ## [1.33.14] - 2026-08-28
 
 ### Corrigido

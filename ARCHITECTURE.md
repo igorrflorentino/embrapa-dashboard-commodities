@@ -486,14 +486,26 @@ uv run python scripts/setup_dev_env.py      # generate .env + ~/.dbt/profiles.ym
 
 ---
 
-## Engenharia de Atributos (FROZEN) — append-only log + SCD Type 2
+## Engenharia de Atributos — append-only log + SCD Type 2 (one axis LIVE, one FROZEN)
 
-> **FROZEN / Versão Futura.** This per-code feature (historically called "Curadoria") was renamed
-> **Engenharia de Atributos**, deferred, and HIDDEN from the UI; it is gated by
-> `--vars 'enable_curation: true'` (default false) and is NOT activatable today. The name *Curadoria*
-> now means the LIVE editable catálogo de produtos — see [`PLANS/curadoria_catalogo.md`](PLANS/curadoria_catalogo.md)
-> and the F7 visibility gate + Q1 quality flags in [`PLANS/quality_outliers_and_visibility_gate.md`](PLANS/quality_outliers_and_visibility_gate.md).
-> Kept here as the design-of-record for the future implementation.
+> **Only the market-nature axis is frozen.** This feature (historically called "Curadoria") was
+> renamed **Engenharia de Atributos** and has two axes:
+>
+> - **Nível de industrialização (per-code) — LIVE.** Editor in the sidebar, the *Valor agregado*
+>   view is `status: 'live'`, `enable_curation` is **`true`** in `dbt/dbt_project.yml`, and
+>   `serving.dim_code_industrialization_scd2` holds 303 classifications across 5 levels in prod
+>   (measured 2026-08-28).
+> - **Tipo de mercado (customs × flow market-nature) — FROZEN.** Sidebar entry commented out,
+>   `curated_market_nature` deliberately unmapped so a stale deep link degrades to a neutral
+>   notice, and `serving_comtrade_annual.market_nature` has 0 distinct values. **Data-blocked,
+>   not merely deferred**: the totals-only COMTRADE base (`customsCode=C00`, v1.13.0) carries no
+>   customs-procedure detail to classify.
+>
+> This section said the WHOLE feature was frozen, hidden from the UI, gated behind a var
+> "default false" and "NOT activatable today" — three claims the code and prod contradict.
+> The name *Curadoria* now means the LIVE editable catálogo de produtos — see
+> [`PLANS/curadoria_catalogo.md`](PLANS/curadoria_catalogo.md) and the F7 visibility gate + Q1
+> quality flags in [`PLANS/quality_outliers_and_visibility_gate.md`](PLANS/quality_outliers_and_visibility_gate.md).
 
 Engenharia de Atributos curates at **two grains**, each backed by its own append-only
 log in `research_inputs` (written by `serving.attribute_engineering`, never by dbt). The flow
