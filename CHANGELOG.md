@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.16] - 2026-08-28
+
+Auditoria do `CLAUDE.md` — a doc carregada em toda sessão, e a que acabou de se provar
+errada em três pontos numa frase (v1.33.15). Um achado novo.
+
+### Corrigido
+
+- **`make ingest-all` não atualiza PAM nem PPM, e o `CLAUDE.md` nomeava só o COMTRADE como
+  exclusão.** O lote roda **quatro** fontes (IBGE PEVS + BCB inflação + BCB câmbio + COMEX)
+  e exclui **três**: `cli.INGESTS` marca `in_all=False` para `ibge-pam` e `ibge-ppm`
+  (anuais, ~1 ano de defasagem de publicação, cadência mensal própria) além do `comtrade`
+  (key-gated + quota-gated). Quem rodasse o alvo para "atualizar tudo" deixaria **dois dos
+  seis bancos** parados sem perceber. A enumeração `ingest {ibge|bcb-*|all}` também
+  omitia metade dos comandos; agora lista todos.
+
+### Testes
+
+- **`tests/test_claude_md_ingest_batch.py`**: toda fonte com `in_all=False` em
+  `cli.INGESTS` tem de estar nomeada na nota de exclusão do `CLAUDE.md`.
+
+  A primeira versão do teste **passou com o defeito reintroduzido** — o regex pegava um
+  bloco largo, e a linha logo abaixo enumera todos os nomes de ingest, satisfazendo a
+  checagem mesmo sem a nota. Estreitado para ler apenas as linhas de comentário que seguem
+  `make ingest-all`, e revalidado: agora acusa `['comtrade', 'ibge-pam', 'ibge-ppm']`.
+
+### Verificado, sem achados
+
+Tudo o mais do `CLAUDE.md` que é checável confere: os 4 vars de qualidade
+(`quality_price_k`=100, `quality_outlier_k`=4.0, `quality_min_obs`=100,
+`quality_value_floor`=100000) e `enable_quality_outliers: true`; a taxonomia de flags (os
+2 níveis reservados `INFERRED_*` de fato com zero linhas em prod); `silver_ibge_pevs`
+incremental `insert_overwrite` por `reference_year` e `silver_bcb_*` como `table`; os três
+registries (`cli.INGESTS`, `doctor.SOURCE_CHECKS`, `doctor.BRONZE_TARGETS`); o entrypoint
+gunicorn e o extra `webapi` sem dash/plotly; e todos os caminhos citados.
+
+---
+
 ## [1.33.15] - 2026-08-28
 
 ### Corrigido

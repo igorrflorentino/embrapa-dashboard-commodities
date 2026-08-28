@@ -61,9 +61,12 @@ make precommit-install                        # optional: ruff + file-hygiene on
 
 Ingestion (Python → GCS Parquet → BigQuery Bronze):
 ```bash
-make ingest-all                               # IBGE + both BCB series + COMEX (IBGE + BCB = delta; COMTRADE is key-gated, excluded)
+make ingest-all                               # IBGE PEVS + both BCB series + COMEX — FOUR sources (IBGE + BCB = delta)
+# `all` deliberately EXCLUDES three (in_all=False in cli.INGESTS): ibge-pam and ibge-ppm
+# (annual, slow-changing, ~1yr publication lag — own monthly cadence) and comtrade
+# (key-gated + quota-gated). Refreshing PAM/PPM needs `embrapa ingest ibge-pam|ibge-ppm`.
 make ingest-ibge-historical                   # auto-chunked for large year windows
-uv run embrapa ingest {ibge|bcb-inflation|bcb-currency|all}
+uv run embrapa ingest {ibge|ibge-pam|ibge-ppm|bcb-inflation|bcb-currency|comex|comtrade|all}
 uv run embrapa ingest bcb-inflation --full    # force refetch from BCB_START_YEAR
 uv run embrapa ingest ibge-batch --chunk-years 5
 ```
