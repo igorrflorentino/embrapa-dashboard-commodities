@@ -1,6 +1,6 @@
 [project]
 name = "embrapa-dashboard"
-version = "1.33.8"
+version = "1.33.9"
 description = "Medallion pipeline (IBGE PEVS + PAM + PPM + BCB + COMEX + UN Comtrade) → BigQuery → Looker Studio + React/Flask dashboard"
 readme = "README.md"
 requires-python = "==3.12.*"
@@ -68,6 +68,11 @@ dev = [
     "radon>=6",
     "sqlfluff>=3.1",
     "sqlfluff-templater-dbt>=3.1",
+    # Read dbt's schema YAML from tests (tests/test_glossary_schema_claims.py holds the
+    # glossary's Gold-name claims to dbt/models/gold/_gold.yml). PyYAML already arrives
+    # transitively via dbt-core; declared here so the test does not depend on a THIRD
+    # party's dependency graph staying the way it happens to be today.
+    "pyyaml>=6",
     "pre-commit>=3.7",
     # Serving-layer deps in dev too, so tests/test_serving.py runs in CI.
     "flask>=3.0",

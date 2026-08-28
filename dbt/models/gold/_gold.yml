@@ -79,6 +79,32 @@ models:
           - accepted_values:
               arguments:
                 values: ["OK", "MISSING_VALUE", "MISSING_QUANTITY", "INCOMPLETE", "OUTLIER_QUANTITY", "PROBLEMATIC_QUANTITY", "OUTLIER_VALUE", "PROBLEMATIC_VALUE", "INFERRED_QUANTITY", "INFERRED_VALUE"]
+      - name: product_description
+        description: "Product label as published by the source. Display only — join on product_code."
+      - name: val_yearfx_brl
+        description: "Row value in BRL, nominal at the year of record. For auditing a single year — never compare across years (use val_real_*)."
+      - name: val_yearfx_usd
+        description: "val_yearfx_brl converted at that year's average PTAX. Nominal — same cross-year caveat."
+      - name: val_yearfx_eur
+        description: "val_yearfx_brl converted at that year's average PTAX. Nominal — same cross-year caveat."
+      - name: val_real_ipca_brl
+        description: "Value deflated to today's prices via the IPCA chain index — the dashboard default for cross-year comparison."
+      - name: val_real_ipca_usd
+        description: "val_real_ipca_brl converted at today's FX."
+      - name: val_real_ipca_eur
+        description: "val_real_ipca_brl converted at today's FX."
+      - name: val_real_igpm_brl
+        description: "As val_real_ipca_brl but via the IGP-M (FGV) chain. NULL for reference years before 1989 — the series starts there; not a pipeline defect."
+      - name: val_real_igpm_usd
+        description: "val_real_igpm_brl converted at today's FX. NULL before 1989 (see val_real_igpm_brl)."
+      - name: val_real_igpm_eur
+        description: "val_real_igpm_brl converted at today's FX. NULL before 1989 (see val_real_igpm_brl)."
+      - name: val_real_igpdi_brl
+        description: "As val_real_ipca_brl but via the IGP-DI (FGV) chain, published since 1980 — the only deflator here that covers reference years before 1989."
+      - name: val_real_igpdi_usd
+        description: "val_real_igpdi_brl converted at today's FX."
+      - name: val_real_igpdi_eur
+        description: "val_real_igpdi_brl converted at today's FX."
 
   - name: gold_pam_production
     description: |
@@ -161,6 +187,42 @@ models:
           - accepted_values:
               arguments:
                 values: ["OK", "MISSING_VALUE", "MISSING_QUANTITY", "INCOMPLETE", "OUTLIER_QUANTITY", "PROBLEMATIC_QUANTITY", "OUTLIER_VALUE", "PROBLEMATIC_VALUE", "INFERRED_QUANTITY", "INFERRED_VALUE", "AREA_INCONSISTENT"]
+      - name: city_name
+        description: "Municipality display label, lifted via any_value. Join on city_code, which is the natural key."
+      - name: product_description
+        description: "Product label as published by the source. Display only — join on product_code."
+      - name: unit_native
+        description: "Unit the source publishes the quantity in (e.g. 't', 'mil litros')."
+      - name: qty_native
+        description: "Quantity in unit_native — the source's own number, unconverted."
+      - name: qty_base
+        description: "qty_native converted to this row's family base unit (base_unit). NEVER sum across families."
+      - name: base_unit
+        description: "Base unit that qty_base is expressed in for this row's family (e.g. kg for massa)."
+      - name: val_yearfx_brl
+        description: "Row value in BRL, nominal at the year of record. For auditing a single year — never compare across years (use val_real_*)."
+      - name: val_yearfx_usd
+        description: "val_yearfx_brl converted at that year's average PTAX. Nominal — same cross-year caveat."
+      - name: val_yearfx_eur
+        description: "val_yearfx_brl converted at that year's average PTAX. Nominal — same cross-year caveat."
+      - name: val_real_ipca_brl
+        description: "Value deflated to today's prices via the IPCA chain index — the dashboard default for cross-year comparison."
+      - name: val_real_ipca_usd
+        description: "val_real_ipca_brl converted at today's FX."
+      - name: val_real_ipca_eur
+        description: "val_real_ipca_brl converted at today's FX."
+      - name: val_real_igpm_brl
+        description: "As val_real_ipca_brl but via the IGP-M (FGV) chain. NULL for reference years before 1989 — the series starts there; not a pipeline defect."
+      - name: val_real_igpm_usd
+        description: "val_real_igpm_brl converted at today's FX. NULL before 1989 (see val_real_igpm_brl)."
+      - name: val_real_igpm_eur
+        description: "val_real_igpm_brl converted at today's FX. NULL before 1989 (see val_real_igpm_brl)."
+      - name: val_real_igpdi_brl
+        description: "As val_real_ipca_brl but via the IGP-DI (FGV) chain, published since 1980 — the only deflator here that covers reference years before 1989."
+      - name: val_real_igpdi_usd
+        description: "val_real_igpdi_brl converted at today's FX."
+      - name: val_real_igpdi_eur
+        description: "val_real_igpdi_brl converted at today's FX."
 
   - name: gold_ppm_production
     description: |
@@ -229,6 +291,42 @@ models:
           - accepted_values:
               arguments:
                 values: ["OK", "MISSING_VALUE", "MISSING_QUANTITY", "INCOMPLETE", "OUTLIER_QUANTITY", "PROBLEMATIC_QUANTITY", "OUTLIER_VALUE", "PROBLEMATIC_VALUE", "INFERRED_QUANTITY", "INFERRED_VALUE"]
+      - name: city_name
+        description: "Municipality display label, lifted via any_value. Join on city_code, which is the natural key."
+      - name: product_description
+        description: "Product label as published by the source. Display only — join on product_code."
+      - name: unit_native
+        description: "Unit the source publishes the quantity in (e.g. 't', 'mil litros')."
+      - name: qty_native
+        description: "Quantity in unit_native — the source's own number, unconverted."
+      - name: qty_base
+        description: "qty_native converted to this row's family base unit (base_unit). NEVER sum across families."
+      - name: base_unit
+        description: "Base unit that qty_base is expressed in for this row's family (e.g. kg for massa)."
+      - name: val_yearfx_brl
+        description: "Row value in BRL, nominal at the year of record. For auditing a single year — never compare across years (use val_real_*)."
+      - name: val_yearfx_usd
+        description: "val_yearfx_brl converted at that year's average PTAX. Nominal — same cross-year caveat."
+      - name: val_yearfx_eur
+        description: "val_yearfx_brl converted at that year's average PTAX. Nominal — same cross-year caveat."
+      - name: val_real_ipca_brl
+        description: "Value deflated to today's prices via the IPCA chain index — the dashboard default for cross-year comparison."
+      - name: val_real_ipca_usd
+        description: "val_real_ipca_brl converted at today's FX."
+      - name: val_real_ipca_eur
+        description: "val_real_ipca_brl converted at today's FX."
+      - name: val_real_igpm_brl
+        description: "As val_real_ipca_brl but via the IGP-M (FGV) chain. NULL for reference years before 1989 — the series starts there; not a pipeline defect."
+      - name: val_real_igpm_usd
+        description: "val_real_igpm_brl converted at today's FX. NULL before 1989 (see val_real_igpm_brl)."
+      - name: val_real_igpm_eur
+        description: "val_real_igpm_brl converted at today's FX. NULL before 1989 (see val_real_igpm_brl)."
+      - name: val_real_igpdi_brl
+        description: "As val_real_ipca_brl but via the IGP-DI (FGV) chain, published since 1980 — the only deflator here that covers reference years before 1989."
+      - name: val_real_igpdi_usd
+        description: "val_real_igpdi_brl converted at today's FX."
+      - name: val_real_igpdi_eur
+        description: "val_real_igpdi_brl converted at today's FX."
 
   - name: gold_comex_flows
     description: |
@@ -333,6 +431,42 @@ models:
       - name: last_refresh
         description: "Max ingestion_timestamp across the source rows aggregated into this record."
         tests: [not_null]
+      - name: state_name
+        description: "Full state name derived from state_acronym (the UF of the product, SG_UF_NCM)."
+      - name: stat_unit_code
+        description: "Statistical-unit code of the DOMINANT unit in the collapsed group — the one carrying the largest qty_native."
+      - name: net_weight_kg
+        description: "Sum of the source's net weight (kg) over the rows collapsed into this one."
+      - name: val_yearfx_usd
+        description: "The source's own value in USD — nominal, no conversion applied. The trade base is USD, so this is the raw figure the source published."
+      - name: val_yearfx_brl
+        description: "val_yearfx_usd converted at that year's average PTAX. Nominal — never compare across years (use val_real_*)."
+      - name: val_yearfx_eur
+        description: "val_yearfx_usd converted at that year's average PTAX. Nominal — same cross-year caveat."
+      - name: val_real_ipca_brl
+        description: "Value deflated to today's prices via the IPCA chain index — the dashboard default for cross-year comparison."
+      - name: val_real_ipca_usd
+        description: "val_real_ipca_brl converted at today's FX."
+      - name: val_real_ipca_eur
+        description: "val_real_ipca_brl converted at today's FX."
+      - name: val_real_igpm_brl
+        description: "As val_real_ipca_brl but via the IGP-M (FGV) chain. NULL for reference years before 1989 — the series starts there; not a pipeline defect."
+      - name: val_real_igpm_usd
+        description: "val_real_igpm_brl converted at today's FX. NULL before 1989 (see val_real_igpm_brl)."
+      - name: val_real_igpm_eur
+        description: "val_real_igpm_brl converted at today's FX. NULL before 1989 (see val_real_igpm_brl)."
+      - name: val_real_igpdi_brl
+        description: "As val_real_ipca_brl but via the IGP-DI (FGV) chain, published since 1980 — the only deflator here that covers reference years before 1989."
+      - name: val_real_igpdi_usd
+        description: "val_real_igpdi_brl converted at today's FX."
+      - name: val_real_igpdi_eur
+        description: "val_real_igpdi_brl converted at today's FX."
+      - name: val_freight_usd
+        description: "Freight component in USD, as published by the source."
+      - name: val_insurance_usd
+        description: "Insurance component in USD, as published by the source."
+      - name: source_rows
+        description: "How many source rows were collapsed into this Gold row (count(*) of the group)."
 
   - name: gold_comtrade_flows
     description: |
@@ -433,6 +567,46 @@ models:
       - name: last_refresh
         description: "Max ingestion_timestamp across the source rows aggregated into this record."
         tests: [not_null]
+      - name: qty_unit_code
+        description: "Quantity-unit code of the DOMINANT unit in the collapsed group — the one carrying the largest qty_native."
+      - name: unit_native
+        description: "Unit the source publishes the quantity in (e.g. 't', 'mil litros')."
+      - name: unit_native_symbol
+        description: "Display symbol for unit_native (e.g. 'kg', 'm³')."
+      - name: base_unit
+        description: "Base unit that qty_base is expressed in for this row's family (e.g. kg for massa)."
+      - name: gross_weight_kg
+        description: "Sum of the source's gross weight (kg) over the rows collapsed into this one."
+      - name: val_yearfx_usd
+        description: "The source's own value in USD — nominal, no conversion applied. The trade base is USD, so this is the raw figure the source published."
+      - name: val_yearfx_brl
+        description: "val_yearfx_usd converted at that year's average PTAX. Nominal — never compare across years (use val_real_*)."
+      - name: val_yearfx_eur
+        description: "val_yearfx_usd converted at that year's average PTAX. Nominal — same cross-year caveat."
+      - name: val_real_ipca_brl
+        description: "Value deflated to today's prices via the IPCA chain index — the dashboard default for cross-year comparison."
+      - name: val_real_ipca_usd
+        description: "val_real_ipca_brl converted at today's FX."
+      - name: val_real_ipca_eur
+        description: "val_real_ipca_brl converted at today's FX."
+      - name: val_real_igpm_brl
+        description: "As val_real_ipca_brl but via the IGP-M (FGV) chain. NULL for reference years before 1989 — the series starts there; not a pipeline defect."
+      - name: val_real_igpm_usd
+        description: "val_real_igpm_brl converted at today's FX. NULL before 1989 (see val_real_igpm_brl)."
+      - name: val_real_igpm_eur
+        description: "val_real_igpm_brl converted at today's FX. NULL before 1989 (see val_real_igpm_brl)."
+      - name: val_real_igpdi_brl
+        description: "As val_real_ipca_brl but via the IGP-DI (FGV) chain, published since 1980 — the only deflator here that covers reference years before 1989."
+      - name: val_real_igpdi_usd
+        description: "val_real_igpdi_brl converted at today's FX."
+      - name: val_real_igpdi_eur
+        description: "val_real_igpdi_brl converted at today's FX."
+      - name: val_cif_usd
+        description: "CIF value in USD, as published by the source (cif_value_usd)."
+      - name: val_fob_usd
+        description: "FOB value in USD, as published by the source (fob_value_usd)."
+      - name: source_rows
+        description: "How many source rows were collapsed into this Gold row (count(*) of the group)."
 
   - name: gold_produto_agrupamento
     description: |

@@ -116,7 +116,7 @@ const GLOSSARY = {
       { term: 'UF origem · destino', cat: 'Coluna', short: 'Localização do remetente e do destinatário da NFe. Permite reconstruir fluxos inter-estaduais.' },
       { term: 'Município', cat: 'Coluna', short: 'IBGE 7 dígitos. Identifica origem e destino com granularidade fina.' },
       { term: 'Agregação privada', cat: 'Método', short: 'Linhas que representariam fluxos com menos de N=5 estabelecimentos são agregadas ou suprimidas para preservar sigilo fiscal.' },
-      { term: 'gold_nfe_flows', cat: 'Tabela', tag: 'Base final', short: 'Tabela final planejada. Cada linha será uma combinação de ano-mês, par UF/município, CFOP e NCM.' },
+      { term: 'gold_nfe_flows', cat: 'Tabela', tag: 'Planejada', short: 'Tabela final planejada. Cada linha será uma combinação de ano-mês, par UF/município, CFOP e NCM.' },
     ],
   },
 

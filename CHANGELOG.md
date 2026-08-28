@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.9] - 2026-08-28
+
+A recomendação da v1.33.8: completar a documentação de colunas do Gold, que além de valer
+por si destrava a classe de guarda que faltava — "todo nome afirmado na UI existe no schema".
+
+### Documentação
+
+- **`dbt/models/gold/_gold.yml` passa a documentar TODAS as colunas do Gold.** Eram 87 sem
+  descrição em 5 modelos (a família `val_yearfx_*`/`val_real_*` inteira, mais unidades,
+  pesos e colunas específicas de comércio). Agora os 7 modelos batem exatamente com o
+  schema real: **181 colunas**, nenhuma faltando, nenhuma documentada-porém-inexistente,
+  nenhuma duplicada.
+
+  Duas semânticas que só existiam no SQL e agora estão escritas onde se procura por elas:
+  `qty_native`/`qty_base` em COMEX e COMTRADE somam **apenas** as linhas da unidade
+  dominante do grupo (somar unidades mistas juntaria números incomparáveis), e
+  `source_rows` conta quantas linhas da fonte foram colapsadas em cada linha do Gold.
+
+### Corrigido
+
+- **O glossário marcava `gold_nfe_flows` com o mesmo tag "Base final" das cinco tabelas
+  que existem.** O texto dizia "planejada … será", mas o tag é o chip que se lê num
+  relance, e ele afirmava uma tabela que o SEFAZ NFe ainda não tem. Passa a "Planejada".
+
+### Testes
+
+- **`tests/test_glossary_schema_claims.py`**: todo termo do glossário com `tag: 'gold'`
+  tem de resolver numa coluna do Gold (exata ou família com `*`); toda tabela com
+  `tag: 'Base final'` tem de existir; toda tabela "Planejada" **não** pode já existir; e
+  nenhuma coluna pode aparecer duas vezes no YAML. Validado por injeção nos três casos.
+
+  O teste NÃO adivinha o que é identificador físico pelo formato da string — foi
+  justamente esse palpite que quase me fez "corrigir" `valor_producao`, que é vocabulário
+  da fonte, como `ncm` e `codigo_pevs` em outros bancos. O `tag` da própria entrada é o
+  sinal explícito.
+
+- `pyyaml` passa a ser dependência declarada do grupo `dev`. Já chegava transitivamente
+  pelo dbt-core; declarada para o teste não depender do grafo de dependências de terceiro.
+
+---
+
 ## [1.33.8] - 2026-08-28
 
 ### Alterado
