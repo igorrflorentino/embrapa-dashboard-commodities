@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.32.2] - 2026-08-27
+
+Dois defeitos do drill-down da v1.32.0, ambos reportados por uso.
+
+### Fixed
+- **A migalha da região não levava a lugar nenhum.** De `Brasil › Norte › Pará`, clicar
+  em "Norte" não mudava nada.
+
+  `ufsOfRegion` resolvia a composição da região contra as UFs **já filtradas**. Dentro
+  do Pará, o Norte "continha" exatamente um estado, então reentrar na região aplicava
+  `states: ['PA']` — que continua sendo nível de município. A trilha não se movia e o
+  clique lia como morto. A composição passa a vir do **universo** de UFs
+  (`ufDataFull`), não da seleção corrente: agora volta com as sete.
+
+- **Clicar num município carregava em silêncio.** O aviso "Carregando…" era guardado por
+  `wantMuniFallback`, que exige `!subUfActive` — e clicar num município **ativa** a
+  faceta sub-UF. Ou seja, o aviso existia para todos os caminhos menos o que o
+  drill-down tornou mais comum.
+
+  Passa a cobrir os dois caminhos municipais (o fallback local da view e o cubo
+  compartilhado do `dataFilters`), e a **nomear o lugar certo**: o município quando há
+  um, senão a UF — anunciar o estado enquanto o pesquisador acabou de clicar numa
+  cidade reportaria a espera errada.
+
+### Verificação
+No navegador: de `Brasil › Norte › Pará`, a migalha "Norte" volta para `Brasil › Norte`
+com `st=AC,AM,AP,PA,RO,RR,TO` (a região inteira); e clicar num município exibe
+"Carregando municípios de Acará…" enquanto o histórico chega.
+
+---
+
 ## [1.32.1] - 2026-08-27
 
 ### Changed

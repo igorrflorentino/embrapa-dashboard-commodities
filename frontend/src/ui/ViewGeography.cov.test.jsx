@@ -615,3 +615,81 @@ describe('ViewGeography — the região map', () => {
     expect(arg.munis).toBeNull();
   });
 });
+
+// ── The trail's crumbs have to actually go somewhere ─────────────────────────
+
+describe('ViewGeography — navigating back up the trail', () => {
+  afterEach(() => { delete window.patchFilter; });
+
+  const deep = { regions: ['N'], states: ['PA'] };
+  const universe = [
+    { uf: 'PA', region: 'N', value: 75, q_mass: 30, q_vol: 8, q_count: 12, real: true },
+    { uf: 'AM', region: 'N', value: 20, q_mass: 8, q_vol: 2, q_count: 3, real: true },
+    { uf: 'SP', region: 'SE', value: 25, q_mass: 10, q_vol: 4, q_count: 6, real: true },
+  ];
+
+  it('the região crumb re-enters the region with ALL its UFs, not just the selected one', () => {
+    // ufsOfRegion used to read the CURRENT (already-narrowed) UF rows, so from inside
+    // Brasil › Norte › Pará the Norte "contained" exactly one state. Re-entering with
+    // states:['PA'] is still município level: the trail did not move and the click read
+    // as dead. The region's membership must come from the UF universe.
+    const patch = vi.fn();
+    stubGlobals(fullFixture({
+      ufData: [{ uf: 'PA', region: 'N', value: 75, q_mass: 30, q_vol: 8, q_count: 12, real: true }],
+      ufDataFull: universe,
+    }));
+    window.patchFilter = patch;
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={deep} database="ibge_pevs" conventions={{ autoScale: true }} />,
+    );
+    const norte = [...container.querySelectorAll('.geo-crumb')].find((b) => b.textContent === 'Norte');
+    expect(norte).toBeTruthy();
+    fireEvent.click(norte);
+    const arg = patch.mock.calls.at(-1)[0];
+    expect(arg.regions).toEqual(['N']);
+    expect(arg.states.sort()).toEqual(['AM', 'PA']);   // the whole region, not the survivor
+    expect(arg.munis).toBeNull();
+  });
+
+  it('the Brasil crumb clears every geography facet', () => {
+    const patch = vi.fn();
+    stubGlobals(fullFixture({ ufDataFull: universe }));
+    window.patchFilter = patch;
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={deep} database="ibge_pevs" conventions={{ autoScale: true }} />,
+    );
+    fireEvent.click([...container.querySelectorAll('.geo-crumb')].find((b) => b.textContent === 'Brasil'));
+    const arg = patch.mock.calls.at(-1)[0];
+    for (const k of ['regions', 'states', 'munis', 'mesos', 'micros', 'inters', 'imediatas']) {
+      expect(`${k}:${arg[k]}`).toBe(`${k}:null`);
+    }
+  });
+
+  it('the current level is not a link — it is where you already are', () => {
+    stubGlobals(fullFixture({ ufDataFull: universe }));
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={deep} database="ibge_pevs" conventions={{ autoScale: true }} />,
+    );
+    const crumbs = [...container.querySelectorAll('.geo-crumb')];
+    expect(crumbs.at(-1).disabled).toBe(true);
+    expect(crumbs.slice(0, -1).every((b) => !b.disabled)).toBe(true);
+  });
+});
+
+describe('ViewGeography — the loading notice names what is being waited on', () => {
+  it('announces the município while ITS history loads, not the state', () => {
+    // Clicking a município sets a sub-UF facet, which is exactly what the old guard
+    // (`!subUfActive`) excluded — so the one gesture the drill-down made most common
+    // was the one that loaded in silence.
+    stubGlobals(fullFixture({
+      subUfActive: true, subUfLoaded: false, muniYearlySeries: [], topMunis: [],
+    }), { geoLevel: 'municipio' });
+    window.geoMesh = () => [{ cityCode: '1500107', cityName: 'Abaetetuba', uf: 'PA' }];
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={{ states: ['PA'], munis: ['1500107'] }}
+                     database="ibge_pevs" conventions={{ autoScale: true }} />,
+    );
+    expect(container.textContent).toContain('Abaetetuba');
+    expect(container.textContent).toMatch(/Carregando/);
+  });
+});

@@ -207,7 +207,14 @@ function ViewGeography({ families, conventions, summary, database }) {
   const localMuniCube = (wantMuniFallback && ufCityCodes && ufCityCodes.length && window.municipioYearly)
     ? window.municipioYearly(database, summary, ufCityCodes, [filtered.yearStart, filtered.yearEnd])
     : null; // null = pending fetch (or not wanted); [] = loaded-empty; [...] = rows
-  const localMuniLoading = wantMuniFallback && !!(ufCityCodes && ufCityCodes.length) && localMuniCube == null;
+  // Two municipal paths reach this view and BOTH can be in flight:
+  //   the view-local fallback (a single UF selected, no sub-UF facet), and
+  //   dataFilters' shared cube (a município/meso facet — which is exactly what clicking
+  //   a município sets, so the old guard's `!subUfActive` silenced the message for the
+  //   one gesture the drill-down made most common).
+  const localMuniLoading =
+    (wantMuniFallback && !!(ufCityCodes && ufCityCodes.length) && localMuniCube == null)
+    || (filtered.subUfActive && !filtered.subUfLoaded);
   const localMuniRows = useGeoMemo(
     () => rankMunisFromCube(localMuniCube, mesh, filtered.yearStart, filtered.yearEnd),
     [localMuniCube, mesh, filtered.yearStart, filtered.yearEnd],
@@ -402,8 +409,24 @@ function ViewGeography({ families, conventions, summary, database }) {
   const regionOfUf = (uf) => (scaledUFs.find((u) => u.uf === uf) || {}).region || null;
   const selectedRegion = (Array.isArray(summary && summary.regions) && summary.regions.length === 1)
     ? summary.regions[0] : null;
+  // What the loading notice should NAME: the município being entered when there is one,
+  // else the state whose municípios are being fetched. Naming the UF while the
+  // researcher just clicked a city would report the wrong wait.
+  const loadingPlace = selectedSingleCity
+    ? (((mesh || []).find((m) => String(m.cityCode) === String(selectedSingleCity)) || {}).cityName
+       || selectedSingleCity)
+    : selectedSingleUf;
+
   // ── The drill trail: where you are, and every way back ────────────────────
-  const ufsOfRegion = (reg) => scaledUFs.filter((u) => u.region === reg).map((u) => u.uf);
+  // Resolved against the FULL UF universe, never the current selection. scaledUFs is
+  // already narrowed by the active filter, so from inside Brasil › Norte › Pará it
+  // reported the Norte as containing exactly one state — and clicking the "Norte" crumb
+  // re-entered the region with states:['PA'], which is still município level. The trail
+  // did not move and the click read as dead.
+  const ufUniverseAll = (filtered.ufDataFull && filtered.ufDataFull.length)
+    ? filtered.ufDataFull
+    : (window.UF_DATA || []);
+  const ufsOfRegion = (reg) => ufUniverseAll.filter((u) => u.region === reg).map((u) => u.uf);
   const regionLabelOf = (id) =>
     ((filtered.regions || window.REGIONS || []).find((r) => r.id === id) || {}).label || id;
   const cityNameOf = (code) =>
@@ -657,7 +680,7 @@ function ViewGeography({ families, conventions, summary, database }) {
             if (localMuniLoading) {
               return (
                 <p className="caption" style={{ padding: '12px' }}>
-                  Carregando municípios de <strong>{selectedSingleUf}</strong>…
+                  Carregando municípios de <strong>{loadingPlace}</strong>…
                 </p>
               );
             }
@@ -737,7 +760,7 @@ function ViewGeography({ families, conventions, summary, database }) {
                 ? <>A evolução por município aparece ao <strong>recortar a geografia</strong> — selecione
                     uma UF ou um recorte sub-UF no filtro.</>
                 : scope === 'municipio' && localMuniLoading
-                  ? <>Carregando o histórico de <strong>{selectedSingleUf}</strong>…</>
+                  ? <>Carregando o histórico de <strong>{loadingPlace}</strong>…</>
                   : 'Sem histórico anual disponível para o recorte atual.'}
             </p>
           )}
