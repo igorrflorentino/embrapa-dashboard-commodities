@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.10] - 2026-08-28
+
+### Corrigido
+
+- **O CI ficava vermelho no main a cada merge que tocasse `dbt/**`.** O job "dbt unit
+  tests" rodava também no push, e o `dbt-build-prod` dispara no mesmo push — os dois
+  executam **os mesmos** unit tests, materializando cada modelo testado na **mesma**
+  tabela temporária (`<nome_do_teste>__dbt_tmp`) do **mesmo** dataset `gold`. O build
+  derrubava a temporária debaixo do teste em execução, que falhava com "Destination
+  deleted/expired during operation".
+
+  Medido: o build inicia `test_dim_produto_catalog_latest_wins_active` às 17:52:03, o CI
+  falha nesse mesmo teste às 17:52:13, e um re-run idêntico passou depois que o build
+  terminou (runs 33196613456 / 33196613442). Não era instabilidade: era determinístico
+  para todo merge que mexesse em dbt — justamente as mudanças que mais precisam da
+  verificação.
+
+  O job passa a rodar **só em pull request**, que é seu propósito declarado (pegar antes
+  do merge). No main ele era redundante: `dbt build` roda unit tests desde o dbt 1.8, então
+  o `dbt-build-prod` já executa todos — sobre o DAG inteiro (nós 20, 21, 128, 129 e 190 de
+  357), não só os 6 selecionados no CI. Um push direto no main sem PR continua coberto,
+  pelo próprio build.
+
+  A primeira hipótese — apontar o job para um dataset sandbox — **foi testada e não
+  funciona**, e o motivo corrige uma afirmação que estava no próprio comentário do CI
+  ("read NO real tables and write nothing"): unit tests não leem LINHAS reais, mas o dbt
+  os materializa e resolve os tipos de coluna de cada relação referenciada contra o
+  warehouse vivo. Em `dbt_dev_silver` a seed `historical_currency_factors` não existe e a
+  compilação falha. O comentário agora registra as duas coisas.
+
+  O job `sqlfluff` ficou como estava: só compila os modelos, não materializa nada, e
+  portanto não colide.
+
+---
+
 ## [1.33.9] - 2026-08-28
 
 A recomendação da v1.33.8: completar a documentação de colunas do Gold, que além de valer
