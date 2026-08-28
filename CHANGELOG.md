@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.14] - 2026-08-28
+
+### Corrigido
+
+- **A "Exportação mundial" declarava dois anos de cobertura; tem vinte e seis — e isso
+  encolhia a janela do compositor de cruzamento.** `world_exp` estava fixada em
+  `years: [2022, 2023]`, um literal do tempo em que o backfill all-reporters estava
+  adiado. Ele foi concluído, e o literal sobreviveu.
+
+  Não era só rótulo: `crossCommonWindow` (producers.js) calcula a janela comparável como a
+  **interseção** dos `years` das métricas selecionadas — `Math.max` dos inícios,
+  `Math.min` dos fins. Escolher "Exportação mundial" no compositor colapsava a comparação
+  para **2022–2023**, com qualquer outra série, sobre 26 anos de dado real.
+
+  Medido no mart que a métrica lê (`serving_comtrade_annual`, `flow='export'`): total
+  mundial presente em **todos os 26 anos**, de US$ 71,7 bi (2000) a US$ 339,3 bi (2022),
+  sobre 89–166 reporters por ano. Passa a `[2000, 2025]`, alinhada às métricas irmãs.
+
+  A invariante de v1.33.9 **não pegaria isto**: ela proíbe métrica reivindicando dado mais
+  ANTIGO que a cobertura do banco. Aqui o erro foi reivindicar **menos** — e para "menos"
+  não existe piso configurado contra o qual comparar, porque uma métrica pode
+  legitimamente cobrir só parte do período do banco. Fica registrado como limite conhecido
+  em vez de virar uma regra frágil.
+
+  Encontrado ao conferir uma anotação interna minha que dizia "world_exp só 2022–2023, NÃO
+  alargue até o backfill all-reporters" — a mesma afirmação vencida que estava no
+  `CLAUDE.md`, no runbook e no `bancos.js`, corrigida nas v1.33.7 / v1.33.11 e agora aqui.
+
+---
+
 ## [1.33.13] - 2026-08-28
 
 Auditoria de conteúdo dos 42 arquivos de documentação (a varredura anterior, v1.33.12,
