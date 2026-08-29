@@ -92,8 +92,8 @@ IBGE/BCB-only.
 
 **Catching upstream revisions of OLD data — `reconcile`.** Because IBGE/BCB are
 delta, a correction the source publishes to an *old* year (e.g. IBGE revising a
-1999 value) is **never re-queried** by the nightly run. `embrapa ingest reconcile`
-(`make reconcile`) is the escape hatch: a full re-download of every nightly
+1999 value) is **never re-queried** by the scheduled run. `embrapa ingest reconcile`
+(`make reconcile`) is the escape hatch: a full re-download of every scheduled
 source (IBGE year-chunked for deadline-safety, BCB + COMEX `--full`), ignoring
 the delta/ETag short-circuit. It stays **operator-triggered** because the
 re-ingest itself is expensive and rarely warranted — but the question of WHETHER
@@ -104,7 +104,7 @@ exits 1 if anything diverged. It is read-only. The earlier claim that no cheap
 pre-check was feasible held for the whole history but not for a well-chosen sample
 (~20k points in ~2 min), and for BCB not at all — one SGS request returns the whole
 series, so that half is exhaustive. COMEX stays out of scope: its per-file ETag
-check already catches old-year revisions nightly. The **monthly reminder issue**
+check already catches old-year revisions on every scheduled run. The **monthly reminder issue**
 (`.github/workflows/reconcile-reminder.yml`) now leads with `reconcile-check`
 instead of asking for a guess. (Re-enable a monthly Cloud Run trigger any time with
 `make ingest-job-reconcile-schedule` — the same Job with args overridden to

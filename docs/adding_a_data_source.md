@@ -135,7 +135,7 @@ bq_bronze_<source>_<table>_table: str = Field(default="<table>_raw")
 
 | Registry | File | What to add |
 |---|---|---|
-| `cli.INGESTS` | [`cli.py`](../src/embrapa_dashboard/cli.py) (right after the `discover_app` declaration) | `IngestSpec("<source>", <source>_pipeline, accepts_full=True/False, label="…")` |
+| `cli.INGESTS` | [`cli.py`](../src/embrapa_dashboard/cli.py) (right after the `discover_app` declaration) | `IngestSpec("<source>", <source>_pipeline, accepts_full=True/False, label="…", cadence_days=<N>)` — `cadence_days` is how often a scheduler is expected to run it (1 daily, 7 weekly, 31 monthly). `doctor`'s Ingest heartbeat check reads it to decide when silence stops being normal, and `tests/test_ingest_cadence_matches_schedulers.py` holds it to the cron in `deploy/ingestion/schedule*.sh` — so set both together. |
 | `doctor.SOURCE_CHECKS` | [`doctor.py`](../src/embrapa_dashboard/doctor.py) (end of file) | `("<source>", _check_<source>)` |
 | `doctor.BRONZE_TARGETS` | [`doctor.py`](../src/embrapa_dashboard/doctor.py) | `("bq_bronze_<source>_dataset", "bq_bronze_<source>_<table>_table")` |
 

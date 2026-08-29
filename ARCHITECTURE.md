@@ -214,7 +214,7 @@ embrapa-dashboard-commodities/
 │   │                                 #   python deps → runtime), cloudbuild.yaml, deploy.sh
 │   │                                 #   (auto-deploys on merge; private + IAP)
 │   ├── ingestion/                    # Ingestion JOB: Dockerfile, deploy.sh, schedule*.sh
-│   │                                 #   (nightly / monthly reconcile / monthly Comtrade), alert.sh
+│   │                                 #   (weekly batch / daily câmbio / monthly reconcile / Comtrade / PAM / PPM), alert.sh
 │   └── iam/                          # grant_least_privilege.sh (`make iam-grant`)
 │
 ├── tests/                            # Python tests (pytest)
@@ -652,7 +652,9 @@ typical failures of a public source:
 > **Artifacts** in [`deploy/ingestion/`](deploy/ingestion/): `Dockerfile` (the Job's
 > image — distinct from the dashboard *Service*'s Dockerfile in `deploy/webapi/`),
 > `cloudbuild.yaml`, `deploy.sh` (build + create/update the Job by reading the `.env`),
-> `schedule.sh` (nightly trigger), `schedule_reconcile.sh` (monthly deep-refresh),
+> `schedule.sh` (weekly batch trigger — nightly until 2026-08-28),
+> `schedule_currency.sh` (daily BCB câmbio, the only source that advances every
+> business day), `schedule_reconcile.sh` (monthly deep-refresh),
 > `schedule_comtrade.sh` (monthly UN Comtrade backfill), `schedule_pam.sh` (monthly
 > IBGE PAM trigger), `schedule_ppm.sh` (monthly IBGE PPM trigger) and `alert.sh`
 > (failure alert).

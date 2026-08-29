@@ -219,7 +219,7 @@ prereq table; the job currently lacks the all-reporters scope):
    gcloud run jobs execute embrapa-ingest-all --region <REGION> --project <GCP_PROJECT_ID> --args=comtrade
    ```
 
-> COMTRADE is `in_all=False`: the nightly `ingest all` and `make reconcile` never
+> COMTRADE is `in_all=False`: the weekly `ingest all` and `make reconcile` never
 > touch it. The only paths are local `ingest comtrade` or this dedicated Job.
 
 ## Verification after the backfill
