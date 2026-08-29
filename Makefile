@@ -4,6 +4,7 @@
         ingest-job-ppm-schedule ingest-job-alert iam-grant \
         webapi-run webapi-deploy \
         dbt-deps dbt-build dbt-build-prod dbt-build-prod-with-backup backup-gold \
+        nomenclature-audit nomenclature-check \
         dbt-build-curation serving-sync ensure-curation ensure-flow-market \
         dbt-test dbt-source-freshness dbt-clean lint sqlfluff test clean \
         refresh-geo precommit-install precommit-run
@@ -108,6 +109,12 @@ dbt-build-prod: dbt-deps    ## Prod: silver+gold in silver / gold (real datasets
 
 backup-gold:    ## Snapshot prod Gold tables to gs://${GCS_BUCKET}/backups/run=<ts>/
 	$(PY) embrapa backup-gold
+
+nomenclature-audit:    ## Regrava docs/nomenclatura_divergencias.md a partir das tabelas do MDIC
+	$(PY) python scripts/audit_nomenclature_seeds.py
+
+nomenclature-check:    ## Falha se o registro de divergencias estiver defasado (precisa de rede)
+	$(PY) python scripts/audit_nomenclature_seeds.py --check
 
 refresh-geo:    ## Re-fetch the IBGE territorial mesh: the código->ancestry seed AND the map geometry
 	@echo "[1/2] seed: city_code -> meso/micro + intermediaria/imediata"

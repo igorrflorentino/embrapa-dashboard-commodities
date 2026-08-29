@@ -144,9 +144,20 @@ parsed as (
         regexp_extract(municipio, r'\s-\s([A-Z]{2})$')                              as state_acronym,
         -- Product code comes directly from SIDRA (the classification-193
         -- category id, e.g. "3405"). The product_description is also taken
-        -- from SIDRA — the leading display id (e.g. "1.3 - ") is stripped.
+        -- from SIDRA — the leading display ordinal (e.g. "1.3 - ") is stripped.
+        --
+        -- The ordinal is anchored to DIGITS AND DOTS ONLY. The earlier pattern was
+        -- `^([^-]+)\s-\s`, which strips ANY prefix without a hyphen: a produto named
+        -- "Açaí - fruto" would have lost "Açaí" and displayed as "fruto". No SIDRA value
+        -- has ever tripped it (10 distinct, all numeric ordinals), but "it has not
+        -- happened yet" is not a guarantee — and this one IS guaranteeable, because
+        -- informative text can never match [0-9.]+.
+        --
+        -- Why strip at all: the ordinal is a POSITION IN SIDRA'S MENU, not an attribute of
+        -- the produto — carvão vegetal is "7.1" in t289 and "1.1" in t291, so keeping it
+        -- would show the same produto under two different numbers depending on the half.
         tipo_de_produto_da_silvicultura_codigo                                            as product_code,
-        trim(regexp_replace(tipo_de_produto_da_silvicultura, r'^([^-]+)\s-\s', ''))       as product_description,
+        trim(regexp_replace(tipo_de_produto_da_silvicultura, r'^[0-9]+(?:\.[0-9]+)*\s-\s', ''))       as product_description,
         variavel_codigo                                                             as variable_code,
         variavel                                                                    as variable_name,
         unidade_de_medida                                                           as unit_of_measure,

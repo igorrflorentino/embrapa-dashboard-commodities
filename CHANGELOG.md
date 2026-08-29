@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.37.0] - 2026-08-29
+
+Auditoria da captura da descrição da fonte, com duas decisões do pesquisador.
+
+### Corrigido
+
+- **A remoção do ordinal da SIDRA podia comer texto informativo.** O padrão era
+  `^([^-]+)\\s-\\s` — remove QUALQUER prefixo sem hífen, então um produto chamado
+  `"Açaí - fruto"` teria perdido o "Açaí" e aparecido como `"fruto"`. Nenhum valor da SIDRA
+  jamais acionou isso (10 distintos, todos ordinais), mas *"ainda não aconteceu"* não é
+  garantia. O padrão passou a exigir **dígitos e pontos** (`^[0-9]+(?:\\.[0-9]+)*\\s-\\s`),
+  o que torna a perda **impossível por construção**: texto informativo não casa com
+  `[0-9.]+`. Demonstrado lado a lado no BigQuery — o padrão antigo transformava
+  `"Açaí - fruto"` em `"fruto"`; o novo preserva, e nos ordinais reais os dois coincidem.
+
+  A remoção em si foi **mantida** por decisão do pesquisador: o ordinal é posição no menu
+  da SIDRA, não atributo do produto — carvão vegetal é `7.1` na t289 e `1.1` na t291.
+
+### Adicionado
+
+- **Registro de divergências de nomenclatura** (`docs/nomenclatura_divergencias.md`,
+  gerado por `make nomenclature-audit`). COMEX e COMTRADE **não trazem descrição nos
+  dados**: o arquivo do MDIC tem `CO_NCM` e números, o Bronze do COMTRADE idem. O nome que
+  o pesquisador lê é artefato editorial deste repositório. Política decidida: **usar o
+  texto pleno da nomenclatura e registrar a divergência**. São **218** divergências
+  classificadas em quatro classes — `oficial abreviado` (11), `nosso mais pleno` (140),
+  `procedência distinta` (53), `ausente no MDIC` (14).
+
+  Por que não copiar o oficial: `NO_NCM_POR` é campo de **exibição** com limite de
+  tamanho, que produz `Outs.painéis` e `n/trab.mecan.d>0.8g/cm3` — e às vezes está
+  **factualmente errado**: em `15079019` (o código "outros", acima de 5 litros) a tabela dá
+  a descrição do irmão, "menor que 5 litros".
+- **Três guardas**: `assert_sidra_prefix_strip_is_lossless` (dbt, prende a propriedade nos
+  DADOS — acusa a SIDRA mudar de forma) e dois testes de código que prendem o **padrão** e
+  proíbem uma segunda remoção na coluna. A separação veio de uma injeção: o teste dbt
+  sozinho passava com o padrão permissivo, porque os 10 valores reais são todos ordinais.
+
+### Auditoria — o que se confirmou intacto
+
+`SIDRA → Bronze` verbatim · `Silver → Gold` sem transformação · `Gold → API` sem
+transformação · `API → tela` sem truncamento (todo `.slice` no frontend é de array) ·
+exportação CSV verbatim (só escape RFC-4180). Riscos estruturais sem caso hoje:
+`any_value(name)` escolheria arbitrariamente se um código tivesse dois nomes (0 em 234).
+
+---
+
 ## [1.36.2] - 2026-08-29
 
 ### Corrigido

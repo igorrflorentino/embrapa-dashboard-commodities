@@ -35,6 +35,7 @@ Built for **Embrapa researchers** — the purpose is historical/scientific explo
 | `PLANS/` | Detailed feature plans (one .md per feature) |
 | `docs/` | Deep-dive docs (setup, IAM, testing, cost safety, etc.) |
 | `docs/operations_runbook.md` | Occasional prod ops: managing curators (BQ allowlist), backing up prod Gold locally, the destructive-command safety hooks |
+| `docs/nomenclatura_divergencias.md` | **Gerado** (`make nomenclature-audit`). COMEX/COMTRADE não trazem descrição nos dados — o nome do produto vem de um seed deste repo. Este é o registro de toda divergência contra o campo de exibição do MDIC, classificada: o oficial às vezes é abreviado (`Outs.painéis`) e às vezes está errado (`15079019` recebe lá a descrição do irmão). Política: usar o texto pleno da nomenclatura e registrar aqui. |
 | `docs/comtrade_world_backfill.md` | How the UN Comtrade all-reporters (world) backfill was done — **completed**; every year 2000–2025 is at all-reporters (measured 2026-08-28). Kept as the record + the procedure for a future re-run: measured volume/time/cost (forecast vs. actual), local + Cloud Run Job paths, quota behaviour, cost guard |
 
 ## Code Style
