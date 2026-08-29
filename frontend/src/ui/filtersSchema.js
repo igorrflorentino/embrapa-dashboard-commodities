@@ -64,6 +64,19 @@ window.VALUE_PRESETS = [
 // the menu offers exactly the directions the source declares. `value` is the
 // canonical Gold `flow` token the serving query filters on; `label` is pt-BR.
 // `all` (no filter) sums the directions the snapshot defaults to.
+// Which half of the PEVS survey a row belongs to. `all` sums BOTH, which is the survey's
+// own total — the two halves are DISJOINT (no row is in both), so unlike the trade
+// sub-flows there is nothing to double-count. What it must never be is silent: a total
+// mixing native extraction with planted forest has to say so, which is why this reaches
+// the chip, the ABNT citation and the CSV. See PLANS/silvicultura_source.md.
+window.ORIGEM_OPTIONS = {
+  ibge_pevs: [
+    { value: 'all',          label: 'Ambas' },
+    { value: 'extrativa',    label: 'Extração vegetal (nativa)' },
+    { value: 'silvicultura', label: 'Silvicultura (plantada)' },
+  ],
+};
+
 window.FLOW_OPTIONS = {
   mdic_comex: [
     { value: 'all',    label: 'Todos' },
@@ -120,6 +133,10 @@ window.FILTER_SCHEMAS = {
         requires: 'product', backed: true,
         label: 'Produtos · PEVS',          column: 'codigo_pevs',
         hint: 'Produtos da extração vegetal (floresta nativa).' },
+      { id: 'origem',    tier: 'specific',  type: 'segment',
+        requires: null, backed: true, serverParam: 'origem',
+        label: 'Origem da produção',       column: 'origem',
+        hint: 'Metade da pesquisa: extração de floresta nativa ou silvicultura (plantada).' },
       { id: 'periodo',   tier: 'universal', type: 'period-value',
         requires: null, backed: true,
         label: 'Período & faixa de valor', column: 'ano · val_real_ipca',
@@ -339,6 +356,10 @@ window.bancoFilterDims = (bancoId) => {
 // Flow (server-side filter) options for a banco, or null when the banco has no
 // flow dimension (its snapshot isn't flow-separated → no fluxo control).
 window.flowOptionsFor = (bancoId) => window.FLOW_OPTIONS[bancoId] || null;
+
+// Origem (extração vs silvicultura) options for a banco, or null when the banco has no
+// `origem` column (only PEVS carries it). Mirrors flowOptionsFor.
+window.origemOptionsFor = (bancoId) => window.ORIGEM_OPTIONS[bancoId] || null;
 
 // Customs-procedure (regime aduaneiro) options for a banco, or null when the banco has
 // no customs_code dimension (only COMTRADE carries it). Mirrors flowOptionsFor.

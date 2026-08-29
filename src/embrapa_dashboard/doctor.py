@@ -209,6 +209,13 @@ _IBGE_REQUIRED_VARIABLE_CODES = {
     "145": "valor",
 }
 
+# The silviculture half's analogues (SIDRA t291). Same failure mode as above: a mistyped
+# code silently empties a Gold column instead of erroring.
+_SILVICULTURA_REQUIRED_VARIABLE_CODES = {
+    "142": "quantidade",
+    "143": "valor",
+}
+
 
 def _check_ibge_variable_codes(settings: Settings) -> CheckResult:
     """The PEVS variable codes silver_ibge_pevs filters on must be the intended 144/145.
@@ -240,6 +247,43 @@ def _check_ibge_variable_codes(settings: Settings) -> CheckResult:
         )
     except Exception as exc:
         return CheckResult("IBGE PEVS variable codes", False, str(exc)[:120])
+
+
+def _check_silvicultura_variable_codes(settings: Settings) -> CheckResult:
+    """The t291 variable codes silver_ibge_silvicultura filters on must be 142/143.
+
+    Exactly the PEVS check one table over. config.py declares the env keys and
+    dbt/dbt_project.yml reads the SAME ones; nothing recomputes either from the other, so
+    a typo in one drops that variable from Silver and empties its half of the Gold column
+    with no downstream error.
+    """
+    try:
+        configured = {
+            settings.silvicultura_variable_quantity_code,
+            settings.silvicultura_variable_value_code,
+        }
+        missing = {
+            code: role
+            for code, role in _SILVICULTURA_REQUIRED_VARIABLE_CODES.items()
+            if code not in configured
+        }
+        if missing:
+            return CheckResult(
+                "IBGE silvicultura variable codes",
+                False,
+                f"not configured: {missing} "
+                f"(quantity={settings.silvicultura_variable_quantity_code!r}, "
+                f"value={settings.silvicultura_variable_value_code!r}) "
+                "→ that Gold column would be empty for origem='silvicultura'",
+            )
+        return CheckResult(
+            "IBGE silvicultura variable codes",
+            True,
+            f"quantity={settings.silvicultura_variable_quantity_code}, "
+            f"value={settings.silvicultura_variable_value_code}",
+        )
+    except Exception as exc:
+        return CheckResult("IBGE silvicultura variable codes", False, str(exc)[:120])
 
 
 def _check_catalog_resolver_parity(settings: Settings) -> CheckResult:
@@ -425,6 +469,19 @@ def _check_ibge(settings: Settings) -> CheckResult:
         return CheckResult("IBGE SIDRA reachable", True, f"t{settings.ibge_table_id} 200 OK")
     except Exception as exc:
         return CheckResult("IBGE SIDRA reachable", False, str(exc)[:120])
+
+
+def _check_silvicultura(settings: Settings) -> CheckResult:
+    """SIDRA metadata endpoint responds for the configured silviculture table (291)."""
+    url = SIDRA_METADATA_URL.format(table_id=settings.silvicultura_table_id)
+    try:
+        response = requests.get(url, timeout=PROBE_TIMEOUT_S)
+        response.raise_for_status()
+        return CheckResult(
+            "IBGE SIDRA silvicultura reachable", True, f"t{settings.silvicultura_table_id} 200 OK"
+        )
+    except Exception as exc:
+        return CheckResult("IBGE SIDRA silvicultura reachable", False, str(exc)[:120])
 
 
 def _check_pam(settings: Settings) -> CheckResult:
@@ -969,6 +1026,7 @@ _INFRA_CHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
     ("currency-codes", _check_currency_series_codes),
     ("pam-variable-codes", _check_pam_variable_codes),
     ("ibge-variable-codes", _check_ibge_variable_codes),
+    ("silvicultura-variable-codes", _check_silvicultura_variable_codes),
     ("adc", _check_adc),
     ("bq", _check_bq),
     ("gcs", _check_gcs),
@@ -981,6 +1039,7 @@ _INFRA_CHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
 # docs/adding_a_data_source.md.
 SOURCE_CHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
     ("ibge", _check_ibge),
+    ("silvicultura", _check_silvicultura),
     ("pam", _check_pam),
     ("ppm", _check_ppm),
     ("bcb", _check_bcb),
@@ -992,6 +1051,8 @@ SOURCE_CHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
 # in Settings. _check_bronze_tables iterates over this list.
 BRONZE_TARGETS: list[tuple[str, str]] = [
     ("bq_bronze_ibge_dataset", "bq_bronze_ibge_table"),
+    # Same dataset as t289 — the two halves of one survey — but its own table.
+    ("bq_bronze_ibge_dataset", "bq_bronze_silvicultura_table"),
     ("bq_bronze_pam_dataset", "bq_bronze_pam_table"),
     ("bq_bronze_ppm_dataset", "bq_bronze_ppm_herd_table"),
     ("bq_bronze_ppm_dataset", "bq_bronze_ppm_animal_table"),

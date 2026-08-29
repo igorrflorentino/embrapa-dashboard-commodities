@@ -201,6 +201,30 @@ def _flow(
         params.append(bigquery.ArrayQueryParameter("__sum_flows", "STRING", list(sum_flows)))
 
 
+def _origem(
+    conditions: list[str],
+    params: list[bigquery.ScalarQueryParameter],
+    origem: str | None,
+) -> None:
+    """Optional ``origem = @origem`` predicate — which half of the PEVS survey.
+
+    ``extrativa`` (native forest, SIDRA t289) | ``silvicultura`` (planted, t291).
+
+    ``None`` sums both, which is the survey's own total and what "Produção da Extração
+    Vegetal e da Silvicultura" names. It is also what keeps every OTHER production mart
+    unchanged: PAM and PPM have no ``origem`` column, so a reader that never receives the
+    param emits a byte-identical query to the one it emitted before the axis existed.
+
+    Unlike COMTRADE's flow, the two halves are DISJOINT — no row belongs to both — so the
+    unfiltered sum is a clean total with nothing double-counted. What it must never be is
+    silent: `origem` reaches the chip, the ABNT citation and the CSV precisely because a
+    number that mixes native and planted has to say so.
+    """
+    if origem is not None:
+        conditions.append("origem = @origem")
+        params.append(bigquery.ScalarQueryParameter("origem", "STRING", origem))
+
+
 def _customs(
     conditions: list[str],
     params: list[bigquery.ScalarQueryParameter],
@@ -279,6 +303,7 @@ def production_overview(
     value_column: str = "val_real_ipca_brl",
     uf_codes: Sequence[str] = (),
     has_measure_kind: bool = False,
+    origem: str | None = None,
 ) -> tuple[str, list]:
     """Annual production total from ``serving_pevs_annual`` (backs overviewTS).
 
@@ -289,6 +314,7 @@ def production_overview(
     conditions: list[str] = []
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
+    _origem(conditions, params, origem)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
     _in_array(conditions, params, "state_acronym", "uf_codes", uf_codes)
     sql = f"""
@@ -314,6 +340,7 @@ def production_by_uf(
     value_column: str = "val_real_ipca_brl",
     latest_year_only: bool = True,
     has_measure_kind: bool = False,
+    origem: str | None = None,
 ) -> tuple[str, list]:
     """Production aggregated by UF from ``serving_pevs_annual`` (backs ufData).
 
@@ -336,6 +363,7 @@ def production_by_uf(
     conditions: list[str] = []
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
+    _origem(conditions, params, origem)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
     # `uf_codes` narrows to the researcher's selected states. It is applied BEFORE the
     # latest-year pin below, deliberately: with a UF filter active the reference year
@@ -373,6 +401,7 @@ def production_by_uf_yearly(
     product_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     has_measure_kind: bool = False,
+    origem: str | None = None,
 ) -> tuple[str, list]:
     """Production by (UF, year) from ``serving_pevs_annual`` (backs the ano × UF heatmap).
 
@@ -387,6 +416,7 @@ def production_by_uf_yearly(
     conditions: list[str] = []
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
+    _origem(conditions, params, origem)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
     sql = f"""
         select
@@ -433,6 +463,7 @@ def production_by_municipio_yearly(
     city_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     visibility_predicate: str = "",
+    origem: str | None = None,
 ) -> tuple[str, list]:
     """Production by (município, year) straight from ``gold_<source>_production``,
     which is ALREADY município-grained — backs the sub-UF + live-município geography
@@ -452,6 +483,7 @@ def production_by_municipio_yearly(
     conditions: list[str] = []
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
+    _origem(conditions, params, origem)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
     _in_array(conditions, params, "city_code", "city_codes", city_codes)
     if visibility_predicate:

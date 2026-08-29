@@ -46,9 +46,34 @@
 --    - missing FX rate for that year (e.g. EUR pre-1999) → NULL val_yearfx_FX.
 -- ────────────────────────────────────────────────────────────────────────────
 
-with base_pevs as (
+-- ── The two halves of PEVS ──────────────────────────────────────────────────
+--
+--  The survey is "Produção da Extração Vegetal E DA Silvicultura" and this table
+--  carries both, told apart by `origem`:
+--    extrativa    — SIDRA t289, NATIVE forest (the original contents of this table)
+--    silvicultura — SIDRA t291, PLANTED forest
+--
+--  They are one banco on purpose. The codes never collide (3433-3435 vs 3455-3457),
+--  the units match, and the sum is a real quantity IBGE itself publishes as one
+--  survey. What must never happen is a total that mixes them WITHOUT saying so, which
+--  is why `origem` is a first-class filter axis all the way to the chip, the ABNT
+--  citation and the CSV — see PLANS/silvicultura_source.md.
+--
+--  `union all` by position: both Silvers are column-identical by construction (one is
+--  a mirror of the other) and a dbt test asserts it, because a silent column drift
+--  here would shuffle values between fields rather than fail.
+with silver_union as (
+
+    select 'extrativa'    as origem, * from {{ ref('silver_ibge_pevs') }}
+    union all
+    select 'silvicultura' as origem, * from {{ ref('silver_ibge_silvicultura') }}
+
+),
+
+base_pevs as (
 
     select
+        origem,
         reference_year,
         state_acronym,
         -- Group by city_code (the natural geographic key from Silver), NOT
@@ -75,8 +100,8 @@ with base_pevs as (
         max(qty_base)                   as qty_base,
         max(case when is_monetary_value then numeric_value end) as val_raw,
         max(ingestion_timestamp)        as last_refresh
-    from {{ ref('silver_ibge_pevs') }}
-    group by reference_year, state_acronym, city_code, product_code
+    from silver_union
+    group by origem, reference_year, state_acronym, city_code, product_code
     having qty_native is not null
         or val_raw    is not null
 
@@ -131,6 +156,11 @@ select
     -- ── Product ──────────────────────────────────────────────────────────────
     product_code,
     product_description,
+
+    -- ── Which half of the survey ────────────────────────────────────────────
+    -- 'extrativa' (native forest, t289) | 'silvicultura' (planted forest, t291).
+    -- Never null: every row comes from exactly one of the two Silvers.
+    origem,
 
     -- ── Quantities (physical-unit family) ───────────────────────────────────
     -- The reported quantity is normalised to a per-family base unit:

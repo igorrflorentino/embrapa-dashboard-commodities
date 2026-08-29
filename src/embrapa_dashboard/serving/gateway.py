@@ -176,6 +176,7 @@ def fetch_production_overview(
     value_column: str = "val_real_ipca_brl",
     source: str = "ibge_pevs",
     uf_codes: Sequence[str] = (),
+    origem: str | None = None,
 ):
     """Annual production total for a PEVS-shaped source (backs overviewTS).
 
@@ -191,6 +192,7 @@ def fetch_production_overview(
         value_column=value_column,
         uf_codes=tuple(uf_codes),
         has_measure_kind=source in _MEASURE_KIND_SOURCES,
+        origem=origem,
     )
     return run_query(sql, params)
 
@@ -204,6 +206,7 @@ def fetch_production_by_uf(
     value_column: str = "val_real_ipca_brl",
     source: str = "ibge_pevs",
     latest_year_only: bool = True,
+    origem: str | None = None,
 ):
     """Production aggregated by UF for a PEVS-shaped source (backs ufData).
 
@@ -222,6 +225,7 @@ def fetch_production_by_uf(
         value_column=value_column,
         latest_year_only=latest_year_only,
         has_measure_kind=source in _MEASURE_KIND_SOURCES,
+        origem=origem,
     )
     return run_query(sql, params)
 
@@ -233,6 +237,7 @@ def fetch_production_by_uf_yearly(
     product_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     source: str = "ibge_pevs",
+    origem: str | None = None,
 ):
     """Production by (UF, year) for a PEVS-shaped source (backs the ano × UF heatmap)."""
     settings = get_settings()
@@ -244,6 +249,7 @@ def fetch_production_by_uf_yearly(
         product_codes=tuple(product_codes),
         value_column=value_column,
         has_measure_kind=source in _MEASURE_KIND_SOURCES,
+        origem=origem,
     )
     return run_query(sql, params)
 
@@ -262,6 +268,7 @@ def fetch_production_by_municipio_yearly(
     city_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     source: str = "ibge_pevs",
+    origem: str | None = None,
 ):
     """Production by (município, year) for a PEVS-shaped source, straight from
     gold_<source>_production (already município-grained) — backs the sub-UF +
@@ -287,6 +294,7 @@ def fetch_production_by_municipio_yearly(
         visibility_predicate=sqlbuild.visibility_clause(
             settings, _SHORT_SOURCE[source], _GOLD_PRODUCT[source][0]
         ),
+        origem=origem,
     )
     return run_query(sql, params)
 

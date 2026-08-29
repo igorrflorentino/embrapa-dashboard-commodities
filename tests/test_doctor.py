@@ -237,17 +237,12 @@ def test_check_comex_fails_on_5xx_without_fallback(settings: Settings) -> None:
 def test_check_bronze_tables_distinguishes_present_vs_missing(settings: Settings) -> None:
     with patch("embrapa_dashboard.doctor.bigquery.Client") as bq_cls:
         client = bq_cls.return_value
-        # First table found, others missing (8 Bronze targets: ibge, pam, ppm×2,
-        # bcb×2, comex, comtrade).
-        client.get_table.side_effect = [
-            MagicMock(),
-            NotFound("nope"),
-            NotFound("nope"),
-            NotFound("nope"),
-            NotFound("nope"),
-            NotFound("nope"),
-            NotFound("nope"),
-            NotFound("nope"),
+        # First table found, the rest missing. The count comes from the REGISTRY, not a
+        # hand-kept literal: this test broke when the silviculture Bronze target was added
+        # (2026-08-29) for no reason of its own, and the next source would have broken it
+        # again. What it is about is present-vs-missing, not how many targets exist.
+        client.get_table.side_effect = [MagicMock()] + [
+            NotFound("nope") for _ in doctor.BRONZE_TARGETS[1:]
         ]
         result = doctor._check_bronze_tables(settings)
     assert result.ok is True  # informational only
@@ -515,10 +510,12 @@ def test_run_all_executes_every_probe(settings: Settings) -> None:
         "Currency series codes",
         "PAM variable codes",
         "IBGE PEVS variable codes",
+        "IBGE silvicultura variable codes",
         "ADC credentials",
         "BigQuery reachable",
         "GCS bucket",
         "IBGE SIDRA reachable",
+        "IBGE SIDRA silvicultura reachable",
         "IBGE PAM reachable",
         "IBGE PPM reachable",
         "BCB SGS reachable",
@@ -543,6 +540,9 @@ def test_run_all_executes_every_probe(settings: Settings) -> None:
 # moment a new IngestSpec is added without wiring up its doctor coverage.
 _INGEST_TO_DOCTOR_CHECK = {
     "ibge": "ibge",
+    # The other half of the SAME survey (SIDRA t291) — its own ingest and its own
+    # SIDRA-reachability probe, one banco.
+    "ibge-silvicultura": "silvicultura",
     "ibge-pam": "pam",
     "ibge-ppm": "ppm",
     "bcb-inflation": "bcb",
@@ -906,3 +906,45 @@ def test_source_freshness_reports_a_query_failure(settings: Settings) -> None:
         result = doctor._check_source_data_freshness(settings)
     assert result.ok is False
     assert "permission denied" in result.detail
+
+
+# ─── silvicultura probes ──────────────────────────────────────────────────────
+def test_silvicultura_variable_codes_check_passes_on_the_configured_pair(
+    settings: Settings,
+) -> None:
+    assert doctor._check_silvicultura_variable_codes(settings).ok is True
+
+
+def test_silvicultura_variable_codes_check_fails_when_one_is_mistyped(
+    settings: Settings,
+) -> None:
+    """The failure this exists for: a typo drops that variable from Silver and empties
+    half a Gold column with NO downstream error."""
+    settings.silvicultura_variable_value_code = "1443"  # transposed
+    result = doctor._check_silvicultura_variable_codes(settings)
+    assert result.ok is False
+    assert "143" in result.detail and "origem" in result.detail
+
+
+def test_silvicultura_variable_codes_check_reports_an_unexpected_error() -> None:
+    """A probe must never raise INTO run_all — one broken check would take down the whole
+    report, which is the opposite of what a health command is for."""
+
+    class Broken:
+        @property
+        def silvicultura_variable_quantity_code(self) -> str:
+            raise RuntimeError("boom")
+
+    result = doctor._check_silvicultura_variable_codes(Broken())  # type: ignore[arg-type]
+    assert result.ok is False
+    assert "boom" in result.detail
+
+
+def test_silvicultura_sidra_probe_reports_reachability(settings: Settings) -> None:
+    with patch("embrapa_dashboard.doctor.requests.get") as get:
+        get.return_value.raise_for_status.return_value = None
+        ok = doctor._check_silvicultura(settings)
+        get.side_effect = RuntimeError("timeout")
+        bad = doctor._check_silvicultura(settings)
+    assert ok.ok is True and "t291" in ok.detail
+    assert bad.ok is False

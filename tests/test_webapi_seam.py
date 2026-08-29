@@ -1083,6 +1083,43 @@ def test_snapshot_returns_empty_shape_for_non_live_banco():
     assert out["value_column"] is None and out["value_label"] == ""
 
 
+def test_snapshot_pevs_threads_the_origem_axis_to_every_production_reader(monkeypatch):
+    """A chosen half of the survey must reach EVERY reader, not just the first.
+
+    gold_pevs_production carries extraction and silviculture together. If one reader
+    gets the filter and another does not, the same panel shows a scoped headline over an
+    unscoped map — the two disagreeing about which half they describe, with nothing on
+    screen saying so. 'all' must resolve to None (both halves), the survey's own total.
+    """
+    seam = _seam()
+    seen: dict[str, object] = {}
+
+    def _rec(key):
+        def fake(**kw):
+            seen[key] = kw.get("origem")
+            return pd.DataFrame()
+
+        return fake
+
+    monkeypatch.setattr(seam.gateway, "fetch_products", lambda b: pd.DataFrame())
+    monkeypatch.setattr(seam.gateway, "fetch_quality_by_source", lambda source=None: pd.DataFrame())
+    monkeypatch.setattr(seam.gateway, "fetch_product_timeseries", lambda *a, **k: pd.DataFrame())
+    monkeypatch.setattr(seam.gateway, "fetch_quality_timeseries", lambda b: pd.DataFrame())
+    monkeypatch.setattr(seam.gateway, "fetch_quality_by_product", lambda b: pd.DataFrame())
+    monkeypatch.setattr(seam.gateway, "fetch_production_overview", _rec("ov"))
+    monkeypatch.setattr(seam.gateway, "fetch_production_by_uf", _rec("uf"))
+    monkeypatch.setattr(seam.gateway, "fetch_production_by_uf_yearly", _rec("ufy"))
+
+    seam.snapshot(
+        "ibge_pevs", {"currency": "BRL", "correction": "IPCA"}, {"origem": "silvicultura"}
+    )
+    assert seen == {"ov": "silvicultura", "uf": "silvicultura", "ufy": "silvicultura"}
+
+    seen.clear()
+    seam.snapshot("ibge_pevs", {"currency": "BRL", "correction": "IPCA"}, {"origem": "all"})
+    assert seen == {"ov": None, "uf": None, "ufy": None}
+
+
 def test_snapshot_pevs_threads_basket_window_and_value_column(monkeypatch):
     """PEVS snapshot: every production reader gets the resolved value column +
     parsed year window + basket; overview gains q_mass/q_vol from product_ts."""
@@ -1110,9 +1147,14 @@ def test_snapshot_pevs_threads_basket_window_and_value_column(monkeypatch):
         )
 
     def fake_overview(
-        year_start=None, year_end=None, product_codes=(), value_column=None, source=None
+        year_start=None,
+        year_end=None,
+        product_codes=(),
+        value_column=None,
+        source=None,
+        origem=None,
     ):
-        recorded["ov"] = dict(value_column=value_column, source=source)
+        recorded["ov"] = dict(value_column=value_column, source=source, origem=origem)
         return pd.DataFrame([{"reference_year": 2020, "total_value": 9.0}])
 
     monkeypatch.setattr(seam.gateway, "fetch_products", fake_products)
@@ -1133,6 +1175,10 @@ def test_snapshot_pevs_threads_basket_window_and_value_column(monkeypatch):
     assert recorded["pts"]["y0"] == 2018 and recorded["pts"]["y1"] == 2021
     assert recorded["pts"]["value_column"] == "val_real_ipca_brl"
     assert recorded["ov"]["source"] == "ibge_pevs"
+    # No `origem` in the summary → None = both halves of the survey, which is what the
+    # reader emitted before the axis existed. The axis must be opt-IN, never a default
+    # that silently narrows an unfiltered panel to one half.
+    assert recorded["ov"]["origem"] is None
     # overview carries the q_mass summed from product_ts' per-family q_mass column.
     assert float(out["overview_ts"].loc[0, "q_mass"]) == 2e3
     assert out["value_column"] == "val_real_ipca_brl"

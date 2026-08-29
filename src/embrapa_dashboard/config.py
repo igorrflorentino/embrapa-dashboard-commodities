@@ -146,6 +146,37 @@ class Settings(BaseSettings):
     # skipping not-yet-absorbed recent years on a warm table (silent data gap).
     ibge_delta_overlap_years: int = Field(default=1, ge=0)
 
+    # ─── IBGE PEVS · silvicultura (SIDRA table 291) ───────────────────────────
+    # PEVS has TWO halves and t289 above is only the first. This is the second:
+    # planted forest. It is the SAME survey and the SAME banco (`ibge_pevs`) —
+    # `gold_pevs_production` discriminates the two with its `origem` column — so this
+    # is deliberately NOT a new banco. See PLANS/silvicultura_source.md.
+    #
+    # Shares the `bronze_ibge` dataset with t289 (same source, same survey) but its own
+    # TABLE and its own raw-zone segment (raw/ibge/silvicultura/), so a --from-raw replay
+    # of one half can never pick up the other's archives.
+    bq_bronze_silvicultura_table: str = Field(default="sidra_t291_raw")
+    silvicultura_table_id: str = Field(default="291")
+    silvicultura_classification_id: str = Field(default="194")
+    # t291's variables: 142 (quantidade) + 143 (valor) — the analogues of t289's
+    # 144/145. Fetched explicitly rather than v/all: the third series (1000143) is a
+    # percentage share that Silver would have to filter out anyway.
+    # ⚠ Same NAME coupling as PEVS: dbt/dbt_project.yml reads these env vars.
+    silvicultura_variable_quantity_code: str = Field(default="142")
+    silvicultura_variable_value_code: str = Field(default="143")
+    # The three TOP-LEVEL products of c194. Their species/purpose children
+    # (33247–33258: eucalipto / pinus / outras, papel e celulose / outras finalidades)
+    # are SUBSETS that these three already sum — ingesting both levels is exactly how a
+    # total silently doubles, so only the parents are taken.
+    #   3455 Carvão vegetal (t) · 3456 Lenha (m³) · 3457 Madeira em tora (m³)
+    # Same units as their t289 counterparts (3433/3434/3435), which is what lets the two
+    # halves share one Gold table and one agrupamento.
+    silvicultura_product_codes: str = Field(default="3455,3456,3457")
+    silvicultura_start_year: int = Field(default=1986)
+    silvicultura_end_year: int = Field(default_factory=_current_year)
+    # Same rationale (and the same ge=0 guard) as ibge_delta_overlap_years above.
+    silvicultura_delta_overlap_years: int = Field(default=1, ge=0)
+
     # ─── IBGE PAM (Produção Agrícola Municipal — SIDRA table 5457) ─────────────
     # The second IBGE/SIDRA source: ANNUAL crop production by municipality. Same
     # SIDRA client + two-phase Bronze as PEVS (see ibge/pam_pipeline.py), just a
@@ -625,6 +656,20 @@ class Settings(BaseSettings):
         if not codes:
             raise ValueError("IBGE_PRODUCT_CODES is empty.")
         return codes
+
+    @property
+    def silvicultura_product_codes_list(self) -> list[str]:
+        """Parsed silviculture product codes (SIDRA c194). Named *_list to avoid
+        shadowing the raw env field, as PAM's does."""
+        codes = [c.strip() for c in self.silvicultura_product_codes.split(",") if c.strip()]
+        if not codes:
+            raise ValueError("SILVICULTURA_PRODUCT_CODES is empty.")
+        return codes
+
+    @property
+    def silvicultura_variable_codes(self) -> str:
+        """The `v/` selector for t291 — quantity + value, in that order."""
+        return f"{self.silvicultura_variable_quantity_code},{self.silvicultura_variable_value_code}"
 
     @property
     def pam_product_codes_list(self) -> list[str]:

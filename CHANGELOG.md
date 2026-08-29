@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.34.0] - 2026-08-29
+
+A PEVS passa a ter as **duas metades**. A pesquisa do IBGE se chama "Produção da Extração
+Vegetal **e da** Silvicultura" e o projeto ingeria uma: a extração de floresta nativa
+(SIDRA t289). A silvicultura — floresta plantada, t291 — chegou.
+
+Isso começou com um pesquisador perguntando por que São Paulo e Rio de Janeiro não têm
+dados. Não tinham porque quase não há extrativismo lá: a produção florestal desses
+estados é plantada. A v1.33.32 corrigiu a **descrição** encolhendo a promessa; esta
+versão a cumpre.
+
+### Adicionado
+
+- **Ingestão da SIDRA t291** (`embrapa ingest ibge-silvicultura`) — pipeline irmão do da
+  PAM, mesmo cliente SIDRA, delta por padrão, raw zone própria (`raw/ibge/silvicultura/`),
+  Bronze própria (`sidra_t291_raw`). Entra no lote semanal junto com a extração, porque as
+  duas metades são publicadas juntas: uma atrasada em relação à outra deixaria o eixo
+  `origem` fora de passo consigo mesmo.
+
+- **A coluna `origem`** em `gold_pevs_production` — `extrativa` | `silvicultura`, nunca
+  nula. Dois modelos Silver convergindo numa Gold; sem filtro, os números somam as duas,
+  que é o total da própria pesquisa.
+
+- **`origem` como eixo de filtro de primeira classe** — seletor no menu, chip na barra,
+  fragmento na referência ABNT, coluna no CSV e parâmetro `or` no permalink. Essa parte
+  não é ornamento: a metade plantada vale ~5× a nativa, então um total que as mistura
+  **sem dizer** seria o defeito das v1.33.25–32 construído de propósito.
+
+### O que NÃO mudou
+
+Filtrar `origem = extrativa` reproduz a Gold anterior **linha por linha** — 1.075.438
+linhas, o mesmo número de antes. O teste de conservação Silver→Gold passou a rodar por
+metade, o que o torna duas verificações independentes em vez de uma, e é ele que prende
+essa promessa.
+
+### Números
+
+Medidos, não estimados. O modelo do plano previa ≈ 870.000 linhas e a carga trouxe
+**869.778**. Gold vai de 1,08 M para 1,35 M linhas.
+
+| | Brasil 2023 | São Paulo 2023 |
+|---|---|---|
+| extrativa | R$ 5,03 bi | **R$ 0** |
+| silvicultura | R$ 31,16 bi | **R$ 4,15 bi** |
+
+São Paulo era o caso que motivou a pergunta e é o que a prova: zero na extração,
+R$ 4,15 bi na silvicultura. Conferido contra o SIDRA célula a célula (madeira em tora
+R$ 3.651,5 mi · lenha R$ 369,1 mi · carvão R$ 127,9 mi).
+
+Custo: ~R$ 0,20/mês — armazenamento ~R$ 0,11, Cloud Run ~R$ 0,07, e consulta R$ 0 porque
+os +10 GB/mês cabem na franquia de 1 TiB.
+
+### Corrigido no caminho
+
+- **Dois critérios de aceite do plano estavam errados** e foram corrigidos com o medido:
+  SP 2023 é R$ 4,15 bi (não 4,45) e Brasil R$ 31,16 bi (não 31,7). Ambos os originais
+  eram os totais da tabela inteira, incluindo os "outros produtos" (acácia-negra, resina)
+  que o escopo exclui. Foi a ingestão que revelou — o critério funcionou justamente por
+  apontar para a fonte, e não para a nossa própria saída.
+
+- **O teste da v1.33.32 foi invertido, não remendado.** Ele exigia que a descrição
+  dissesse que a silvicultura estava fora; agora exige que ela nomeie as duas metades e o
+  eixo. Ele falhou no momento exato em que devia falhar.
+
+- **`assert_pevs_conserved_silver_to_gold`** passou a reconciliar por `origem`;
+  **`_check_bronze_tables`** deixou de contar alvos na mão e passou a derivá-los do
+  registro; e o doctor ganhou dois probes novos (alcance da t291 e paridade das vars
+  142/143 entre `config.py` e `dbt_project.yml`).
+
+### Testes
+
+- **`assert_pevs_silvers_column_identical`** — a união na Gold é **posicional**
+  (`select 'x' as origem, * from …` duas vezes). É a forma certa aqui, já que um modelo é
+  espelho literal do outro, mas ela falha do pior jeito possível se os dois divergirem:
+  uma coluna a mais em um deles desloca todos os campos seguintes, os valores caem na
+  coluna errada, **o build continua verde** e os números ficam errados dali em diante.
+  O teste compara nome, posição e tipo — os três, porque qualquer um deles basta para
+  desalinhar.
+
+1607 Python + 1031 frontend, cobertura do patch 97%. Validados por injeção: trocar os rótulos de `origem` na
+união da Gold; retirar o eixo da citação, do CSV e do schema de filtros; deixar a coluna
+do CSV vazia; acrescentar uma coluna a uma das Silvers. Um teste novo prende o eixo em **todos** os leitores de produção — um
+recorte que chega ao KPI e não ao mapa faria as duas metades da tela discordarem sobre o
+que descrevem.
+
+---
+
 ## [1.33.32] - 2026-08-28
 
 Um pesquisador reparou que São Paulo e Rio de Janeiro não têm dados no IBGE PEVS e

@@ -1,6 +1,15 @@
 # IBGE PEVS silviculture (SIDRA t291) — an `origem` axis on `gold_pevs_production`
 
-> Status: **PROPOSED** (2026-08-28) — sizing measured, nothing implemented. Owner: Igor.
+> Status: **IMPLEMENTED** (2026-08-29). Owner: Igor.
+>
+> Two numbers in the acceptance criteria below were WRONG when written and are corrected
+> in place: São Paulo 2023 is **R$ 4,15 bi**, not 4,45, and Brazil 2023 is **R$ 31,16 bi**,
+> not 31,7. Both originals were the whole-table SIDRA totals, which include the "outros
+> produtos" (acácia-negra, resina) this plan deliberately excludes. The ingest is what
+> surfaced the slip — the criterion did its job by being checked against the source
+> instead of against our own output.
+>
+> The row model was right to the row: predicted ≈ 870.000, landed **869.778**.
 >
 > **Design revised 2026-08-28, before any code.** The first draft proposed a *separate
 > banco*. The project lead pushed back: the survey is named "Extração Vegetal **e da**
@@ -246,10 +255,12 @@ Following `docs/adding_a_data_source.md`; step 1 (HTTP client) is already done.
 - `embrapa ingest ibge-silvicultura` lands Bronze; `dbt build` produces
   `gold_pevs_production` with ≈ 1,34 M rows, `origem` never null.
 - **Falsifiable against the source, not against our own output:** São Paulo, 2023,
-  `origem = silvicultura` must total **≈ R$ 4,45 bi** — roundwood ≈ R$ 3,65 bi, firewood
-  ≈ R$ 369 mi, charcoal ≈ R$ 128 mi — the figures SIDRA t291 serves today. A build that
-  produces a different number is wrong regardless of how plausible it looks.
-- Brazil 2023: `silvicultura` ≈ R$ 31,7 bi, `extrativa` ≈ R$ 6,2 bi.
+  `origem = silvicultura` must total **R$ 4,15 bi** — roundwood R$ 3.651,5 mi, firewood
+  R$ 369,1 mi, charcoal R$ 127,9 mi — the figures SIDRA t291 serves today for the three
+  products in scope. A build that produces a different number is wrong regardless of how
+  plausible it looks. ✅ verified in Bronze and in Silver.
+- Brazil 2023: `silvicultura` **R$ 31,16 bi** (the whole t291 is R$ 31,72 bi; the R$ 0,56 bi
+  difference is the deliberately excluded "outros produtos"). ✅
 - **Nothing that existed changed:** filtering `origem = extrativa` reproduces the
   pre-change Gold row-for-row.
 - `origem` appears in the filter chip, the "consulta detalhada" reference and the CSV.
