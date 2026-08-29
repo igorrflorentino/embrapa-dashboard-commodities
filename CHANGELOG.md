@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.34.4] - 2026-08-29
+
+Reorganização dos agrupamentos de madeira **aplicada em produção**, com duas correções
+que a própria execução revelou.
+
+### Resultado
+
+| agrupamento | códigos | fontes |
+|---|---|---|
+| `madeira` | 108 (era 136) | comex · comtrade · pevs |
+| `lenha` | 24 | comex · comtrade · pevs |
+| `carvao_vegetal` | 9 | comex · comtrade · pevs |
+
+Os agrupamentos degenerados `3433` e `3434` — um membro só, id igual ao código — deixaram
+de existir, e os três códigos da silvicultura entraram nos seus grupos. Cada agrupamento
+reúne agora extração e plantio das três fontes, e a comparação que nada disso permitia
+antes fica disponível:
+
+| | extrativa 2023 | silvicultura 2023 |
+|---|---|---|
+| madeira | R$ 2,88 bi | R$ 19,4 bi |
+| carvão vegetal | R$ 0,41 bi | R$ 7,49 bi |
+| lenha | R$ 0,71 bi | R$ 4,26 bi |
+
+### Corrigido no script, durante a execução
+
+- **A fonte da verdade era a Gold, e devia ser o catálogo.** `gold_produto_agrupamento`
+  só expõe códigos que **têm dado**, então um produto registrado mas ainda não ingerido é
+  invisível ali — e são justamente esses que uma reorganização não pode pular, porque
+  nada mais volta a visitá-los. A primeira passada deixou **4 códigos para trás** (dois de
+  4401 e dois de 4402, presentes no catálogo e ausentes da Gold). O script passa a ler o
+  log de curadoria.
+
+- **As escritas precisam do contexto Flask.** Registrar uma entrada **nova** alcança o
+  flask-caching, que é ligado ao app; sem o contexto a escrita morre com
+  `'Cache' object has no attribute 'app'`. E o modo de falha é traiçoeiro: só o caminho de
+  entrada nova quebra, então uma execução que apenas **atualiza** linhas existentes parece
+  ter dado certo enquanto todo produto genuinamente novo falha em silêncio. Foi exatamente
+  o que aconteceu na primeira passada — 31 atualizações gravadas, 3 registros perdidos.
+
+---
+
 ## [1.34.3] - 2026-08-29
 
 ### Corrigido
