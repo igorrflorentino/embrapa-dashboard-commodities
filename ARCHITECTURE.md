@@ -147,6 +147,7 @@ embrapa-dashboard-commodities/
 │   │   ├── silver/
 │   │   │   ├── _silver.yml           # Silver schema + tests
 │   │   │   ├── silver_ibge_pevs.sql  # Typed PEVS + dedup (incremental)
+│   │   │   ├── silver_ibge_silvicultura.sql  # Typed PEVS silvicultura (SIDRA t291) + dedup
 │   │   │   ├── silver_ibge_pam.sql   # Typed PAM + dedup (incremental)
 │   │   │   ├── silver_ibge_ppm.sql   # Typed PPM (herd 3939 + animal 74 union) + dedup
 │   │   │   ├── silver_bcb_inflation.sql  # IPCA chain index
@@ -169,7 +170,9 @@ embrapa-dashboard-commodities/
 │   │   │   ├── dim_date.sql          # Calendar (month grain, pt-BR labels)
 │   │   │   ├── dim_geo_br.sql        # 27 UFs → name/region/abbrev (N·NE·CO·SE·S)
 │   │   │   ├── dim_geo_municipio.sql # ~5570 municípios → both sub-UF divisions (meso/micro + intermediária/imediata)
-│   │   │   └── dim_code_industrialization_scd2.sql  # Per-code curation SCD2 (view; gated)
+│   │   │   ├── dim_code_industrialization_scd2.sql  # Per-code curation SCD2 (view; gated)
+│   │   │   ├── dim_produto_visibility.sql  # F7 gate: (source, code) marked indisponível — excluded from every researcher-facing read
+│   │   │   └── dim_flow_market_scd2.sql    # (customs × flow) → market nature — FROZEN (data-blocked: totals-only COMTRADE base)
 │   │   └── serving/                  # ⭐ Pre-aggregated marts for the webapi dashboard
 │   │       ├── _serving.yml
 │   │       ├── serving_pevs_annual.sql
@@ -339,7 +342,8 @@ as a per-run stamped object (append-only trail).
 
 ### 3. Gold (dbt, `materialized=table`)
 
-- IBGE PEVS table: `gold_pevs_production` — one row per `(reference_year, state_acronym, city_name, product_code)`.
+- IBGE PEVS table: `gold_pevs_production` — one row per `(reference_year, state_acronym, city_name, product_code)`. **Multi-table** source, like PPM: PEVS is ONE survey with two halves — extração vegetal (SIDRA t289, native forest) and silvicultura (t291, planted forest) — so `silver_ibge_pevs` and `silver_ibge_silvicultura` are unioned here and told apart by **`origem`** (`extrativa` | `silvicultura`). The halves differ ~6× in value, so `origem` is a first-class server-side filter axis all the way to the chip, the ABNT citation and the CSV; a total that mixed them silently would be a wrong number wearing a right label.
+  The uniqueness test above deliberately does **not** include `origem`: the two SIDRA tables use disjoint product codes today (3403–3450 vs 3455–3457), and if IBGE ever reused one across the halves the test fails loudly on the next build — which is the signal that `origem` has to join the key. Spec: `PLANS/silvicultura_source.md`.
 - IBGE PAM table: `gold_pam_production` — annual crop production (SIDRA table 5457), same `production` form and monetary conventions as PEVS, plus the área plantada/colhida and rendimento médio measures that back the *Produtividade* (área × rendimento) view.
 - IBGE PPM table: `gold_ppm_production` — annual livestock (SIDRA tables 3939 herd + 74 animal production), same `production` form and monetary conventions as PEVS. **Multi-table** source: `silver_ibge_ppm` unions the two SIDRA tables, tagging each row `measure_kind` (`stock` = herd headcount in Cabeças, no value; `flow` = animal production with value). No área/rendimento (livestock) → no *Produtividade* view. Multiple unit families coexist (Cabeças/contagem, Mil litros/volume, Mil dúzias/contagem, Quilogramas/massa) — `family` stays in the serving grain so quantities are never summed across families.
 - MDIC COMEX table: `gold_comex_flows` — one row per `(flow, reference_year, reference_month, ncm_code, country_code, state_acronym, transport_route_code)` (the transport route `via` is part of the grain; `via_name` via the `comex_via` seed). The 4 currency conventions are applied over `VL_FOB` (US$): `val_yearfx_*` at the registration month's FX, and `val_real_*` converting US$→BRL at the month's FX, deflating by the BCB chain and reconverting at the current FX (**monthly** deflation, not annual, because the grain is monthly).

@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.37.2] - 2026-08-29
+
+### Corrigido
+
+- **A documentação ficou para trás do trabalho de hoje**, em três pontos:
+  - `ARCHITECTURE.md` listava **três** modelos Silver do IBGE onde havia quatro — o
+    `silver_ibge_silvicultura.sql` entrou hoje e a árvore de pastas não o registrou. Um
+    leitor concluiria que o PEVS tem uma metade só. A descrição do
+    `gold_pevs_production` passou a dizer que ele é fonte **multi-tabela** (t289 + t291,
+    discriminadas por `origem`) e a explicar por que o teste de unicidade **não** inclui
+    `origem`: os códigos das duas metades são disjuntos hoje, e se o IBGE reusar um o
+    teste falha alto no build seguinte — que é exatamente o sinal desejado.
+  - `CLAUDE.md` e `README.md` descreviam o backup como sendo **só do Gold**, desatualizado
+    desde v1.36.0.
+  - `ARCHITECTURE.md` também não citava `dim_produto_visibility` nem
+    `dim_flow_market_scd2`, ambos anteriores a hoje.
+
+### Adicionado
+
+- **`tests/test_architecture_model_coverage.py`**: todo modelo dbt precisa aparecer no
+  `ARCHITECTURE.md`. O teste existente (`test_doc_file_references`) prende a direção **para
+  frente** — caminho citado tem de existir. O inverso é que escapava: renomear ou remover
+  um teste falha alto porque o import quebra, mas **acrescentar** um modelo não falha em
+  lugar nenhum; o doc só fica incompleto, em silêncio. As quatro camadas
+  (silver/gold/serving/core) estão agora em 100%.
+
+---
+
 ## [1.37.1] - 2026-08-29
 
 ### Alterado
