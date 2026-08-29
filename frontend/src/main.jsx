@@ -145,6 +145,8 @@ function readStateFromURL() {
     flow: q.get('fx') || null,
     // Which half of the PEVS survey (extrativa | silvicultura); absent = both.
     origem: q.get('or') || null,
+    // Níveis de industrialização selecionados (CSV); ausente = todos.
+    niveis: window.urlDecodeArr(q, 'ni'),
     // Server-side customs-procedure filter (regime aduaneiro, COMTRADE); absent → all regimes.
     customs: q.get('cx') || null,
     // Server-side tipo-de-mercado filter (COMTRADE); absent → all purposes.
@@ -298,6 +300,16 @@ function withChips(summary, database, conventions) {
     // put "Território: Não se aplica" next to a Brasil→China country pair, and what
     // turns a still-loading snapshot into a claim about the banco.
     geoApplies: hasGeo,
+    // Nível de industrialização: mesma regra do chip do menu — "Todos (N)" quando nada
+    // estreita, o rótulo quando é um só, a contagem quando são vários.
+    nivel: (() => {
+      const opts = (window.nivelOptionsFor && window.nivelOptionsFor(database)) || null;
+      if (!opts) return null;
+      const sel = s.niveis;
+      if (!sel || !sel.length || sel.length >= opts.length) return `Todos (${opts.length})`;
+      if (sel.length === 1) return (opts.find((o) => o.value === sel[0]) || {}).label || sel[0];
+      return `${sel.length} de ${opts.length}`;
+    })(),
     quality: window.chipFmt.quality(s.flags || null, flagsAll.length, labelOf),
   };
 }
@@ -459,6 +471,12 @@ function Dashboard() {
   useEffect(() => {
     if (window.dataStore?.setOrigem) window.dataStore.setOrigem(summary.origem || 'all');
   }, [summary.origem]);
+
+  // Nível → data layer bridge: the industrialization level is resolved to codes
+  // server-side, so a change re-fetches rather than re-rendering the same numbers.
+  useEffect(() => {
+    if (window.dataStore?.setNiveis) window.dataStore.setNiveis(summary.niveis || []);
+  }, [summary.niveis]);
 
   // Country → data layer bridges: país reporter / parceiro are server-side filters for
   // COMTRADE (the snapshot is pre-aggregated over reporter/partner), so a change re-fetches.

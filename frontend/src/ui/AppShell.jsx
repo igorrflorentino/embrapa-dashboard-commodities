@@ -267,6 +267,11 @@ function AppShell({
   // included only when an actual filter is set.
   const scopeBits = [];
   if (summary?.products) scopeBits.push(`Produtos: ${summary.products}`);
+  // Nível de industrialização — declarado só quando REDUZ o escopo. "Todos (9)" é o
+  // estado sem recorte e não pertence a uma referência que descreve o que foi consultado.
+  if (summary?.nivel && !/^Todos\b/.test(summary.nivel)) {
+    scopeBits.push(`Industrialização: ${summary.nivel}`);
+  }
   // The trade axis — fluxo · regime · mercado · reporter · parceiro. These are the
   // facets that DEFINE a trade slice, and the reference used to omit every one of them:
   // a Brasil→China COMTRADE panel cited as "Produtos: Todos (89)", beside a permalink

@@ -836,6 +836,15 @@ FILTER_SCHEMAS: dict[str, dict] = {
                 "hint": "Commodities da extração vegetal (floresta nativa).",
             },
             {
+                "id": "nivel",
+                "num": "02",
+                "tier": "shared",
+                "type": "multi",
+                "label": "Nível de industrialização",
+                "column": "industrialization_level",
+                "hint": "Do bruto ao manufaturado, pela classificação curada de cada código.",
+            },
+            {
                 "id": "origem",
                 "num": "02",
                 "tier": "specific",

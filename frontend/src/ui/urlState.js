@@ -12,7 +12,7 @@
 // so unrelated params like ?t=… stay inert).
 window.URL_STATE_KEYS = [
   'v', 'b', 'ip', 'cur', 'corr', 'mu', 'vu', 'as',
-  'pb', 'fl', 'st', 'vmn', 'vmx', 'sd', 'ed', 'fx', 'cx', 'mk', 'or',
+  'pb', 'fl', 'st', 'vmn', 'vmx', 'sd', 'ed', 'fx', 'cx', 'mk', 'or', 'ni',
   // COMTRADE país reporter (rp) / país parceiro (pt). rp is 3-state: 'ALL' = mundo, a CSV
   // of ISO codes, or absent = Brasil (default). pt is the standard array encoding (all/subset).
   'rp', 'pt',
@@ -108,6 +108,8 @@ window.buildUrlState = ({ view, database, infoPage, conventions, summary, crossS
     // so a permalink to an unfiltered panel keeps meaning "both halves" — the survey's
     // own total — rather than freezing today's default into the link.
     or: s.origem && s.origem !== 'all' ? s.origem : '',
+    // Níveis de industrialização; omitido quando nada está selecionado.
+    ni: window.urlEncodeArr(s.niveis),
     // Server-side customs-procedure filter (regime aduaneiro, COMTRADE); omitted when
     // 'all'/absent so a non-narrowed request stays clean.
     cx: s.customs && s.customs !== 'all' ? s.customs : '',

@@ -533,6 +533,11 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
   // non-null), not on a capability flag. Mirrors the flow/regime/market controls.
   const origemOptions = window.origemOptionsFor ? window.origemOptionsFor(banco) : null;
   const hasOrigem     = !!origemOptions;
+  // Nível de industrialização — a CURATED multi-select over the 8-level scale plus an
+  // explicit "sem classificação". Gated on the banco having classified codes, like the
+  // other option-backed dims.
+  const nivelOptions = window.nivelOptionsFor ? window.nivelOptionsFor(banco) : null;
+  const hasNivel     = !!nivelOptions;
   // País reporter / parceiro (COMTRADE only) — two country multi-selects backed by the
   // /api/countries universe (NOT a static OPTIONS map like flow/regime/market). Reading
   // window.comtradeCountries() kicks the one-shot fetch; main.jsx's resource subscription
@@ -714,6 +719,9 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
   // Tipo de mercado (server-side, COMTRADE only). 'all' = every purpose.
   const [market, setMarket] = useState((value && value.market) || 'all');
   const [origem, setOrigem] = useState((value && value.origem) || 'all');
+  const [niveis, setNiveis] = useState(
+    new Set((value && value.niveis) || (nivelOptions || []).map((o) => o.value)),
+  );
   // País reporter / parceiro (server-side, COMTRADE only) — Sets of ISO-A3 codes. reporter
   // default = {Brasil}; partner default = all. Seeded on open (guarded on the country universe
   // having loaded, like the geo seed) — the initial values here are just pre-seed placeholders.
@@ -762,6 +770,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
       setCustoms(v.customs || 'all');
       setMarket(v.market || 'all');
       setOrigem(v.origem || 'all');
+      setNiveis(new Set(v.niveis || (nivelOptions || []).map((o) => o.value)));
       geoSeeded.current = false; // let the geo effect (re)seed once the mesh is ready
       countriesSeeded.current = false; // ditto for the country universe (COMTRADE)
     }
@@ -917,6 +926,13 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
     const regimeChip = (hasRegime && regimeOptions)
       ? (customs === 'all' ? 'Todos os regimes' : ((regimeOptions.find(o => o.value === customs) || {}).label || customs))
       : null;
+    const nivelChip = (hasNivel && nivelOptions)
+      ? (niveis.size >= nivelOptions.length
+          ? `Todos (${nivelOptions.length})`
+          : niveis.size === 1
+            ? ((nivelOptions.find(o => niveis.has(o.value)) || {}).label || '1')
+            : `${niveis.size} de ${nivelOptions.length}`)
+      : null;
     const origemChip = (hasOrigem && origemOptions)
       ? (origem === 'all' ? 'Ambas' : ((origemOptions.find(o => o.value === origem) || {}).label || origem))
       : null;
@@ -929,7 +945,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
     const partnerChip = (hasCountries && countriesReady)
       ? window.chipFmt.partner([...partners], partnerUniverse.length, isoNameOf(partnerUniverse))
       : null;
-    return { products: prodChip, period: periodChip, geo: geoChip, geoApplies, quality: qualityChip, origem: origemChip, fluxo: fluxoChip, regime: regimeChip, mercado: marketChip, reporter: reporterChip, parceiro: partnerChip };
+    return { products: prodChip, period: periodChip, geo: geoChip, geoApplies, quality: qualityChip, nivel: nivelChip, origem: origemChip, fluxo: fluxoChip, regime: regimeChip, mercado: marketChip, reporter: reporterChip, parceiro: partnerChip };
   };
 
   const applyAndClose = () => {
@@ -983,6 +999,12 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
         // Tipo de mercado (server-side, COMTRADE): omitted when 'all' = every purpose.
         market: market !== 'all' ? market : undefined,
         origem: origem !== 'all' ? origem : undefined,
+        // Todos selecionados = nenhum recorte: enviar a lista completa faria o BFF
+        // resolver códigos à toa e mudaria a chave de cache sem mudar o resultado.
+        niveis:
+          hasNivel && niveis.size && niveis.size < (nivelOptions || []).length
+            ? [...niveis].sort()
+            : undefined,
         // País reporter / parceiro (server-side, COMTRADE) — see the encoders above.
         reporters: reporterOut,
         partners: partnerOut,
@@ -1008,6 +1030,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
     setCustoms('all');
     setMarket('all');
     setOrigem('all');
+    setNiveis(new Set((nivelOptions || []).map((o) => o.value)));
     setReporters(new Set([BRAZIL_ISO]));
     setPartners(new Set(partnerUniverse.map(c => c.iso)));
     [setQProducts, setQFlags, setQNations, setQRegions, setQStates,
@@ -1240,6 +1263,48 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
                     </button>
                   ))}
                 </div>
+              </div>
+            </section>
+            )}
+
+            {/* ─── NÍVEL DE INDUSTRIALIZAÇÃO — a CURATED per-code axis (Engenharia de
+                 Atributos). Resolvido a códigos no servidor: o nível mora numa dimensão
+                 própria, não no fato. "Sem classificação" é opção EXPLÍCITA — o eixo é
+                 curado à mão e nunca está completo, então o que não tem nível tem de
+                 poder ser visto, não sumir de todo recorte. ─── */}
+            {hasNivel && nivelOptions && (
+            <section className="fm-section">
+              <div className="fm-section-head">
+                <div className="fm-section-head-l">
+                  <span className="fm-section-label">Nível de industrialização</span>
+                  <span className="fm-cascade-hint">do bruto ao manufaturado, pela classificação curada em Engenharia de atributos</span>
+                </div>
+                <span className="fm-section-meta">
+                  <strong>{niveis.size}</strong> de {nivelOptions.length} selecionados
+                </span>
+              </div>
+              <div className="fm-section-inner">
+                <div className="fm-grid-scroll">
+                  <div className="fm-grid">
+                    {nivelOptions.map(o => {
+                      const on = niveis.has(o.value);
+                      return (
+                        <label key={o.value} className={'fm-check' + (on ? ' is-on' : '')}>
+                          <input type="checkbox" checked={on}
+                                 onChange={() => setNiveis(st => toggleIn(st, o.value))}/>
+                          <span className="fm-name">{o.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                <BulkActions
+                  all={()    => setNiveis(new Set(nivelOptions.map(o => o.value)))}
+                  none={()   => setNiveis(new Set())}
+                  invert={() => setNiveis(prev => new Set(nivelOptions.map(o => o.value).filter(v => !prev.has(v))))}
+                  selectedCount={niveis.size}
+                  totalCount={nivelOptions.length}
+                />
               </div>
             </section>
             )}

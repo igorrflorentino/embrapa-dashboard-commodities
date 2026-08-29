@@ -104,6 +104,33 @@ def _customs_or_400(customs: str | None):
 _ALLOWED_MARKETS = frozenset({"consumo", "processamento", "all"})
 
 
+# The 8 curated levels plus the explicit "not yet classified" sentinel. Open-vocabulary in
+# the writer, but the FILTER validates: a typo'd level would match zero codes and draw an
+# empty dashboard that reads as "sem dados", not as a bad request.
+_ALLOWED_NIVEIS = (
+    "commodity_pura",
+    "commodity_higienizada",
+    "commodity_acondicionada",
+    "commodity_consumivel",
+    "commodity_subproduto",
+    "manufaturado_artesanal",
+    "manufaturado_industrial",
+    "manufaturado_especializado",
+    "sem_classificacao",
+)
+
+
+def _niveis_or_400(raw: str | None):
+    """Validate the optional industrialization-level CSV. Absent/empty → no filter."""
+    if not raw:
+        return [], None
+    niveis = [n.strip() for n in raw.split(",") if n.strip()]
+    invalidos = [n for n in niveis if n not in _ALLOWED_NIVEIS]
+    if invalidos:
+        return None, (jsonify(error=f"nível de industrialização inválido: {invalidos!r}"), 400)
+    return niveis, None
+
+
 _ALLOWED_ORIGENS = ("extrativa", "silvicultura")
 
 
@@ -664,6 +691,9 @@ def snapshot():
     origem, err = _origem_or_400(request.args.get("origem"))
     if err:
         return err
+    niveis, err = _niveis_or_400(request.args.get("niveis"))
+    if err:
+        return err
     # COMTRADE country filters (país reporter / parceiro) — server-side like flow.
     # reporter is 3-state (absent → Brazil, "__all__" → world, list → IN); partner is a list.
     reporters = _reporters_param(request.args.get("reporters"))
@@ -679,6 +709,8 @@ def snapshot():
     # byte-identical to one made before the axis existed.
     if origem and origem != "all":
         summary["origem"] = origem
+    if niveis:
+        summary["niveis"] = niveis
     if reporters is not None:
         summary["reporters"] = reporters
     if partners:
