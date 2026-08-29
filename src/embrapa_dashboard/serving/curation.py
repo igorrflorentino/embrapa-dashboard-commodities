@@ -302,6 +302,37 @@ def _registered_group_ids(cfg: Settings, bq: bigquery.Client) -> set[str]:
         return set()
 
 
+# `ibge_pevs` (o token de FONTE, usado pelos registros por-código) → `pevs` (o token de
+# BANCO, usado pelo catálogo). Espelha webapi.seam_curation._BANCO_TO_SOURCE ao contrário.
+_SOURCE_PARA_BANCO = {"ibge_pevs": "pevs", "ibge_pam": "pam", "ibge_ppm": "ppm",
+                      "mdic_comex": "comex", "un_comtrade": "comtrade"}
+
+
+def tabela_do_produto(
+    banco_ou_source: str,
+    codigo_produto: str,
+    *,
+    settings: Settings | None = None,
+    client: bigquery.Client | None = None,
+) -> str | None:
+    """A tabela SIDRA que a entrada de catálogo deste produto carrega.
+
+    O catálogo é a fonte de verdade da identidade: um produto é `(banco, tabela, código)`, e
+    os OUTROS registros por-código (nível de industrialização, ciclo de vida) precisam da
+    mesma tabela para que suas escritas caiam sobre o mesmo produto. Sem ela, a escrita cai
+    na sentinela `sql.SEM_TABELA` — uma identidade à parte, que não corresponde a dado
+    nenhum e que nenhum erro denuncia.
+
+    Aceita tanto o token de banco (`pevs`) quanto o de fonte (`ibge_pevs`). Devolve None
+    quando não há entrada de catálogo ou quando o banco é de uma tabela só — nos dois casos
+    o `ifnull` da chave colapsa na sentinela, que é o comportamento certo.
+    """
+    cfg = settings or get_settings()
+    bq = client or _bq_client(cfg)
+    banco = _SOURCE_PARA_BANCO.get(banco_ou_source, banco_ou_source)
+    return _current_sidra_tabela(bq, _catalog_log_ref(cfg), codigo_produto, banco)
+
+
 def _validate_catalog_edit(codigo_produto: str, banco: str, ciclo_de_vida: str | None) -> None:
     """The composite key (codigo_produto, banco) is required — a blank either breaks
     the key, so we REJECT (fail loud) instead of silently dropping the row. The code
@@ -839,6 +870,10 @@ def remove_produto_catalog(
         raise ValueError(
             f"{codigo_produto!r} não está cadastrada (ativa) em {banco!r} — nada a remover."
         )
+    # A tabela SIDRA faz parte da CHAVE. Um tombstone sem ela não marca a entrada real:
+    # marca a sentinela `sql.SEM_TABELA`, uma identidade à parte — e a entrada continuaria
+    # ativa, com o delete reportando sucesso. Preservar a tag guardada é o que faz o
+    # tombstone cair sobre o produto certo.
     _insert_catalog_row(
         bq,
         table_fqn,
@@ -851,6 +886,7 @@ def remove_produto_catalog(
         False,
         edited_by,
         change_id,
+        sidra_tabela=_current_sidra_tabela(bq, table_fqn, codigo_produto, banco),
     )
     logger.info("Catalog: %s:%s -> removed (tombstone) by %s", banco, codigo_produto, edited_by)
     if invalidate_cache:
