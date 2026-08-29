@@ -41,6 +41,17 @@
     caught) would do it. It is not worth the risk today: the whole project sits at ~15% of
     BigQuery's free 1 TiB/month, so this costs nothing. Revisit if that changes — these
     two models are ~36% of the build's bytes and would drop to near zero.
+
+    AND THE BRONZE THEY SCAN IS MOSTLY DEAD WEIGHT. Measured 2026-08-28 with each model's
+    own natural key: **82.8%** of bronze_ibge.sidra_t289_raw is superseded (21.1M rows vs
+    4.4M live) and **69.9%** of bronze_pam.sidra_t5457_raw (39.1M vs 16.9M). Bronze is
+    append-only by design and the monthly `reconcile` re-ingests the whole history, so
+    copies accumulate; Silver's dedupe `qualify` then discards ~5 of every 6 rows it read.
+    Pruning superseded rows would cut this model's scan ~5× WITHOUT touching the `>=`
+    contract above — a bigger and safer lever than tightening the boundary. It is a
+    human-gated, backup-first operation (Bronze is the queryable landing; the GCS raw zone
+    keeps the provenance copy), and it buys ~US$0.16/month today, which is why it has not
+    been done.
     On `--full-refresh` (or first build), the {% if is_incremental() %} block
     is skipped and we scan all of Bronze.
 

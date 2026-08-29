@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.23] - 2026-08-28
+
+### Documentação
+
+- **Medido: 70–83% do Bronze é peso morto**, e é isso que os modelos incrementais varrem.
+  Com a chave natural de cada modelo: `bronze_ibge.sidra_t289_raw` tem **82,8%** de linhas
+  superadas (21,1M contra 4,4M vivas) e `bronze_pam.sidra_t5457_raw`, **69,9%** (39,1M
+  contra 16,9M). O Bronze é append-only por desenho e o `reconcile` mensal re-ingere a
+  história inteira, então as cópias se acumulam — e o `qualify` do Silver descarta ~5 de
+  cada 6 linhas que leu.
+
+  Podar as superadas cortaria a varredura desses modelos ~5× **sem tocar no contrato do
+  `>=`** documentado na v1.33.22 — alavanca maior e mais segura que apertar o limite.
+  Registrado, não feito: é operação com backup antes e aval humano (o Bronze é o pouso
+  consultável; a raw zone no GCS guarda a cópia de proveniência), e rende ~US$ 0,16/mês.
+
+### Levantamento de custos — nada a fazer
+
+Medido hoje, o projeto inteiro custa da ordem de **US$ 1/mês**:
+
+| item | medido | custo/mês |
+|---|---|---|
+| BigQuery consulta | ~157 GB | **zero** — 15% da cota grátis de 1 TiB |
+| BigQuery armazenamento | 22,45 GB | ~US$ 0,25 (10 GB grátis) |
+| GCS | 7 GB, ciclo de vida completo até Delete em 365d | centavos |
+| Artifact Registry | 40 MB, 8 versões — não acumula | ~zero |
+| Cloud Run Service | `min-instances=0`, escala a zero | por uso |
+| Cloud Run Job | execuções curtas (câmbio: 10,6s) | por uso |
+| Cloud Scheduler | 7 gatilhos (3 grátis) | ~US$ 0,40 |
+
+A maior linha identificável é o **Cloud Scheduler**, com US$ 0,40. A regra de
+escala-a-zero do projeto já tinha feito o trabalho: não há infraestrutura de custo fixo, e
+o resto é proporcional ao uso e minúsculo.
+
+---
+
 ## [1.33.22] - 2026-08-28
 
 ### Documentação
