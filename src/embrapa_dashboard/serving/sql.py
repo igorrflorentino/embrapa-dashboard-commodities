@@ -516,6 +516,7 @@ def products_by_municipio(
     city_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     visibility_predicate: str = "",
+    origem: str | None = None,
 ) -> tuple[str, list]:
     """Per-PRODUCT ranking WITHIN a município selection — what the território profile
     needs to answer "o que este município produz".
@@ -537,6 +538,10 @@ def products_by_municipio(
     _year_bounds(conditions, params, year_start, year_end)
     _in_array(conditions, params, code_column, "product_codes", product_codes)
     _in_array(conditions, params, "city_code", "city_codes", city_codes)
+    # The PEVS half — see products_by_uf. This reader names the produtos behind a place,
+    # and madeira/lenha/carvão exist in BOTH halves, so without it a território profile
+    # filtered to one half lists the other's produtos alongside.
+    _origem(conditions, params, origem)
     if visibility_predicate:
         conditions.append(visibility_predicate)
     sql = f"""
@@ -635,6 +640,7 @@ def products_by_uf(
     uf_codes: Sequence[str] = (),
     value_column: str = "val_yearfx_usd",
     flow: str | None = None,
+    origem: str | None = None,
 ) -> tuple[str, list]:
     """Per-PRODUCT ranking WITHIN a UF selection (backs the "Base de dados" per-UF
     product breakdown). This is the INVERSE of production_by_uf / comex_by_uf (which
@@ -655,6 +661,12 @@ def products_by_uf(
     _in_array(conditions, params, code_column, "codes", codes)
     _in_array(conditions, params, "state_acronym", "uf_codes", uf_codes)
     _flow(conditions, params, flow)
+    # The PEVS half (extrativa | silvicultura). Threaded here for the same reason the four
+    # aggregate builders already carry it: the two halves differ ~6x in value, so a ranking
+    # computed over both while the chip says one half is a wrong number under a right label.
+    # Left off on 2026-08-29 when the axis was introduced — the aggregate path honoured it
+    # and this one silently did not.
+    _origem(conditions, params, origem)
     sql = f"""
         select
             {code_column}                                      as product_code,

@@ -2067,3 +2067,114 @@ def test_products_by_municipio_empty_when_banco_has_no_municipio_grain(monkeypat
     )
     assert resp.status_code == 200
     assert resp.get_json() == {"products": []}
+
+
+# ── origem: every route reaching a PEVS reader must parse it ──────────────────
+# The axis shipped wired into /snapshot only, so these five answered with BOTH halves
+# summed while the chip announced one. Measured before the fix (2020–2023): identical
+# totals for extrativa, silvicultura and no filter, where the split is 372,9 bi × 690,6 bi.
+# One case per route because each builds its own summary; the helper is shared, the
+# CALLS were not.
+_ORIGEM_ROUTES = [
+    ("geo_yearly", "serialize_geo_yearly", "/api/geo-yearly?banco=ibge_pevs", {"ufYearly": []}),
+    (
+        "geo_municipio_yearly",
+        "serialize_geo_yearly",
+        "/api/municipio-yearly?banco=ibge_pevs",
+        {"ufYearly": []},
+    ),
+    (
+        "products_by_municipio",
+        "serialize_products_by_uf",
+        "/api/products-by-municipio?banco=ibge_pevs",
+        {"products": []},
+    ),
+    (
+        "products_by_uf",
+        "serialize_products_by_uf",
+        "/api/products-by-uf?banco=ibge_pevs",
+        {"products": []},
+    ),
+]
+
+
+@pytest.mark.parametrize("seam_fn,serializer,path,payload", _ORIGEM_ROUTES)
+def test_route_threads_origem_into_the_summary(monkeypatch, seam_fn, serializer, path, payload):
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+    captured = {}
+
+    def fake(*args, **kwargs):
+        # The summary is the last positional in every one of these signatures except
+        # products_by_uf, where it is the second — so capture whichever dict carries it.
+        todos = [a for a in args if isinstance(a, dict)] + [
+            v for v in kwargs.values() if isinstance(v, dict)
+        ]
+        captured["origem"] = next(
+            (d.get("origem") for d in todos if isinstance(d, dict) and "origem" in d), None
+        )
+        return None
+
+    monkeypatch.setattr(seam, seam_fn, fake)
+    monkeypatch.setattr(serializers, serializer, lambda *a, **k: payload)
+    sep = "&" if "?" in path else "?"
+    body = {"cityCodes": ["3501608"]}
+    resp = (
+        client.post(f"{path}{sep}origem=silvicultura", json=body)
+        if "municipio" in path
+        else client.get(f"{path}{sep}origem=silvicultura")
+    )
+    assert resp.status_code == 200
+    assert captured["origem"] == "silvicultura", f"{seam_fn} nao recebeu o eixo"
+
+
+@pytest.mark.parametrize("seam_fn,serializer,path,payload", _ORIGEM_ROUTES)
+def test_route_rejects_an_unknown_origem(monkeypatch, seam_fn, serializer, path, payload):
+    """A typo'd half must 400, not silently draw both halves under the wrong label."""
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+    monkeypatch.setattr(seam, seam_fn, lambda *a, **k: None)
+    monkeypatch.setattr(serializers, serializer, lambda *a, **k: payload)
+    sep = "&" if "?" in path else "?"
+    body = {"cityCodes": ["3501608"]}
+    resp = (
+        client.post(f"{path}{sep}origem=plantada", json=body)
+        if "municipio" in path
+        else client.get(f"{path}{sep}origem=plantada")
+    )
+    assert resp.status_code == 400
+    assert "origem" in resp.get_json()["error"]
+
+
+def test_product_uf_ranking_route_threads_origem(monkeypatch):
+    """The fifth route: per-UF ranking for ONE produto — madeira/lenha/carvão exist in
+    both halves, so without the axis the ranking mixes them."""
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+    captured = {}
+
+    def fake(banco, code, conv, summary=None):
+        captured["summary"] = summary
+        return None
+
+    monkeypatch.setattr(seam, "product_uf_ranking", fake)
+    monkeypatch.setattr(serializers, "serialize_product_uf", lambda *a, **k: {"ufs": []})
+    resp = client.get("/api/product-uf?banco=ibge_pevs&code=3457&origem=silvicultura")
+    assert resp.status_code == 200
+    assert (captured["summary"] or {}).get("origem") == "silvicultura"
+
+
+def test_product_uf_route_rejects_an_unknown_origem(monkeypatch):
+    """Same guard as the other four: a typo'd half is a 400, never both halves drawn
+    silently under the requested label."""
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+    monkeypatch.setattr(seam, "product_uf_ranking", lambda *a, **k: None)
+    monkeypatch.setattr(serializers, "serialize_product_uf", lambda *a, **k: {"ufs": []})
+    resp = client.get("/api/product-uf?banco=ibge_pevs&code=3457&origem=plantada")
+    assert resp.status_code == 400
+    assert "origem" in resp.get_json()["error"]
