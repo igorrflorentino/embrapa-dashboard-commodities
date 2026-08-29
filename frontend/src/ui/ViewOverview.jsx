@@ -103,6 +103,7 @@ function ViewOverview({ families, summary, database, conventions }) {
   return (
     <>
       <window.UnitFamilyBanner families={families} />
+      <window.RecorteNote recorte={filtered.recorte} />
 
       {/* KPI strip */}
       <div className="kpi-row">

@@ -6,6 +6,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 
+// The REAL trade-label resolver, registered on window exactly as main.jsx loads it.
+// Stubbing it would let the chip row and the ABNT citation — which now read the SAME
+// resolver — disagree in a test while agreeing in the product, or the reverse.
+import './scopeChips.js';
+
 let FilterTriggerBar;
 
 beforeEach(async () => {

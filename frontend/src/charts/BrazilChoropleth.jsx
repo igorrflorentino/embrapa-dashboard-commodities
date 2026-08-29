@@ -99,7 +99,7 @@ class ResetViewControl {
 // invented, one is only hidden where both sides are the same colour anyway.
 export function BrazilChoropleth({
   data, valueKey, label, height = 360, onSelect, selectedUf, seamless = false, onBackground,
-  focusUfs = null,
+  focusUfs = null, recorte = null,
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
@@ -122,6 +122,11 @@ export function BrazilChoropleth({
   // uf -> { name, value, label } for the hover popup, kept in a ref so the map's
   // event handlers always read the latest data without re-binding listeners.
   const lookupRef = useRef({});
+  // The popup is the one place a single UF's number is read on its own, so a recorte
+  // that makes that number a FRACTION of the state has to be legible right there. Held
+  // in a ref for the same reason as the lookup: the handlers are bound once.
+  const recorteRef = useRef(null);
+  recorteRef.current = recorte;
   useEffect(() => {
     const idx = {};
     (data || []).forEach((d) => {
@@ -277,6 +282,10 @@ export function BrazilChoropleth({
             `<div style="max-width:180px;overflow-wrap:anywhere">` +
               `<div style="font:600 12px var(--font-body,sans-serif)">${code} · ${name}</div>` +
               `<div style="font:11px var(--font-body,sans-serif);color:#555">${val} ${unit}</div>` +
+              (recorteRef.current
+                ? `<div style="font:10px var(--font-body,sans-serif);color:#777;margin-top:2px">`
+                  + `recorte: ${recorteRef.current}</div>`
+                : '') +
             `</div>`,
           )
           .addTo(map);

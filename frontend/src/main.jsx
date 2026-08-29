@@ -17,6 +17,8 @@ import './ui/filtersSchema.js';
 import './ui/glossary.js';
 import './ui/urlState.js';
 import './ui/chipFmt.js';
+import './ui/scopeChips.js';
+import './ui/RecorteNote.jsx';
 import './ui/filterSummary.js';
 import './ui/geoSelect.js';
 import './ui/geoDrill.js';
@@ -288,6 +290,12 @@ function withChips(summary, database, conventions) {
     period: window.chipFmt.period(yearStart, yearEnd),
     valueRange: window.chipFmt.valueRange(s.valueMin, s.valueMax, sym),
     geo: geoChip,
+    // The very `hasGeo` that produced `geo` above, carried alongside it. The ABNT
+    // citation quotes the chip, so it must know when the chip is the "Não se aplica"
+    // sentinel and say nothing instead of asserting a dead dimension — which is what
+    // put "Território: Não se aplica" next to a Brasil→China country pair, and what
+    // turns a still-loading snapshot into a claim about the banco.
+    geoApplies: hasGeo,
     quality: window.chipFmt.quality(s.flags || null, flagsAll.length, labelOf),
   };
 }

@@ -9,6 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { decorateSnapshot } from './decorate.js';
 
+// The REAL recorte formatter, registered on window as main.jsx loads it.
+import '../ui/geoDrill.js';
+
 // Several describe blocks below stub window.geoMesh/municipioYearly inside
 // individual `it`s without resetting them afterwards — harmless as long as
 // nothing in a LATER describe block's tests happens to wake the sub-UF cascade.
@@ -455,5 +458,38 @@ describe('applyFilters — regionData declares WHAT it summed (parcialidade)', (
     const s = applyFilters({ states: ['RS'] }, 'ibge_pevs').regionData.find((r) => r.id === 'S');
     expect(s.ufsTotal).toBe(1);
     expect(s.partial).toBe(false);
+  });
+});
+
+// Every UF row carries a FRACTION of its state under a sub-UF narrowing — the state's
+// own value never appears — so the seam has to hand the presenters the recorte's NAME,
+// or a map popup reading "Pará · R$ 655 mi" is read as the Pará.
+describe('applyFilters — o recorte sub-UF sai nomeado do seam', () => {
+  // DUAS mesos: selecionar uma só é um recorte de verdade. Com uma só, escolher "a
+  // única" não estreita nada — e o seam corretamente não chama isso de recorte.
+  const MESH = [
+    { cityCode: '1', cityName: 'C1', uf: 'PA', region: 'N',
+      meso: { code: 'M1', name: 'Marajó' }, micro: { code: 'mi1', name: 'Mic 1' },
+      intermediaria: { code: 'I1', name: 'Int 1' }, imediata: { code: 'im1', name: 'Ime 1' } },
+    { cityCode: '2', cityName: 'C2', uf: 'PA', region: 'N',
+      meso: { code: 'M2', name: 'Baixo Amazonas' }, micro: { code: 'mi2', name: 'Mic 2' },
+      intermediaria: { code: 'I2', name: 'Int 2' }, imediata: { code: 'im2', name: 'Ime 2' } },
+  ];
+
+  beforeEach(() => { delete window.applyFilters; });
+
+  it('nomeia o recorte quando há um', async () => {
+    const applyFilters = await loadApplyFilters();
+    window.geoMesh = () => MESH;
+    window.municipioYearly = () => ([
+      { year: 2021, cityCode: '1', uf: 'PA', value: 7, q_mass: 3, q_vol: 0, q_count: 0 },
+      { year: 2021, cityCode: '2', uf: 'PA', value: 5, q_mass: 2, q_vol: 0, q_count: 0 },
+    ]);
+    expect(applyFilters({ mesos: ['M1'] }, 'ibge_pevs').recorte).toBe('Marajó (PA)');
+  });
+
+  it('é null quando nada estreita, para o apresentador não exibir nota vazia', async () => {
+    const applyFilters = await loadApplyFilters();
+    expect(applyFilters({}, 'ibge_pevs').recorte).toBeNull();
   });
 });

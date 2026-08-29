@@ -20,9 +20,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 
+// The REAL trade-label resolver — the citation and the chip row read the SAME one, so a
+// stub here could make them agree in the test and disagree in the product.
+import './chipFmt.js';
+import './scopeChips.js';
+
 const BANCOS = [
   { id: 'ibge_pevs', short: 'IBGE PEVS', label: 'Produção · Extração vegetal', maturity: 'estavel', status: 'live' },
-  { id: 'comex', short: 'COMEX', label: 'Comércio · Exportações', maturity: 'beta', status: 'live' },
+  { id: 'comex', short: 'COMEX', label: 'Comércio · Exportações', maturity: 'beta', status: 'live', provides: ['product', 'flow', 'partner'] },
 ];
 
 const VIEW_GROUPS = [
@@ -969,5 +974,79 @@ describe('AppShell — a referência ABNT, varrida sobre a matriz de estados', (
       const { noTexto } = referencia(over, CITE_NIVEIS[0]);
       expect(`${nome}: ${noTexto}`).toBe(`${nome}: (Embrapa, ${new Date().getFullYear()})`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------------
+// A referência de "consulta detalhada" descreve o RECORTE. Para um banco de comércio,
+// o recorte é definido por fluxo, regime, mercado, reporter e parceiro — e a lista de
+// escopo não mencionava nenhum dos cinco: um painel Brasil→China saía citado como
+// "Produtos: Todos (89). Território: Não se aplica.", ao lado de um permalink que
+// carregava rp=BRA&pt=CHN. A prosa contradizia o próprio link por omissão.
+// ---------------------------------------------------------------------------------
+describe('citação — o eixo comércio faz parte do recorte', () => {
+  const openAndPick = (container, label) => {
+    fireEvent.click([...container.querySelectorAll('.util-action')]
+      .find((b) => b.textContent.includes('Citar painel')));
+    [...container.querySelectorAll('.cite-level')]
+      .find((l) => l.textContent.includes(label)).querySelector('input').click();
+    return [...container.querySelectorAll('.cite-text')]
+      .find((n) => !n.classList.contains('cite-text-inline')).textContent;
+  };
+  const tradeProps = (over = {}) => ({
+    ...baseProps(),
+    database: 'comex',
+    summary: { startDate: '2010', endDate: '2024', products: 'Todos (89)', ...over },
+  });
+
+  beforeEach(() => {
+    window.hasCountryFilters = (id) => id === 'comex';
+    window.comtradeCountries = () => ({
+      reporters: [{ iso: 'BRA', name: 'Brasil' }, { iso: 'ARG', name: 'Argentina' }],
+      partners: [{ iso: 'CHN', name: 'China' }, { iso: 'USA', name: 'Estados Unidos' }],
+    });
+    window.flowOptionsFor = () => ([{ value: 'export', label: 'Exportação' }]);
+  });
+
+  it('nomeia reporter e parceiro — as facetas que DEFINEM o recorte', () => {
+    const { container } = render(<AppShell {...tradeProps({ reporters: ['BRA'], partners: ['CHN'] })} />);
+    const txt = openAndPick(container, 'Consulta detalhada');
+    expect(txt).toContain('Reporter: Brasil');
+    expect(txt).toContain('Parceiro: China');
+  });
+
+  it('nomeia o fluxo quando ele restringe, e cala quando está em "todos"', () => {
+    const restrito = openAndPick(
+      render(<AppShell {...tradeProps({ flow: 'export' })} />).container, 'Consulta detalhada');
+    expect(restrito).toContain('Fluxo: Exportação');
+
+    cleanup();
+    const solto = openAndPick(
+      render(<AppShell {...tradeProps({ flow: 'all' })} />).container, 'Consulta detalhada');
+    expect(solto).not.toContain('Fluxo:');
+  });
+
+  it('um parceiro completo não vira recorte na referência', () => {
+    // "Todos (2)" é o universo inteiro — declarar isso como recorte seria ruído, e a
+    // regra da lista já é "só o que define ou restringe".
+    const { container } = render(<AppShell {...tradeProps({ partners: ['CHN', 'USA'] })} />);
+    expect(openAndPick(container, 'Consulta detalhada')).not.toContain('Parceiro:');
+  });
+
+  // O território: dizer "Não se aplica" é uma AFIRMAÇÃO sobre o banco, e ela estava
+  // errada nos dois sentidos — num banco sem geografia era ruído ao lado de um par de
+  // países, e num banco ainda carregando transformava um estado transitório em fato.
+  it('cala sobre território quando a dimensão não se aplica (ou ainda não se sabe)', () => {
+    const { container } = render(
+      <AppShell {...tradeProps({ geo: 'Não se aplica', geoApplies: false, reporters: ['BRA'] })} />);
+    const txt = openAndPick(container, 'Consulta detalhada');
+    expect(txt).not.toContain('Território');
+    expect(txt).toContain('Reporter: Brasil');   // o resto do recorte continua lá
+  });
+
+  it('declara território quando a dimensão realmente se aplica', () => {
+    const { container } = render(
+      <AppShell {...tradeProps({ geo: 'Brasil · 27 UFs', geoApplies: true })} />);
+    expect(openAndPick(container, 'Consulta detalhada')).toContain('Território: Brasil · 27 UFs');
   });
 });

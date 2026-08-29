@@ -322,3 +322,33 @@ describe('BrazilChoropleth — o popup nomeia o sujeito do valor', () => {
     expect(falhas).toEqual([]);
   });
 });
+
+// Under a sub-UF recorte the popup's number is a FRACTION of the state it names. The
+// chip and the ABNT citation say so for the panel; the popup is where ONE state's number
+// is read on its own, so it has to say so there too.
+describe('BrazilChoropleth — o popup declara o recorte sub-UF', () => {
+  const hoverWith = async (props) => {
+    fakeMap = new FakeMap();
+    render(<BrazilChoropleth data={[{ uf: 'PA', name: 'Pará', value: 6.55e8 }]}
+                             valueKey="value" label="R$" {...props} />);
+    await waitForMapInit();
+    await fakeMap.fireLoad();
+    await act(async () => {
+      fakeMap.handlers['mousemove:uf-fill'](
+        { features: [{ properties: { uf: 'PA', name: 'Pará' } }], lngLat: { lng: 0, lat: 0 } });
+    });
+    return popupHtml;
+  };
+
+  it('acrescenta a linha do recorte quando há um', async () => {
+    const html = await hoverWith({ recorte: 'Marajó (PA)' });
+    expect(html).toContain('Pará');
+    expect(html).toContain('recorte: Marajó (PA)');
+  });
+
+  it('não inventa a linha quando não há recorte', async () => {
+    const html = await hoverWith({});
+    expect(html).toContain('Pará');
+    expect(html).not.toContain('recorte');
+  });
+});

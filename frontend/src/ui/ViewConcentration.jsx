@@ -123,6 +123,7 @@ function ViewConcentration({ summary, conventions, database }) {
 
   return (
     <>
+      <window.RecorteNote recorte={filtered.recorte} />
       {onCount && (
         <p className="caption" style={{ margin: '0 2px 4px' }}>
           ⓘ Esta cesta não tem valor monetário (efetivo dos rebanhos) — a concentração

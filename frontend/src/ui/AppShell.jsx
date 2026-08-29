@@ -267,10 +267,35 @@ function AppShell({
   // included only when an actual filter is set.
   const scopeBits = [];
   if (summary?.products) scopeBits.push(`Produtos: ${summary.products}`);
+  // The trade axis — fluxo · regime · mercado · reporter · parceiro. These are the
+  // facets that DEFINE a trade slice, and the reference used to omit every one of them:
+  // a Brasil→China COMTRADE panel cited as "Produtos: Todos (89)", beside a permalink
+  // carrying rp=BRA&pt=CHN. Same resolver the chip row uses (scopeChips.js), so the two
+  // descriptions of one selection cannot drift. Same inclusion rule as quality/value
+  // below: state a dimension when it is defining or actually restricted, not when it is
+  // sitting at "todos".
+  const _trade = window.tradeScopeChips ? window.tradeScopeChips(summary || {}, activeBanco) : {};
+  for (const [rotulo, chip] of [
+    ['Fluxo', _trade.flow], ['Regime', _trade.regime], ['Mercado', _trade.mercado],
+    ['Reporter', _trade.reporter], ['Parceiro', _trade.parceiro],
+  ]) {
+    if (chip && chip.narrowed) scopeBits.push(`${rotulo}: ${chip.label}`);
+  }
   // "Território", not "UFs": the geo chip can now carry a sub-UF recorte
   // ("Marajó (PA)"), and a mesorregião is not a UF. The prefix has to hold for every
   // scope the chip can state, or the fix to the chip just moves the wrong word.
-  if (summary?.geo) scopeBits.push(`Território: ${summary.geo}`);
+  //
+  // Gated on the banco actually HAVING geography — asking the chip and reading back its
+  // "Não se aplica" put a dead dimension in the reference, which on COMTRADE read as
+  // "Território: Não se aplica" directly beside a Brasil→China country pair. A banco
+  // without the dimension should say nothing about it, not say it does not apply.
+  // Gated on the chip's OWN applicability flag (published beside it by whichever path
+  // built it), not on a second guess here: asking the chip and reading back its
+  // "Não se aplica" put a dead dimension in the reference — on COMTRADE it read
+  // "Território: Não se aplica" directly beside a Brasil→China country pair, and on a
+  // still-loading banco it turned a loading state into a claim. A dimension that does
+  // not apply, or is not known yet, says nothing.
+  if (summary?.geoApplies && summary?.geo) scopeBits.push(`Território: ${summary.geo}`);
   if (summary?.flags && summary.flags.length && summary.quality) scopeBits.push(`Qualidade: ${summary.quality}`);
   if ((summary?.valueMin != null || summary?.valueMax != null) && summary.valueRange) scopeBits.push(`Faixa de valor: ${summary.valueRange}`);
   const scopeStr = scopeBits.length ? `${scopeBits.join('. ')}. ` : '';
