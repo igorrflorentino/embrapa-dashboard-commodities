@@ -220,6 +220,44 @@ def test_invalid_market_nature_is_400(monkeypatch):
     assert "tipo de mercado inválido" in bad.get_json()["error"]
 
 
+def test_invalid_origem_is_400(monkeypatch):
+    """A PEVS half outside {extrativa, silvicultura, all} 400s rather than binding
+    verbatim and matching zero rows — which would draw an EMPTY dashboard that reads as
+    "sem dados para esta seleção" instead of as a bad request."""
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+
+    def must_not_run(*a, **k):
+        raise AssertionError("seam reached despite an invalid origem")
+
+    monkeypatch.setattr(seam, "snapshot", must_not_run)
+    monkeypatch.setattr(serializers, "serialize_snapshot", lambda *a, **k: {"ok": True})
+
+    bad = client.get("/api/snapshot?banco=ibge_pevs&origem=nativa")
+    assert bad.status_code == 400
+    assert "origem inválida" in bad.get_json()["error"]
+
+
+def test_origem_reaches_the_seam_and_all_is_omitted(monkeypatch):
+    """The elo that was MISSING (v1.34.1): the route read every other axis and not this
+    one, so picking a half relabelled the panel and changed no number. 'all' must stay out
+    of the summary — a request without it has to be byte-identical to one made before the
+    axis existed."""
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+    seen: list[dict | None] = []
+    monkeypatch.setattr(seam, "snapshot", lambda b, c, summary: seen.append(summary) or {})
+    monkeypatch.setattr(serializers, "serialize_snapshot", lambda *a, **k: {"ok": True})
+
+    assert client.get("/api/snapshot?banco=ibge_pevs&origem=silvicultura").status_code == 200
+    assert seen[-1] == {"origem": "silvicultura"}
+
+    assert client.get("/api/snapshot?banco=ibge_pevs&origem=all").status_code == 200
+    assert seen[-1] is None  # nothing narrowed → no summary at all
+
+
 def test_invalid_flow_value_is_400(monkeypatch):
     """A bad ``flow`` (typo/accent/case) must 400 — not bind verbatim, match zero rows
     and return an empty-but-200 result (the silent-fallback the validation closes)."""

@@ -48,6 +48,11 @@ let activeCustoms = 'all';
 // Active tipo de mercado (consumo/processamento) — a THIRD server-side trade filter, same
 // contract: part of the snapshot's cache key + request. 'all' (default) sums every purpose.
 let activeMarket = 'all';
+// PEVS: which half of the survey (extrativa | silvicultura). Same contract as
+// activeFlow — part of the snapshot's CACHE KEY and its request. 'all' (default) sums
+// both, the survey's own total. Being in the cache key is what makes switching halves
+// refetch instead of re-rendering the same numbers under a new chip.
+let activeOrigem = 'all';
 // Active COMTRADE country filters (país reporter / parceiro) — server-side, same contract
 // as activeFlow. reporter is 3-state: null = Brasil (default, byte-identical to before),
 // '__all__' = mundo (world total), or a sorted ISO-A3 array (IN-list). partner: null = todos,
@@ -65,7 +70,7 @@ const _sameSel = (a, b) =>
 const convKey = () => {
   const rep = activeReporters == null ? 'BR' : activeReporters === '__all__' ? 'ALL' : activeReporters.join('~');
   const par = activePartners == null ? 'ALL' : activePartners.join('~');
-  return `${activeConv.currency}|${activeConv.correction}|${activeFlow}|${activeCustoms}|${activeMarket}|${rep}|${par}`;
+  return `${activeConv.currency}|${activeConv.correction}|${activeFlow}|${activeCustoms}|${activeMarket}|${activeOrigem}|${rep}|${par}`;
 };
 const cacheKey = (id) => `${id}|${convKey()}`;
 
@@ -216,6 +221,9 @@ async function fetchSnapshot(id) {
   if (activeCustoms && activeCustoms !== 'all') qs.set('customs', activeCustoms);
   // Server-side market filter (COMTRADE): only sent when narrowing → sums every purpose otherwise.
   if (activeMarket && activeMarket !== 'all') qs.set('market', activeMarket);
+  // Server-side PEVS origem filter: only sent when narrowing → the BFF sums both halves
+  // otherwise, byte-identical to before the axis existed.
+  if (activeOrigem && activeOrigem !== 'all') qs.set('origem', activeOrigem);
   // Server-side COMTRADE country filters. reporter: '__all__' → world sentinel, array → CSV
   // IN-list, null → omit (Brazil default). partner: array → CSV IN-list, null → omit (all).
   if (activeReporters === '__all__') qs.set('reporters', '__all__');
@@ -258,6 +266,7 @@ window.dataStore = {
 
   // The active tipo de mercado (consumo/processamento), same role as flow()/customs().
   market: () => activeMarket,
+  origem: () => activeOrigem,
 
   // Live provenance for a banco. The numeric coverage (rows, products, UFs, year
   // span) + the last-refresh stamp are overlaid from /api/source-meta when it has
@@ -463,6 +472,18 @@ window.dataStore = {
     if (next === activeMarket) return;
     const loadedBancos = [...new Set(Object.keys(store).map((k) => k.split('|')[0]))];
     activeMarket = next;
+    notify();
+    loadedBancos.forEach((id) => this.load(id));
+  },
+
+  // Origem bridge: same contract as setFlow/setCustoms/setMarket — which half of the PEVS
+  // survey is a server-side filter, so a new half is a DIFFERENT cache key → re-fetch every
+  // loaded banco. 'all'/absent → sum both (the survey's own total).
+  setOrigem(origem) {
+    const next = origem || 'all';
+    if (next === activeOrigem) return;
+    const loadedBancos = [...new Set(Object.keys(store).map((k) => k.split('|')[0]))];
+    activeOrigem = next;
     notify();
     loadedBancos.forEach((id) => this.load(id));
   },
