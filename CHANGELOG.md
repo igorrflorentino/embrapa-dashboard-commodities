@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.36.2] - 2026-08-29
+
+### Corrigido
+
+- **36 descrições do COMTRADE liam como fragmento** (`"- Outras, de coníferas"`,
+  `"-- De faia (Fagus spp.)"`). Não estavam truncadas: o texto estava íntegro, mas veio da
+  nomenclatura **hierárquica** da NCM/SH, onde a linha herda o sentido do título-pai — e os
+  `-` / `--` são o marcador de nível, não parte do nome. Todas as 36 eram do **capítulo 44**
+  (madeira), o mais recente a entrar no seed; as outras 199 vieram de fonte autocontida, e o
+  seed do COMEX nunca teve o problema (0 de 263).
+
+  Substituídas pelo nome oficial autocontido do MDIC (`NCM_SH.csv`, `NO_SH6_POR`), no grão
+  exato que o COMTRADE usa. Ex.: `440320` passou de `"- Outras, de coníferas"` para
+  **"Madeira de coníferas, em bruto"**.
+
+### Alterado
+
+- **9 das 36 foram COMPOSTAS em vez de substituídas.** A tabela do MDIC abrevia algumas
+  linhas para caber no campo (`Outs.painéis`, `n/trab.mecan.d>0.8g/cm3`,
+  `recob.placas plástico`), e copiá-las teria **degradado** o rótulo em vez de melhorá-lo.
+  Nesses casos o texto foi composto com o título-pai limpo (`SH4 — fragmento`), ficando
+  completo sem herdar a abreviação. Os 36 substitutos são todos distintos entre si, e a
+  distinção que o fragmento carregava se preserva — `440610` "não impregnados" contra
+  `440690` "impregnados", que o seed antes chamava só de `"- Outros"`.
+- Nenhum rótulo novo estourou a norma do arquivo: o comprimento máximo segue **366**
+  caracteres, o mesmo de antes (mediana 104, p90 206).
+- As outras 199 linhas foram deixadas em paz de propósito: 214 diferem do texto oficial,
+  mas quase todas por variação cosmética, e reescrevê-las trocaria rótulos que já estão bons.
+
+### Adicionado
+
+- `tests/test_seed_descriptions.py`: **nenhuma** descrição de seed pode começar com `-`
+  (fragmento hierárquico) nem conter a marca de abreviação do MDIC (ponto colado em letra
+  minúscula). Vale para os dois seeds, com um terceiro teste que guarda o próprio varredor.
+
+---
+
 ## [1.36.1] - 2026-08-29
 
 ### Corrigido
