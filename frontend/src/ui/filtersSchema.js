@@ -369,9 +369,17 @@ window.origemOptionsFor = (bancoId) => window.ORIGEM_OPTIONS[bancoId] || null;
 // wherever codes have been classified. The 8 levels themselves live in ENRICH_LEVELS
 // (data/enrichment.js), which is the editor's own registry: one source of truth for the
 // scale, so the filter can never drift from what the editor writes.
-window.NIVEL_BANCOS = ['ibge_pevs', 'ibge_ppm', 'mdic_comex', 'un_comtrade'];
+// Offered wherever the banco has PRODUCTS to classify — derived from the capability, not
+// from a hand-kept list of bancos. The first version WAS such a list, and it shipped
+// without IBGE PAM (2026-08-29): it had been built from a query whose output I truncated,
+// and `ibge_pam` sorts just before `ibge_pevs`, so the row that would have included it was
+// the one cut off. A capability cannot go stale that way.
 window.nivelOptionsFor = (bancoId) => {
-  if (!window.NIVEL_BANCOS.includes(bancoId)) return null;
+  // Busca DIRETA no registro, não via bancoById: aquele cai no primeiro banco quando o id
+  // é desconhecido, e o portão passaria a responder sobre outro banco em vez de dizer
+  // "não se aplica".
+  const banco = (window.BANCOS || []).find((b) => b.id === bancoId);
+  if (!banco || !(banco.provides || []).includes('product')) return null;
   const niveis = (window.ENRICH_LEVELS || []).map((l) => ({ value: l.id, label: l.label }));
   // "Sem classificação" is an EXPLICIT option, never an implicit exclusion: the axis is
   // curated by hand and therefore never complete, so a researcher must be able to see

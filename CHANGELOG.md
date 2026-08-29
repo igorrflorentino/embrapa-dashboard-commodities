@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.35.1] - 2026-08-29
+
+### Corrigido
+
+- **O IBGE PAM ficou sem o filtro de nível de industrialização.** A v1.35.0 gateava o
+  filtro por uma **lista de bancos escrita à mão**, e a PAM não estava nela. Não era
+  decisão: eu montei a lista a partir de uma consulta cujo resultado **truncei com `tail`**
+  — e `ibge_pam` ordena logo antes de `ibge_pevs`, então a linha que o incluiria foi
+  exatamente a cortada. A PAM tem 4 dos seus 11 códigos classificados.
+
+  O portão passa a derivar da **capacidade** do banco (`provides` inclui `product`), que
+  não tem como ficar desatualizada. Todos os cinco bancos com produtos oferecem o filtro.
+
+- **A busca do banco era indireta e podia responder sobre outro.** `bancoById` cai no
+  primeiro banco quando o id é desconhecido — conveniente em quase todo lugar, errado num
+  portão, que passaria a responder "sim, tem o filtro" sobre um banco diferente do
+  perguntado. Trocada por busca direta no registro.
+
+### Testes
+
+3 casos novos, validados por injeção: voltar à lista fixa sem a PAM, copiar a escala em
+vez de lê-la do registro do editor, e remover a opção "sem classificação" — cada um
+derruba o seu.
+
+O segundo importa por um motivo próprio: a escala vem de `ENRICH_LEVELS`, que é o
+registro **do editor**. Uma cópia aqui poderia divergir do que o editor grava, e o filtro
+ofereceria níveis que ninguém consegue atribuir — ou omitiria os que existem.
+
+---
+
 ## [1.35.0] - 2026-08-29
 
 O menu de filtros ganhou **Nível de industrialização** — o eixo existia no editor, na
