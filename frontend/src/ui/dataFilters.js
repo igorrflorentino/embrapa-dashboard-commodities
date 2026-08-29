@@ -336,17 +336,24 @@
     const ufLatestYear = ufYearsInWindow.length ? Math.max(...ufYearsInWindow) : yearEnd;
     // A sub-UF narrowing reads the cube even while pending/empty (geoCube=null → []),
     // so the map shows loading/empty rather than the all-UF snapshot it excludes.
-    const ufData = (subUfActive || useCube)
+    const _ufRowsWhere = (keep) => (subUfActive || useCube)
       ? _decorateUf(
           (geoCube || [])
             .filter(r => r.year === ufLatestYear)
-            .filter(u => !stateSet || stateSet.has(u.uf))
+            .filter(u => keep(u.uf))
             .map(r => ({ uf: r.uf, name: r.name, region: r.region,
                          value: r.value, q_mass: r.q_mass, q_vol: r.q_vol, q_count: r.q_count })),
         )
       : UF_DATA_T
-          .filter(u => !stateSet || stateSet.has(u.uf))
+          .filter(u => keep(u.uf))
           .map(u => ({ ...u }));
+    const ufData = _ufRowsWhere(uf => !stateSet || stateSet.has(uf));
+    // The same rows with the STATE filter lifted — the honest denominator for the
+    // "parcial" mark on region totals below. Deliberately the IDENTICAL path (same year,
+    // same basket, same sub-UF scope), so the count it yields means exactly "what this
+    // would show if you cleared the UF filter" and nothing else. No extra work when
+    // there is no filter to lift.
+    const ufDataNoStateFilter = stateSet ? _ufRowsWhere(() => true) : ufData;
     // The map year is "partial" when it falls SHORT of the requested window end — the
     // researcher asked through yearEnd but the latest UF data stops earlier (newer year
     // not yet in Gold, or an in-progress year). Lets the geo views annotate honestly.
@@ -377,8 +384,16 @@
     const productShare = allProducts.length ? (selectedProducts.length / allProducts.length) : 0;
 
     // region totals derived from the REAL (state-filtered) ufData
+    //
+    // A row here NAMES a whole region but SUMS only the UFs that survived the filter:
+    // with the Pará selected, `{ id: 'N', label: 'Norte' }` carries the PARÁ's number.
+    // Summing only what is filtered is correct (never show data outside the filter) —
+    // presenting it under the region's bare name is not. That is the same wrong-subject
+    // defect as labelling a region's value with a UF's name (v1.33.25), one grain up.
+    // So each row also carries WHAT IT IS MADE OF, and the views spell it out.
     const regionData = REGIONS_T.map(r => {
       const ufs = ufData.filter(u => u.region === r.id);
+      const unfiltered = ufDataNoStateFilter.filter(u => u.region === r.id);
       return {
         ...r,
         value:  ufs.reduce((s, u) => s + u.value,  0),
@@ -386,6 +401,16 @@
         q_vol:  ufs.reduce((s, u) => s + u.q_vol,  0),
         q_count: ufs.reduce((s, u) => s + (u.q_count || 0), 0),  // head/eggs — herd geo
         ufs:    ufs.length,
+        // How many UFs this region WOULD carry without the state filter, and whether the
+        // sum is therefore a fraction of the region it is named after.
+        ufsTotal: unfiltered.length,
+        partial:  ufs.length < unfiltered.length,
+        // The UFs actually summed, biggest first (name tie-break keeps it deterministic
+        // for a value-less banco, where every value is 0 — the livestock herd).
+        ufNames: ufs.slice()
+          .sort((a, b) => (b.value || 0) - (a.value || 0)
+                       || String(a.name || a.uf).localeCompare(String(b.name || b.uf), 'pt-BR'))
+          .map(u => u.name || u.uf),
       };
     }).filter(r => r.ufs > 0);
 

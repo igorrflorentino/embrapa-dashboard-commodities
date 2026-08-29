@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.27] - 2026-08-28
+
+O cartão "Soma por região" nomeava uma região inteira sobre um número que era de um
+estado só — e entregava esse número como uma barra sozinha, que não informa nada.
+
+### Corrigido
+
+- **"Norte" sobre o valor do Pará.** `regionData` soma o `ufData` **já filtrado** mas
+  mantinha o rótulo da região inteira. Filtrando um estado, o cartão escrevia "Norte"
+  sobre um número que era do Pará — enquanto "Maiores estados produtores", **na mesma
+  tela**, chamava aquele mesmo número de "Pará". Dois nomes, um número, e nada dizendo
+  ao pesquisador qual era o sujeito. É o defeito da v1.33.25 (nome de UF sobre valor de
+  região) um grão acima.
+
+  Somar só o que está filtrado continua certo — é a regra de nunca exibir dado fora do
+  filtro. O que faltava era **declarar a parcialidade**: cada linha de região passa a
+  carregar quantas UFs somou, quantas somaria sem o filtro de estado, e quais são. O
+  denominador sai do **mesmo caminho de dados** (mesmo ano, mesma cesta, mesmo recorte
+  sub-UF) com só o filtro de UF suspenso, então "1 de 7" significa exatamente "o que
+  apareceria se você limpasse o filtro" — nunca uma constante geográfica, que marcaria
+  como parcial uma região cujas UFs faltantes simplesmente não existem no banco.
+
+- **Uma barra sozinha não é um gráfico.** Comprimento de barra só significa algo contra
+  outras barras; com uma só ela preenche a área por definição e o único dado real fica
+  no eixo. Com uma região o cartão passa a mostrar o valor por extenso
+  (`R$ 2,91 bi`, moeda como prefixo; `30 mil t`, unidade física como sufixo) com a
+  composição embaixo. Com duas ou mais, as barras voltam — aí elas comparam de verdade —
+  e cada região parcial leva a marca no próprio rótulo.
+
+### Testes
+
+10 casos novos, todos validados por injeção: desenhar a barra sozinha de novo derruba 4;
+nunca marcar parcialidade, 1; tirar a marca das barras, 2; trocar o denominador do banco
+por uma constante geográfica, 3; embaralhar a ordem das UFs (que faria a lista truncada
+mentir), 1. O stub de `RegionBars` descartava as props — a mesma cegueira dos popups de
+ontem — e agora as captura.
+
+Conferido no navegador contra o BigQuery de produção: um estado → `R$ 2,91 bi` ·
+`parcial · 1 de 7 UFs com dados em 2024 · Pará`; três estados em duas regiões → barras
+com "Norte (parcial)" e "Sudeste (parcial)"; sem filtro → nada marcado.
+
+---
+
 ## [1.33.26] - 2026-08-28
 
 Varredura atrás de defeitos equivalentes ao da v1.33.25 — rótulo nomeando um sujeito

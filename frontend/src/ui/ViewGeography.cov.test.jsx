@@ -26,7 +26,7 @@ import { cleanup, fireEvent, render } from '@testing-library/react';
 import './geoSelect.js';
 
 // Captured props from the stubbed chart widgets, so we can assert what each branch fed.
-let choroProps, tileMapProps, heatmapProps, barChartCalls, productsByUfCalls, muniMapProps;
+let choroProps, tileMapProps, heatmapProps, barChartCalls, productsByUfCalls, muniMapProps, regionBarsProps;
 
 function stubGlobals(filtered, opts = {}) {
   const {
@@ -97,7 +97,7 @@ function stubGlobals(filtered, opts = {}) {
       <span className="sh-action">{action}</span>
     </div>
   );
-  window.RegionBars = () => <div className="regionbars" />;
+  window.RegionBars = (props) => { regionBarsProps = props; return <div className="regionbars" />; };
   window.MunicipioChoropleth = (props) => { muniMapProps = props; return <div className="munimap" />; };
   window.BrazilChoropleth = (props) => { choroProps = props; return <div className="choro" />; };
   window.BrazilTileMap = (props) => { tileMapProps = props; return <div className="tilemap" />; };
@@ -108,7 +108,7 @@ function stubGlobals(filtered, opts = {}) {
 let ViewGeography;
 
 beforeEach(async () => {
-  choroProps = tileMapProps = heatmapProps = muniMapProps = undefined;
+  choroProps = tileMapProps = heatmapProps = muniMapProps = regionBarsProps = undefined;
   barChartCalls = [];
   productsByUfCalls = [];
   globalThis.React = React;
@@ -691,5 +691,111 @@ describe('ViewGeography — the loading notice names what is being waited on', (
     );
     expect(container.textContent).toContain('Abaetetuba');
     expect(container.textContent).toMatch(/Carregando/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "Soma por região" names a REGION but sums only the UFs that survived the filter.
+// With the Pará selected it wrote "Norte" over the PARÁ's number — while the UF
+// ranking beside it called that same number "Pará". Two names, one number, and the
+// researcher has no way to tell which is the subject. Same wrong-subject defect as
+// v1.33.25 (a UF's name over a region's value), one grain up.
+//
+// It reached the screen as a ONE-BAR bar chart, which is also the wrong form: bar
+// length only means something against other bars, so a lone bar always fills the
+// plot and encodes nothing — the only real datum sits on the axis.
+// ---------------------------------------------------------------------------
+describe('ViewGeography — "Soma por região" must name what it actually summed', () => {
+  const oneRegion = (over = {}) => fullFixture({
+    regionData: [{ id: 'N', label: 'Norte', value: 75, q_mass: 30, q_vol: 8, q_count: 12,
+                   ufs: 1, ufsTotal: 7, partial: true, ufNames: ['Pará'], ...over }],
+  });
+
+  it('com uma região só, mostra o VALOR legível em vez de uma barra sozinha', () => {
+    stubGlobals(oneRegion());
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: false }} />
+    );
+    expect(container.textContent).toContain('Soma por região');
+    // A single bar is not a chart — the card must not draw one.
+    expect(container.querySelector('.regionbars')).toBeNull();
+    // ...and the number must be readable without squinting at an axis. Currency reads
+    // as a PREFIX — the magnitude comes from the value itself, not from the axis.
+    expect(container.querySelector('.kpi-val').textContent).toBe('R$ 75 mi');
+  });
+
+  it('unidade física fica como SUFIXO ("30 mil t"), não como prefixo de moeda', () => {
+    // A value-less banco (the livestock herd is the real case) drops the Valor
+    // dimension entirely, so the card falls to a physical unit.
+    stubGlobals(fullFixture({
+      ufData: [{ uf: 'PA', value: 0, q_mass: 30, q_vol: 0, q_count: 0, real: true }],
+      regionData: [{ id: 'N', label: 'Norte', value: 0, q_mass: 30, q_vol: 0, q_count: 0,
+                     ufs: 1, ufsTotal: 7, partial: true, ufNames: ['Pará'] }],
+    }));
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: false }} />
+    );
+    expect(container.querySelector('.kpi-val').textContent).toBe('30 mil t');
+  });
+
+  it('diz que a soma é PARCIAL e nomeia as UFs que entraram — nunca "Norte" puro', () => {
+    stubGlobals(oneRegion());
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: false }} />
+    );
+    const sub = container.querySelector('.kpi-sub').textContent;
+    expect(sub).toContain('parcial');
+    expect(sub).toContain('1 de 7 UFs');
+    expect(sub).toContain('Pará');   // WHAT the number is, spelled out
+  });
+
+  it('quando a região está inteira, não inventa um aviso de parcialidade', () => {
+    stubGlobals(oneRegion({ ufs: 7, ufsTotal: 7, partial: false,
+                            ufNames: ['Pará', 'Amazonas', 'Acre', 'Rondônia'] }));
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: false }} />
+    );
+    const sub = container.querySelector('.kpi-sub').textContent;
+    expect(sub).not.toContain('parcial');
+    expect(sub).toContain('soma de 7 UFs');
+    // A long list is truncated, but the count above it stays exact.
+    expect(sub).toContain('e mais 1');
+  });
+
+  it('com duas ou mais regiões as barras voltam — e só a parcial leva a marca', () => {
+    stubGlobals(fullFixture({
+      regionData: [
+        { id: 'N',  label: 'Norte',   value: 75, q_mass: 30, q_vol: 8, q_count: 12,
+          ufs: 1, ufsTotal: 7, partial: true,  ufNames: ['Pará'] },
+        { id: 'SE', label: 'Sudeste', value: 25, q_mass: 10, q_vol: 4, q_count: 6,
+          ufs: 4, ufsTotal: 4, partial: false, ufNames: ['São Paulo'] },
+      ],
+    }));
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: false }} />
+    );
+    expect(container.querySelector('.regionbars')).toBeTruthy();
+    const labels = regionBarsProps.data.map((r) => r.label);
+    expect(labels).toEqual(['Norte (parcial)', 'Sudeste']);
+  });
+
+  // The invariant, swept: no region row may reach a chart or a stat under its bare
+  // name while carrying only part of itself.
+  it('INVARIANTE: nenhuma região parcial aparece com o nome pelado', () => {
+    const partials = [
+      { id: 'N',  label: 'Norte',   value: 75, q_mass: 30, q_vol: 8, q_count: 12,
+        ufs: 1, ufsTotal: 7, partial: true, ufNames: ['Pará'] },
+      { id: 'SE', label: 'Sudeste', value: 25, q_mass: 10, q_vol: 4, q_count: 6,
+        ufs: 2, ufsTotal: 4, partial: true, ufNames: ['São Paulo', 'Minas Gerais'] },
+    ];
+    stubGlobals(fullFixture({ regionData: partials }));
+    const { container } = render(
+      <ViewGeography families={['mass']} summary={AT_UF} database="ibge_pevs" conventions={{ autoScale: false }} />
+    );
+    regionBarsProps.data.forEach((r, i) => {
+      expect(r.label).not.toBe(partials[i].label);      // never the bare region name
+      expect(r.label).toContain('parcial');
+    });
+    expect(container).toBeTruthy();
   });
 });

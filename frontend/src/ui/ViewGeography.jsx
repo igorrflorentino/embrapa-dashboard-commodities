@@ -391,6 +391,37 @@ function ViewGeography({ families, conventions, summary, database }) {
   const sharedMax = Math.max(...scaledUFs.map(u => u[valueKey] || 0));
   const ufScaled    = window.scaleSeries(scaledUFs,    sharedMax, conv, valueKey, unit);
   const regScaled   = window.scaleSeries(scaledRegions, Math.max(...scaledRegions.map(r => r[valueKey] || 0)), conv, valueKey, unit);
+
+  // ---- "Soma por região": say what the number is made of ---------------------
+  // Each region row NAMES a region but SUMS only the UFs that survived the filter
+  // (dataFilters.js). Rendering that under the region's bare name is the v1.33.25
+  // wrong-subject bug one grain up — "Norte" over a number that is the Pará's, with
+  // the UF ranking beside it calling the SAME number "Pará". These spell it out.
+  const regionComposition = (r) => {
+    const names = r.ufNames || [];
+    const list  = names.length > 3 ? `${names.slice(0, 3).join(', ')} e mais ${names.length - 3}` : names.join(', ');
+    const head  = r.partial
+      ? `parcial · ${r.ufs} de ${r.ufsTotal} ${pl(r.ufsTotal, 'UF', 'UFs')} com dados em ${mapYear}`
+      : `soma de ${r.ufs} ${pl(r.ufs, 'UF', 'UFs')}`;
+    return list ? `${head} · ${list}` : head;
+  };
+  // A single bar encodes nothing — bar length only means something against other bars,
+  // so with one region the chart is a number wearing a costume, and the number itself is
+  // only readable by squinting at the axis. Render the value outright instead.
+  const regionStatValue = (() => {
+    const v = (regScaled.data[0] || {})[valueKey] || 0;
+    // Works whether or not conv.autoScale already divided the series: when it did, v is
+    // small and autoScaleNum finds no further suffix (the label carries it); when it did
+    // not, v is raw and the suffix comes from here. Both land on "R$ 2,91 bi".
+    const { factor, suffix } = window.autoScaleNum(v);
+    const n = v / factor;
+    const txt = n.toLocaleString('pt-BR', { maximumFractionDigits: n < 10 ? 2 : n < 100 ? 1 : 0 });
+    const mag = suffix ? `${txt} ${suffix}` : txt;
+    // Currency reads as a prefix ("R$ 2,91 bi"), a physical unit as a suffix ("2,91 mi t").
+    return activeDim.id === 'value' ? `${regScaled.label} ${mag}`.trim() : `${mag} ${regScaled.label}`.trim();
+  })();
+  // Bars: a partially-summed region must not sit under its bare name either.
+  const regionBarData = regScaled.data.map(r => (r.partial ? { ...r, label: `${r.label} (parcial)` } : r));
   const top10Scaled = window.scaleSeries(top10ufs,     sharedMax, conv, valueKey, unit);
   // Região had bars where UF and município had maps, so the coarsest grain was the only
   // one you could not SEE. There is no região geometry to vendor and none is needed: a
@@ -669,7 +700,7 @@ function ViewGeography({ families, conventions, summary, database }) {
                                          onBackground={handleMapBackground}
                                          focusUfs={selectedRegion ? ufsOfRegion(selectedRegion) : null}
                                          seamless />
-              : <window.RegionBars data={regScaled.data} valueKey={valueKey}
+              : <window.RegionBars data={regionBarData} valueKey={valueKey}
                                    label={regScaled.label} height={280} />}
           </>
         )}
@@ -811,9 +842,20 @@ function ViewGeography({ families, conventions, summary, database }) {
               <window.SectionHeader
                 overline={`${activeDim.label} · ${mapYearTag}`}
                 title="Soma por região"
-                action={<span className="caption">{regScaled.data.length} {pl(regScaled.data.length, 'macrorregião', 'macrorregiões')} · {regScaled.label}</span>}
+                action={<span className="caption">
+                  {regScaled.data.length} {pl(regScaled.data.length, 'macrorregião', 'macrorregiões')}
+                  {regScaled.data.length === 1 ? '' : ` · ${regScaled.label}`}
+                </span>}
               />
-              <window.RegionBars data={regScaled.data} valueKey={valueKey} label={regScaled.label} height={320} />
+              {regScaled.data.length === 1 ? (
+                <div style={{ padding: '6px 2px 2px' }}>
+                  <div className="kpi-ov">{regScaled.data[0].label}</div>
+                  <div className="kpi-val tnum">{regionStatValue}</div>
+                  <div className="kpi-sub">{regionComposition(regScaled.data[0])}</div>
+                </div>
+              ) : (
+                <window.RegionBars data={regionBarData} valueKey={valueKey} label={regScaled.label} height={320} />
+              )}
             </div>
           )}
         </div>

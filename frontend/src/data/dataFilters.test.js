@@ -375,3 +375,85 @@ describe('applyFilters — basket-scoped (UF × year) cube drives the territoria
     expect(f.ufData.find((u) => u.uf === 'PA').value).toBe(100); // snapshot all-products
   });
 });
+
+// ---------------------------------------------------------------------------
+// A region row NAMES a region but SUMS only the UFs that survived the state filter.
+// Select the Pará and `{ id: 'N', label: 'Norte' }` carries the PARÁ's number — which
+// the Geografia view then printed as "Soma por região → Norte", beside a UF ranking
+// calling that same number "Pará". Summing only what is filtered is right; presenting
+// it under the region's bare name is the wrong-subject defect of v1.33.25, one grain
+// up. The row must therefore carry what it is made of, so a card can say so.
+// ---------------------------------------------------------------------------
+describe('applyFilters — regionData declares WHAT it summed (parcialidade)', () => {
+  // Two NORTE states, so filtering to one leaves the region genuinely partial.
+  const SNAP_2N = {
+    products: [{ code: 'A', name: 'Açaí', unit: 't', family: 'mass' }],
+    productTS: { A: [{ y: 2021, v: 33, q: 3.3, family: 'mass' }] },
+    overviewTS: [{ y: 2021, v: 0.066 }],
+    ufData: [
+      { uf: 'PA', name: 'Pará', region: 'N', value: 100, q_mass: 50, q_vol: 0 },
+      { uf: 'AM', name: 'Amazonas', region: 'N', value: 55, q_mass: 25, q_vol: 0 },
+      { uf: 'RS', name: 'Rio Grande do Sul', region: 'S', value: 40, q_mass: 20, q_vol: 0 },
+    ],
+    ufYearly: [
+      { year: 2021, uf: 'PA', name: 'Pará', region: 'N', value: 100, q_mass: 50, q_vol: 0 },
+      { year: 2021, uf: 'AM', name: 'Amazonas', region: 'N', value: 55, q_mass: 25, q_vol: 0 },
+      { year: 2021, uf: 'RS', name: 'Rio Grande do Sul', region: 'S', value: 40, q_mass: 20, q_vol: 0 },
+    ],
+    quality: [{ id: 'OK', count: 9 }], qualityTs: [], topMunis: [],
+    regions: [{ id: 'N', label: 'Norte' }, { id: 'S', label: 'Sul' }],
+  };
+
+  async function load2N() {
+    vi.resetModules();
+    window.dataStore = { get: () => SNAP_2N };
+    window.REGIONS = SNAP_2N.regions;
+    window.VIZ_SCALE = ['var(--viz-1)'];
+    window.VALUE_PRESETS = [];
+    window.MUNI_PICKER_NAMES = new Set();
+    window.snapshotFor = () => null;
+    await import('../ui/dataFilters.js');
+    return window.applyFilters;
+  }
+
+  beforeEach(() => { delete window.applyFilters; });
+
+  it('sem filtro, o Norte é o Norte inteiro e NÃO é marcado como parcial', async () => {
+    const applyFilters = await load2N();
+    const n = applyFilters({}, 'ibge_pevs').regionData.find((r) => r.id === 'N');
+    expect(n.value).toBe(155);          // 100 + 55
+    expect(n.ufs).toBe(2);
+    expect(n.ufsTotal).toBe(2);
+    expect(n.partial).toBe(false);
+  });
+
+  it('filtrando um estado, o valor é o DAQUELE estado — e a linha diz isso', async () => {
+    const applyFilters = await load2N();
+    const f = applyFilters({ states: ['PA'] }, 'ibge_pevs');
+    const n = f.regionData.find((r) => r.id === 'N');
+    // O número continua sendo só o do filtro (a regra de nunca exibir dado fora dele)...
+    expect(n.value).toBe(100);
+    expect(n.value).toBe(f.ufData.find((u) => u.uf === 'PA').value);
+    // ...mas agora a linha declara que 100 NÃO é o Norte.
+    expect(n.partial).toBe(true);
+    expect(n.ufs).toBe(1);
+    expect(n.ufsTotal).toBe(2);         // o denominador é o MESMO caminho, sem o filtro
+    expect(n.ufNames).toEqual(['Pará']);
+  });
+
+  it('nomeia as UFs somadas, maior primeiro, para a lista truncada não mentir', async () => {
+    const applyFilters = await load2N();
+    const n = applyFilters({ states: ['PA', 'AM'] }, 'ibge_pevs').regionData.find((r) => r.id === 'N');
+    expect(n.ufNames).toEqual(['Pará', 'Amazonas']);   // 100 antes de 55
+    expect(n.partial).toBe(false);      // as duas UFs do Norte estão presentes
+  });
+
+  it('o denominador é o do BANCO, não a geografia — não inventa UFs sem dado', async () => {
+    // O Sul tem 3 UFs no Brasil, mas só o RS existe neste banco. Selecioná-lo NÃO
+    // torna o Sul parcial: nada foi escondido do usuário.
+    const applyFilters = await load2N();
+    const s = applyFilters({ states: ['RS'] }, 'ibge_pevs').regionData.find((r) => r.id === 'S');
+    expect(s.ufsTotal).toBe(1);
+    expect(s.partial).toBe(false);
+  });
+});
