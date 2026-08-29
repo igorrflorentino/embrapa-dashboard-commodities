@@ -101,3 +101,48 @@ describe('geoChipText (apply-time chip, title case)', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// A sub-UF recorte deselects no UF, so every count these functions receive stays at
+// its total and both answered with the WHOLE country — "todo o território" /
+// "Brasil · 27 UFs" — for a 16-município slice of the Pará. The chip is the header's
+// one-line statement of the active filter, and the ABNT "consulta detalhada"
+// reference quotes it verbatim into a methods section, beside a permalink that DOES
+// carry the recorte: the reference contradicted its own link.
+// ---------------------------------------------------------------------------
+describe('recorte sub-UF — nenhuma das duas resumidoras pode reivindicar o todo', () => {
+  const RECORTE = 'Marajó (PA)';
+
+  it('o chip diz o recorte, não "Brasil · 27 UFs"', () => {
+    expect(geoChipText(BRASIL_ALL)).toBe('Brasil · 27 UFs');          // sem recorte
+    expect(geoChipText({ ...BRASIL_ALL, subUf: RECORTE })).toBe(RECORTE);
+  });
+
+  it('a linha do menu diz o recorte, não "todo o território"', () => {
+    expect(geoHeaderText(ALL)).toBe('todo o território');             // sem recorte
+    expect(geoHeaderText({ ...ALL, subUf: RECORTE })).toBe(RECORTE);
+  });
+
+  // INVARIANTE: com um recorte ativo, nenhuma das duas pode produzir uma frase que
+  // nomeie o todo — em nenhuma combinação de contagens.
+  it('INVARIANTE: com recorte ativo, nenhuma das duas nomeia o todo', () => {
+    const TODO = /Brasil|todo o território|todos os estados|todos os munic/i;
+    const combos = [
+      ALL, BRASIL_ALL,
+      { ...ALL, statesSize: 1 },
+      { ...ALL, nationsSize: 1, statesSize: 5, munisSize: 3 },
+      { ...BRASIL_ALL, munisSize: 10 },
+    ];
+    for (const base of combos) {
+      expect(geoChipText({ ...base, subUf: RECORTE })).not.toMatch(TODO);
+      expect(geoHeaderText({ ...base, subUf: RECORTE })).not.toMatch(TODO);
+    }
+  });
+
+  it('sem recorte, o texto antigo fica exatamente como era', () => {
+    for (const fn of [geoChipText, geoHeaderText]) {
+      expect(fn({ ...ALL, subUf: null })).toBe(fn(ALL));
+      expect(fn({ ...BRASIL_ALL, subUf: undefined })).toBe(fn(BRASIL_ALL));
+    }
+  });
+});

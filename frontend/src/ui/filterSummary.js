@@ -27,6 +27,7 @@ const filterSummary = {
     munisSize,
     munisTotal,
     muniSliceable,
+    subUf,
   }) {
     // A município count of 0 means "no município narrowing" (an emptied/cleared facet),
     // which dataFilters treats as NO constraint (shows all) — same as a full selection. So
@@ -34,6 +35,17 @@ const filterSummary = {
     const muniNarrowed = muniSliceable && munisSize > 0 && munisSize < munisTotal;
     const muniFull = !muniNarrowed;
     if (!hasGeo) return 'sem recorte geográfico';
+    // A sub-UF recorte (mesorregião / microrregião / região intermediária / imediata)
+    // restricts the data to a FRACTION of one state, and it is invisible to every count
+    // here: `statesSize` stays at its total because no UF was deselected. Without this
+    // branch the summary answered "todo o território" / "Brasil · 27 UFs" for a
+    // 16-município slice of the Pará — asserting the opposite of the active filter — and
+    // the ABNT "consulta detalhada" reference quoted the chip verbatim, beside a
+    // permalink that carried the recorte. The rule that a recorte must never be
+    // described as WIDER than it is already existed for the territorial trail
+    // (geoDrill.subUfLabel, v1.33.1) and for the menu's own "recorte ativo" badge; it
+    // had simply never reached the two surfaces that leave the screen.
+    if (subUf) return subUf;
     if (
       nationsSize === nationsTotal &&
       regionsSize === regionsTotal &&
@@ -71,6 +83,7 @@ const filterSummary = {
     munisSize,
     munisTotal,
     muniSliceable,
+    subUf,
   }) {
     // 0 municípios = an emptied/cleared facet = NO município narrowing (dataFilters shows
     // all), same as a full selection — so it counts as muniFull and never prints
@@ -78,6 +91,17 @@ const filterSummary = {
     const muniNarrowed = muniSliceable && munisSize > 0 && munisSize < munisTotal;
     const muniFull = !muniNarrowed;
     if (!hasGeo) return 'Não se aplica';
+    // A sub-UF recorte (mesorregião / microrregião / região intermediária / imediata)
+    // restricts the data to a FRACTION of one state, and it is invisible to every count
+    // here: `statesSize` stays at its total because no UF was deselected. Without this
+    // branch the summary answered "todo o território" / "Brasil · 27 UFs" for a
+    // 16-município slice of the Pará — asserting the opposite of the active filter — and
+    // the ABNT "consulta detalhada" reference quoted the chip verbatim, beside a
+    // permalink that carried the recorte. The rule that a recorte must never be
+    // described as WIDER than it is already existed for the territorial trail
+    // (geoDrill.subUfLabel, v1.33.1) and for the menu's own "recorte ativo" badge; it
+    // had simply never reached the two surfaces that leave the screen.
+    if (subUf) return subUf;
     if (hasOnlyBR && statesSize === statesTotal && muniFull) return `Brasil · ${statesTotal} UFs`;
     if (
       nationsSize === nationsTotal &&
