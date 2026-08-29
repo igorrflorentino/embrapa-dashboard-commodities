@@ -24,6 +24,7 @@ import json
 import logging
 from datetime import UTC, datetime
 
+from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 
 from embrapa_dashboard.config import Settings
@@ -67,6 +68,41 @@ def _gold_tables(settings: Settings, bq_client: bigquery.Client) -> list[str]:
     )
 
 
+# Sub-prefix for the curation snapshot inside a run. Keeps the Gold layout
+# (``run=<id>/<table>/``) byte-identical to every snapshot taken before curation was
+# covered, so any restore tooling written against it still works.
+CURATION_DIR = "_curation"
+
+
+def _curation_tables(settings: Settings, bq_client: bigquery.Client) -> list[str]:
+    """The researcher-authored tables to snapshot, introspected like the Gold ones.
+
+    THE reason this exists: Gold is DERIVABLE — losing it costs a `dbt build`, since every
+    row traces back to Bronze. ``research_inputs`` is AUTHORED: the produto catalog, the
+    agrupamentos registry, the industrialization classifications, the lifecycle log and the
+    per-catalog editor allowlists. None of it can be recomputed from any source. It was the
+    one dataset with no backup while the reproducible half had a daily-ish one — 1310 rows
+    and ~220 KiB in prod on 2026-08-29, so the cost of covering it rounds to nothing.
+
+    No prefix filter (unlike Gold): every table in this dataset is authored, and a filter
+    is one more thing to keep in sync — the hardcoded Gold list already taught that lesson.
+    Returns ``[]`` when the dataset is absent (a cold install or a dev .env), which the
+    manifest records so an operator can tell "nothing to back up" from "not covered".
+    """
+    dataset_ref = f"{settings.gcp_project_id}.{settings.bq_research_inputs_dataset}"
+    try:
+        return sorted(
+            f"{dataset_ref}.{t.table_id}"
+            for t in bq_client.list_tables(dataset_ref)
+            if t.table_type == "TABLE"
+        )
+    except NotFound:
+        logger.warning(
+            "Curation dataset %s not found — snapshot will cover Gold only.", dataset_ref
+        )
+        return []
+
+
 def run(settings: Settings) -> tuple[str, list[str]]:
     """Extract every Gold table to GCS Parquet. Returns (run_id, list of GCS URIs).
 
@@ -91,13 +127,16 @@ def run(settings: Settings) -> tuple[str, list[str]]:
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     uris: list[str] = []
 
-    for table_fqn in table_fqns:
+    curation_fqns = _curation_tables(settings, bq_client)
+
+    for table_fqn in table_fqns + curation_fqns:
         table_name = table_fqn.split(".")[-1]
+        sub = f"{CURATION_DIR}/" if table_fqn in curation_fqns else ""
         # Wildcard suffix is required so BigQuery can shard the export when
         # the table grows past a single-file limit (~1 GB Parquet).
         destination_uri = (
             f"gs://{settings.gcs_bucket}/{BACKUP_PREFIX}/run={run_id}/"
-            f"{table_name}/{table_name}-*.parquet"
+            f"{sub}{table_name}/{table_name}-*.parquet"
         )
         job_config = bigquery.ExtractJobConfig(
             destination_format=bigquery.DestinationFormat.PARQUET,
@@ -128,6 +167,12 @@ def run(settings: Settings) -> tuple[str, list[str]]:
         "dataset": settings.bq_gold_dataset,
         "table_count": len(table_fqns),
         "tables": [fqn.split(".")[-1] for fqn in table_fqns],
+        # Declared explicitly so an operator (and doctor) can tell a snapshot that COVERS
+        # curation from one taken before it did — an absent key means "not covered", which
+        # is a different thing from an empty list ("covered, nothing there").
+        "curation_dataset": settings.bq_research_inputs_dataset,
+        "curation_table_count": len(curation_fqns),
+        "curation_tables": [fqn.split(".")[-1] for fqn in curation_fqns],
         "completed_at": datetime.now(UTC).isoformat(),
     }
     marker_name = f"{BACKUP_PREFIX}/run={run_id}/{SUCCESS_MARKER}"

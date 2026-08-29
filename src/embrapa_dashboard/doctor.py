@@ -853,6 +853,52 @@ def _check_backup_freshness(settings: Settings) -> CheckResult:
         return CheckResult("Gold backup freshness", False, str(exc)[:120])
 
 
+def _check_curation_backup(settings: Settings) -> CheckResult:
+    """Does the newest sealed snapshot COVER the researcher-authored data?
+
+    Gold is derivable — losing it costs a ``dbt build``, because every row traces back to
+    Bronze. ``research_inputs`` is authored: the produto catalog, the agrupamentos
+    registry, the industrialization classifications, the lifecycle log and the editor
+    allowlists. Nothing recomputes it. Until 2026-08-29 the backup introspected the Gold
+    dataset ALONE, so the one irreplaceable dataset in the project was the one with no
+    snapshot, while the reproducible half had a near-daily one.
+
+    FAILS (ok=False) when the newest snapshot predates that coverage: a stale-but-present
+    Gold backup would otherwise read as "backed up" on the freshness line while every
+    curation decision sits unprotected. An absent ``curation_table_count`` key means "taken
+    before coverage existed" — different from ``0``, which means "covered, dataset empty".
+    """
+    try:
+        creds = get_credentials(settings)
+        client = storage.Client(project=settings.gcp_project_id, credentials=creds)
+        runs = _list_backup_runs(client, settings)
+        if not runs:
+            return CheckResult("Curation backup coverage", True, "skipped: no snapshot yet")
+        bucket = client.bucket(settings.gcs_bucket)
+        for ts, prefix in sorted(runs, reverse=True):
+            marker = bucket.blob(f"{prefix}{SUCCESS_MARKER}")
+            if not marker.exists():
+                continue
+            corpo = json.loads(marker.download_as_text())
+            if corpo.get("dataset") not in (None, settings.bq_gold_dataset):
+                continue
+            quando = ts.strftime("%Y-%m-%d %H:%M UTC")
+            n = corpo.get("curation_table_count")
+            if n is None:
+                return CheckResult(
+                    "Curation backup coverage",
+                    False,
+                    f"newest snapshot ({quando}) predates curation coverage — the authored "
+                    "catalog/classifications are NOT in it; run `make backup-gold`",
+                )
+            return CheckResult(
+                "Curation backup coverage", True, f"{n} curation table(s) in {quando} snapshot"
+            )
+        return CheckResult("Curation backup coverage", True, "skipped: no sealed snapshot")
+    except Exception as exc:
+        return CheckResult("Curation backup coverage", True, f"skipped: {str(exc)[:100]}")
+
+
 def _check_source_data_freshness(settings: Settings) -> CheckResult:
     """Is each source's latest REFERENCE PERIOD as recent as its cadence implies?
 
@@ -1239,6 +1285,7 @@ _POSTCHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
     ("bronze", _check_bronze_tables),
     ("serving", _check_serving_marts),
     ("catalog-parity", _check_catalog_resolver_parity),
+    ("curation-backup", _check_curation_backup),
     ("curation-integrity", _check_curation_referential_integrity),
     ("orphans", _check_orphan_lifecycle),
     ("catalog-arrival", _check_catalog_data_arrival),
