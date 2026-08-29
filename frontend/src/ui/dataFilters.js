@@ -567,6 +567,14 @@
       // guessing from an empty array alone.
       muniYearlySeries: (subUfLoaded && Array.isArray(muniCube)) ? muniCube : [],
       subUfActive, subUfLoaded,
+      // The active sub-UF recorte, named. Every UF row above carries a FRACTION of its
+      // state when this is set — the state's own value never appears — so a surface that
+      // prints a UF name beside a number has to say so where the number is. The chip and
+      // the citation state it for the panel; a map popup and a card need it locally, or
+      // the reader takes "Pará · R$ 655 mi" for the Pará. Null when nothing narrows.
+      recorte: (subUfActive && window.subUfChipText)
+        ? window.subUfChipText(summary, mesh || [])
+        : null,
       // The município code set the active sub-UF/município facets resolve to (null when
       // no facet narrows). Exported because a view that lets the researcher FOCUS on one
       // território has to offer only territories the filter actually allows — otherwise

@@ -6,6 +6,10 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
+// The REAL RecorteNote, registered on window exactly as main.jsx loads it: it is a pure
+// four-line component, and stubbing it away would hide the very disclosure these views
+// exist to carry.
+import './RecorteNote.jsx';
 
 function stubGlobals(filtered) {
   window.applyFilters = () => filtered;

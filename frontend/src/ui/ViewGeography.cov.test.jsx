@@ -24,6 +24,10 @@ import { cleanup, fireEvent, render } from '@testing-library/react';
 // rather than stubbed so these tests exercise the REAL selection logic — including
 // the sub-UF facet reset, which is the part that is easy to get wrong.
 import './geoSelect.js';
+// The REAL RecorteNote, registered on window exactly as main.jsx loads it: it is a pure
+// four-line component, and stubbing it away would hide the very disclosure these views
+// exist to carry.
+import './RecorteNote.jsx';
 
 // Captured props from the stubbed chart widgets, so we can assert what each branch fed.
 let choroProps, tileMapProps, heatmapProps, barChartCalls, productsByUfCalls, muniMapProps, regionBarsProps;

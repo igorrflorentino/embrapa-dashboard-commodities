@@ -895,6 +895,11 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
       muniSliceable,
       subUf: subUfText,
     });
+    // Published beside the chip on this path too — see main.jsx. (The two paths derive
+    // hasGeo differently: capability here, loaded UF universe there. Both are the right
+    // answer for their moment, and each ships the one that made ITS chip, so the
+    // citation can never quote a chip while disagreeing about whether it applies.)
+    const geoApplies = hasGeo;
     const qualityChip = window.chipFmt.quality([...flags], QUALITY.length, qualityLabelOf);
     // Guard on flowOptions too (not just hasFlow): a banco could declare provides:['flow']
     // before its FLOW_OPTIONS entry exists — then flowOptions is null and .find would
@@ -914,7 +919,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
     const partnerChip = (hasCountries && countriesReady)
       ? window.chipFmt.partner([...partners], partnerUniverse.length, isoNameOf(partnerUniverse))
       : null;
-    return { products: prodChip, period: periodChip, geo: geoChip, quality: qualityChip, fluxo: fluxoChip, regime: regimeChip, mercado: marketChip, reporter: reporterChip, parceiro: partnerChip };
+    return { products: prodChip, period: periodChip, geo: geoChip, geoApplies, quality: qualityChip, fluxo: fluxoChip, regime: regimeChip, mercado: marketChip, reporter: reporterChip, parceiro: partnerChip };
   };
 
   const applyAndClose = () => {

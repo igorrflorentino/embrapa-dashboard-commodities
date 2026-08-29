@@ -580,6 +580,7 @@ function ViewGeography({ families, conventions, summary, database }) {
   return (
     <>
       <window.UnitFamilyBanner families={families} />
+      <window.RecorteNote recorte={filtered.recorte} />
 
       {filtered.notFilteredByBasket && (
         <div className="card subtle" style={{ marginBottom: 12 }}>
@@ -719,6 +720,7 @@ function ViewGeography({ families, conventions, summary, database }) {
                 filters the whole dashboard to it (click again to clear). */}
             {ufViz === 'map'
               ? <window.BrazilChoropleth data={scaledUFs} valueKey={valueKey} label={valueUnitLabel}
+                                         recorte={filtered.recorte}
                                          onSelect={handleUfEnter} selectedUf={selectedSingleUf}
                                          onBackground={handleMapBackground}
                                          focusUfs={selectedRegion ? ufsOfRegion(selectedRegion) : null} />

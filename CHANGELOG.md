@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.29] - 2026-08-28
+
+Dois fechamentos da varredura da v1.33.28 — a mesma classe no **eixo comércio**, e a
+parte que ficou faltando pela régua que eu mesmo escrevi.
+
+### Corrigido
+
+- **A citação ABNT ignorava o eixo comércio.** A lista de escopo da referência tinha
+  quatro itens: produtos, território, qualidade, faixa de valor. Para um banco de
+  comércio o recorte é definido por **fluxo, regime, mercado, reporter e parceiro**, e
+  nenhum dos cinco entrava. Um painel COMTRADE **Brasil → China** saía citado como
+  `Produtos: Todos (89). Território: Não se aplica.` — ao lado de um permalink com
+  `rp=BRA&pt=CHN`. A prosa contradizia o próprio link, agora por omissão.
+
+  Agora sai `Reporter: Brasil. Parceiro: China.` Segue a regra que a lista já aplicava
+  a qualidade e faixa de valor: declara o que **define ou restringe**, cala sobre o que
+  está em "todos".
+
+  Os cinco resolvedores viviam inline no `FilterTriggerBar`, então só o chip conseguia
+  nomeá-los. Foram extraídos para `scopeChips.js` — o chip e a citação leem o **mesmo**
+  resolvedor, pelo mesmo motivo que o `filterSummary.js` existe.
+
+- **"Território: Não se aplica" era uma afirmação, e ela errava nos dois sentidos.**
+  Num banco sem geografia virava ruído ao lado de um par de países; num banco ainda
+  carregando transformava um estado transitório em fato sobre o banco (o COMEX, que
+  tem geografia, era citado assim durante o carregamento). O chip passa a publicar a
+  própria bandeira de aplicabilidade junto com o texto, e a referência cala quando a
+  dimensão não se aplica — ou ainda não se sabe.
+
+- **O recorte sub-UF agora aparece onde o número está.** A v1.33.28 o levou ao chip, à
+  citação e ao CSV — todos fora do corpo da página. Pela régua registrada ali, isso não
+  bastava: um leitor olhando o mapa lê o mapa. O seam passa a expor o recorte nomeado, e
+  ele aparece em duas superfícies novas — uma nota acima dos cartões territoriais
+  (Visão geral, Geografia, Concentração, num único componente para as três não
+  divergirem) e uma terceira linha no popup do mapa de UF, que é onde o número de **um**
+  estado é lido sozinho.
+
+### Testes
+
+12 casos novos (1025 no total). Validados por injeção: citação voltar a ignorar o
+comércio derruba 3; declarar também o que não restringe, 2; voltar a afirmar território
+sempre, 1; parceiro completo contando como recorte, 1; seam parar de expor o recorte, 1;
+popup parar de exibi-lo, 1.
+
+Três harnesses passaram a importar o módulo real em vez de stub — o resolvedor de
+comércio, o `chipFmt` e o `RecorteNote` —, porque um stub ali deixaria o teste e o
+produto concordando por acidente.
+
+Conferido no navegador contra o BigQuery de produção: COMTRADE Brasil→China cita
+`Reporter: Brasil. Parceiro: China.` sem território fantasma; COMEX com fluxo restrito
+cita `Fluxo: Exportação. Território: Brasil · 27 UFs.`; PEVS com o Marajó ativo mostra a
+nota nas três views e nenhuma sem recorte.
+
+---
+
 ## [1.33.28] - 2026-08-28
 
 Varredura atrás da classe de defeito da v1.33.27 — **um agregado que leva o nome do

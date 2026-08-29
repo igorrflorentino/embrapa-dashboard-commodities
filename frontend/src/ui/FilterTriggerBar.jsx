@@ -30,54 +30,19 @@ function FilterTriggerBar({ summary, onOpen, onExport, live = true, banco = null
   // — it has no backed filter path, so it is hidden rather than shown inert.
   const provides = (banco && banco.provides) || [];
   const has = (c) => provides.includes(c);
-  // Flow chip survives both paths: the apply path carries `summary.fluxo` (a label);
-  // a restored deep-link carries the raw `summary.flow`, resolved here to its label.
-  const flowChip = (() => {
-    if (summary.fluxo) return summary.fluxo;
-    const raw = summary.flow;
-    if (!raw || raw === 'all') return 'Todos os fluxos';
-    const opts = (window.flowOptionsFor && banco && window.flowOptionsFor(banco.id)) || [];
-    return (opts.find((o) => o.value === raw) || {}).label || raw;
-  })();
-  // Regime chip (COMTRADE only): the apply path carries `summary.regime` (a label); a
-  // restored deep-link carries the raw `summary.customs`, resolved here. Gated on the
-  // banco carrying customs_code (customsOptionsFor non-null).
-  const regimeOpts = (window.customsOptionsFor && banco && window.customsOptionsFor(banco.id)) || null;
-  const regimeChip = (() => {
-    if (summary.regime) return summary.regime;
-    const raw = summary.customs;
-    if (!raw || raw === 'all') return 'Todos os regimes';
-    return (regimeOpts || []).find((o) => o.value === raw)?.label || raw;
-  })();
-  // Market chip (COMTRADE only): apply path carries summary.mercado; a restored deep-link
-  // carries the raw summary.market. Gated on the banco carrying market_nature.
-  const marketOpts = (window.marketOptionsFor && banco && window.marketOptionsFor(banco.id)) || null;
-  const marketChip = (() => {
-    if (summary.mercado) return summary.mercado;
-    const raw = summary.market;
-    if (!raw || raw === 'all') return 'Todos os mercados';
-    return (marketOpts || []).find((o) => o.value === raw)?.label || raw;
-  })();
-  // Country chips (COMTRADE only): the apply path carries summary.reporter / summary.parceiro
-  // (labels); a restored deep-link carries the raw summary.reporters / summary.partners,
-  // resolved here via the /api/countries universe (names; falls back to ISO/count if not loaded).
-  const hasCountry = !!(window.hasCountryFilters && banco && window.hasCountryFilters(banco.id));
-  const countryUniverse = hasCountry && window.comtradeCountries ? window.comtradeCountries() : null;
-  const isoNameOf = (list) => (iso) => (list ? (list.find((c) => c.iso === iso) || {}).name : null) || iso;
-  const reporterChip = hasCountry
-    ? summary.reporter ||
-      window.chipFmt.reporter(
-        summary.reporters ?? null,
-        countryUniverse ? countryUniverse.reporters.length : 0,
-        isoNameOf(countryUniverse && countryUniverse.reporters))
-    : null;
-  const partnerChip = hasCountry
-    ? summary.parceiro ||
-      window.chipFmt.partner(
-        summary.partners ?? null,
-        countryUniverse ? countryUniverse.partners.length : 0,
-        isoNameOf(countryUniverse && countryUniverse.partners))
-    : null;
+  // The five trade-axis labels come from the shared resolver (scopeChips.js) — the
+  // ABNT citation states the same recorte from the same rule, so the chip row and the
+  // reference cannot describe one selection two different ways.
+  const trade = window.tradeScopeChips ? window.tradeScopeChips(summary, banco) : {};
+  const flowChip     = trade.flow     && trade.flow.label;
+  const regimeOpts   = !!trade.regime;
+  const regimeChip   = trade.regime   && trade.regime.label;
+  const marketOpts   = !!trade.mercado;
+  const marketChip   = trade.mercado  && trade.mercado.label;
+  const hasCountry   = !!trade.reporter;
+  const reporterChip = trade.reporter && trade.reporter.label;
+  const partnerChip  = trade.parceiro && trade.parceiro.label;
+
   const chips = [
     has('product') && { k: 'Produtos',  v: summary.products },
     { k: 'Período', v: summary.period },
