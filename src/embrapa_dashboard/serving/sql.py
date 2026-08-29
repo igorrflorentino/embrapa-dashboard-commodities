@@ -64,6 +64,27 @@ def _validate_column(column: str, allowed: frozenset[str], kind: str) -> str:
     return column
 
 
+# ── A identidade de um produto ────────────────────────────────────────────────
+# Um produto é identificado por BANCO + TABELA + CÓDIGO, não por banco + código.
+# PEVS e PPM unem DUAS tabelas SIDRA sob um token só (extração t289 × silvicultura t291;
+# rebanho 3939 × produção animal 74), então banco+código não distingue as metades: seriam
+# um agrupamento, uma visibilidade e um nível cobrindo as duas, e a ingestão dirigida pelo
+# catálogo perderia a metade não marcada em silêncio.
+#
+# Nos bancos de UMA tabela (comex, comtrade, pam) a coluna não carrega informação, e o
+# `ifnull` a colapsa na sentinela — a chave nova é equivalente à antiga para eles, o que
+# manteve a migração neutra (234 entradas ativas com qualquer das duas chaves).
+#
+# Estes fragmentos existem para NÃO serem redigitados: eram 16 `partition by` espalhados
+# por 5 módulos, e uma chave que muda em 15 lugares e fica no 16º é a forma exata do
+# defeito que este projeto já teve três vezes. `test_chave_produto.py` varre os call sites.
+SEM_TABELA = "-"
+
+CHAVE_CATALOGO = f"codigo_produto, banco, ifnull(sidra_tabela, '{SEM_TABELA}')"
+CHAVE_CLASSIFICACAO = f"source, code, ifnull(sidra_tabela, '{SEM_TABELA}')"
+CHAVE_CICLO_DE_VIDA = f"element_kind, banco, code, ifnull(sidra_tabela, '{SEM_TABELA}')"
+
+
 def _year_bounds(
     conditions: list[str],
     params: list[bigquery.ScalarQueryParameter],

@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.39.0] - 2026-08-29
+
+### Alterado
+
+- **A identidade de um produto na curadoria passou a ser `(banco, tabela, código)`**, nos
+  três registros que a assumiam: catálogo, gate de visibilidade e nível de
+  industrialização. PEVS e PPM unem duas tabelas SIDRA sob um token de banco só, e com a
+  chave antiga um código presente nas duas metades seria um produto só — um agrupamento,
+  uma visibilidade e um nível cobrindo ambas, a tag da tela mostrando uma delas
+  arbitrariamente, e a ingestão dirigida pelo catálogo perdendo a metade não marcada em
+  silêncio.
+- **A chave vive em UM lugar por linguagem**: `serving.sql.CHAVE_{CATALOGO,CLASSIFICACAO,
+  CICLO_DE_VIDA}` no Python e o macro `chave_produto` no dbt. Eram **16** `partition by`
+  redigitados em 5 módulos mais 3 modelos — e uma chave que muda em 15 lugares e fica no
+  16º é a forma exata do defeito que este projeto teve três vezes em um único dia.
+- **A tag da tabela virou obrigatória** em entrada nova nos dois bancos multi-tabela. Sem
+  ela a entrada não cai em nenhuma das metades: cai na sentinela, uma terceira identidade
+  que não corresponde a dado nenhum. Bancos de uma tabela (comex, comtrade, pam) não foram
+  tocados — para eles a coluna não carrega informação e o `ifnull` a colapsa.
+
+### Migração
+
+`scripts/migrate_catalog_key_add_table.py` (ensaio por padrão). A armadilha, medida antes:
+o log é append-only e as linhas anteriores à coluna a têm NULL, então promover a coluna
+para dentro da chave transformaria **supersessão em coexistência** — **258** entradas ativas
+onde havia **234**, 24 fantasmas.
+
+1. `UPDATE` em **51** linhas históricas, preenchendo com o valor que a própria entrada já
+   carrega — completa uma coluna que era NULL *porque não existia quando a linha foi
+   escrita*; nenhuma decisão de pesquisador mudou.
+2. Coluna adicionada aos logs de nível e ciclo de vida **e às constantes de esquema** —
+   senão uma instalação nova criaria a tabela sem ela. Furo que um teste existente pegou.
+3. Depois: **234 com qualquer das duas chaves**. Verificado em produção após o build:
+   catálogo 234 · `dim_produto_catalog` 234 · `gold_produto_agrupamento` 234 ·
+   classificações 308 · `embrapa doctor` verde.
+
+Registrado em `docs/migration_history.md`.
+
+### Adicionado
+
+- `tests/test_chave_produto.py`: varre os **call sites** — nenhum pode redigitar a chave
+  antiga, todo `partition by` de log de produto deriva da constante (Python) ou do macro
+  (dbt), e os dois lados usam a **mesma** sentinela. Divergir criaria dois produtos onde há
+  um, e nada mais no sistema notaria. O log de agrupamentos é excluído por nome: um grupo
+  não é um produto e não tem tabela SIDRA.
+
+---
+
 ## [1.38.0] - 2026-08-29
 
 ### Adicionado

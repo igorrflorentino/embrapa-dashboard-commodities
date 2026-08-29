@@ -58,10 +58,13 @@ def test_catalog_codes_returned_when_flag_on(settings_factory):
     fake = _FakeBQ(rows=_rows("3405", "3450"))
     out = catalog_resolver.resolve_product_codes(settings, "pevs", env_fallback=ENV, bq_client=fake)
     assert out == ["3405", "3450"]
-    # PEVS (no sidra_tabela) must not reference that column — robust before the
-    # column exists on the log table.
-    sql = fake.calls[0][0]
-    assert "sidra_tabela" not in sql
+    sql, _job_config = fake.calls[0]
+    # A coluna FAZ parte da chave desde que a identidade virou (banco, tabela, código), e
+    # o esquema do log a declara — então referenciá-la é correto e seguro. A asserção
+    # anterior ("not in sql") protegia contra uma instalação onde a coluna não existisse;
+    # essa garantia migrou para o ESQUEMA, e foi este teste que expôs o furo quando a
+    # coluna foi adicionada às tabelas vivas mas não às constantes de criação.
+    assert "ifnull(sidra_tabela" in sql
 
 
 class _FakeBQNoIngestaoColumn:

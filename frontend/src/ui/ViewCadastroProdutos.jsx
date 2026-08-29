@@ -48,17 +48,17 @@ const _CC_BANCOS = [
 const _CC_BANCO_LABEL = Object.fromEntries(_CC_BANCOS.map((b) => [b.v, b.label]));
 // Dois bancos guardam DUAS tabelas SIDRA sob um mesmo token, e a entrada marca qual —
 // é por essa marca que a ingestão dirigida pelo catálogo roteia. Vazio/NA nos demais.
-// `obrigatorio` distingue os dois casos: as tabelas do PPM não compartilham nenhum código
-// e não há padrão defensável, enquanto no PEVS a metade de extração é o que "um produto
-// PEVS" significou por toda a história (e é ~4× a outra), então uma entrada sem marca
-// resolve como extração em vez de deixar de ser ingerida.
+// A marca é OBRIGATÓRIA nos dois desde que a identidade de um produto passou a ser
+// (banco, tabela, código): sem ela a entrada não cai em nenhuma das duas metades, cai numa
+// TERCEIRA identidade que não corresponde a dado nenhum. Era opcional no PEVS enquanto a
+// chave a ignorava.
 const _CC_SIDRA_TABELAS = {
   ppm: {
     campo: 'Tabela PPM', obrigatorio: true, vazio: 'Escolha rebanho ou produção…',
     opcoes: [{ v: '3939', label: 'Rebanho (efetivo)' }, { v: '74', label: 'Produção animal' }],
   },
   pevs: {
-    campo: 'Metade do PEVS', obrigatorio: false, vazio: 'Extração vegetal (padrão)',
+    campo: 'Metade do PEVS', obrigatorio: true, vazio: 'Escolha extração ou silvicultura…',
     opcoes: [{ v: '289', label: 'Extração vegetal' }, { v: '291', label: 'Silvicultura' }],
   },
 };

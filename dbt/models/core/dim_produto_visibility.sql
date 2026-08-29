@@ -38,7 +38,7 @@ with current_catalog as (
         -- unreachable for human edits, and the unique_combination(source, code) test on this
         -- model is the backstop. This ORDER BY is replicated across the serving readers.
         row_number() over (
-            partition by codigo_produto, banco
+            partition by {{ chave_produto() }}
             order by edited_at desc, change_id desc
         ) as _rn
     from {{ source('research_inputs', 'produto_catalog_log') }}

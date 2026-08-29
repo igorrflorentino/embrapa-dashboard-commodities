@@ -348,7 +348,7 @@ def _is_active_entry(bq: bigquery.Client, table_fqn: str, codigo_produto: str, b
     sql = f"""
         select active from (
           select active, row_number() over (
-            partition by codigo_produto, banco order by edited_at desc, change_id desc
+            partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
           ) as _rn
           from `{table_fqn}`
           where codigo_produto = @codigo and banco = @banco
@@ -379,15 +379,18 @@ def _validate_sidra_tabela(
     * ``ppm`` — rebanho (3939) / produção animal (74). REQUIRED on a new entry: the two
       tables share no codes and there is no defensible default.
     * ``pevs`` — extração vegetal (289) / silvicultura (291), since the silviculture half
-      was ingested on 2026-08-29. OPTIONAL: every pevs entry predates the column, and the
-      extraction half is both the historical meaning of an untagged entry and ~4× the
-      other, so ``catalog_resolver`` reads NULL as extraction rather than dropping it.
-      Requiring it here would reject every existing client (the editor sends the field for
-      ppm only) and turn a benign legacy NULL into a 400.
+      was ingested on 2026-08-29.
 
-    ``require_for_ppm`` is True for a NEW ppm entry and False for an UPDATE (the caller
-    preserves the stored tag, or leaves a pre-column entry untagged). Fail loud (400,
-    pt-BR)."""
+    A tag é OBRIGATÓRIA nos dois desde que a identidade de um produto passou a ser
+    ``(banco, tabela, código)``: sem ela a entrada não cai em nenhuma das duas metades, cai
+    numa TERCEIRA identidade (a sentinela ``sql.SEM_TABELA``) que não corresponde a dado
+    nenhum. Era opcional no pevs enquanto a chave a ignorava; virou obrigatória junto com a
+    chave, e o histórico foi completado na mesma migração
+    (``scripts/migrate_catalog_key_add_table.py``).
+
+    ``require_for_ppm`` — mantido o nome por compatibilidade de chamada — é True para uma
+    entrada NOVA e False para um UPDATE, onde o chamador preserva a tag guardada. Fail loud
+    (400, pt-BR)."""
     valid_por_banco = {
         "ppm": {cfg.ppm_herd_table_id, cfg.ppm_animal_table_id},
         "pevs": {cfg.ibge_table_id, cfg.silvicultura_table_id},
@@ -401,12 +404,13 @@ def _validate_sidra_tabela(
             )
         return
     if not sidra_tabela:
-        if banco == "ppm" and require_for_ppm:
+        if require_for_ppm:
             raise ValueError(
-                "sidra_tabela é obrigatória para o banco 'ppm' — informe "
-                f"{sorted(valid)} (rebanho / produção animal)."
+                f"sidra_tabela é obrigatória para o banco {banco!r} — informe "
+                f"{sorted(valid)}. Ela faz parte da identidade do produto: sem ela a "
+                "entrada não pertence a nenhuma das duas tabelas do banco."
             )
-        return  # pevs, or an update of an entry that predates the column — leave as-is
+        return  # UPDATE — o chamador preserva a tag já guardada
     if sidra_tabela not in valid:
         raise ValueError(
             f"sidra_tabela {sidra_tabela!r} inválida para o banco {banco!r} — "
@@ -424,7 +428,7 @@ def _current_sidra_tabela(
     sql = f"""
         select sidra_tabela from (
           select sidra_tabela, row_number() over (
-            partition by codigo_produto, banco order by edited_at desc, change_id desc
+            partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
           ) as _rn
           from `{table_fqn}`
           where codigo_produto = @codigo and banco = @banco
@@ -470,7 +474,7 @@ def _current_descricao(
     sql = f"""
         select descricao_produto from (
           select descricao_produto, row_number() over (
-            partition by codigo_produto, banco order by edited_at desc, change_id desc
+            partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
           ) as _rn
           from `{table_fqn}`
           where codigo_produto = @codigo and banco = @banco
@@ -507,7 +511,7 @@ def _current_lifecycle(
     sql = f"""
         select ciclo_de_vida, ingestao, visibilidade from (
           select ciclo_de_vida, ingestao, visibilidade, row_number() over (
-            partition by codigo_produto, banco order by edited_at desc, change_id desc
+            partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
           ) as _rn
           from `{table_fqn}`
           where codigo_produto = @codigo and banco = @banco

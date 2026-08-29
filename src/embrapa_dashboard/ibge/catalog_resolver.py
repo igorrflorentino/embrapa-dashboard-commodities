@@ -35,6 +35,7 @@ from google.cloud import bigquery
 from embrapa_dashboard import observability
 from embrapa_dashboard.config import Settings
 from embrapa_dashboard.gcp.clients import resolve_bq_client
+from embrapa_dashboard.serving import sql as sqlbuild
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +188,7 @@ def _query_catalog_codes(
         return f"""
             select codigo_produto from (
               select codigo_produto, active{ingestao_col}{extra_cols}, row_number() over (
-                partition by codigo_produto, banco order by edited_at desc, change_id desc
+                partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
               ) as _rn
               from `{table}`
               where banco = @banco

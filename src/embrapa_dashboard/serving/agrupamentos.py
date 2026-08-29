@@ -116,7 +116,7 @@ def _active_member_rows(bq: bigquery.Client, catalog_fqn: str, group_id: str) ->
             select {cols}
             from (
               select *, row_number() over (
-                partition by codigo_produto, banco order by edited_at desc, change_id desc
+                partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
               ) as _rn
               from `{catalog_fqn}`
             ) where _rn = 1 and active and agrupamento_id = @group_id

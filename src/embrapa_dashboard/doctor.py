@@ -380,7 +380,7 @@ def _check_orphan_lifecycle(settings: Settings) -> CheckResult:
             with tombstoned as (
               select codigo_produto, banco from (
                 select codigo_produto, banco, active, row_number() over (
-                  partition by codigo_produto, banco order by edited_at desc, change_id desc
+                  partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
                 ) as _rn from `{catalog_log}`
               ) where _rn = 1 and not active
             ),
@@ -394,7 +394,7 @@ def _check_orphan_lifecycle(settings: Settings) -> CheckResult:
         marked_sql = f"""
             select count(*) as n from (
               select status, row_number() over (
-                partition by element_kind, banco, code order by edited_at desc, change_id desc
+                partition by {sqlbuild.CHAVE_CICLO_DE_VIDA} order by edited_at desc, change_id desc
               ) as _rn from `{lifecycle_log}` where element_kind = 'commodity'
             ) where _rn = 1 and status in ('descontinuado', 'purged')
         """
@@ -1152,7 +1152,7 @@ def _check_catalog_data_arrival(settings: Settings) -> CheckResult:
             with ativos as (
               select codigo_produto, banco from (
                 select codigo_produto, banco, active, row_number() over (
-                  partition by codigo_produto, banco order by edited_at desc, change_id desc
+                  partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
                 ) as _rn from `{catalog_log}`
               ) where _rn = 1 and active
             ),
@@ -1229,7 +1229,7 @@ def _check_curation_referential_integrity(settings: Settings) -> CheckResult:
         grupo_sql = f"""
             select codigo_produto, banco, agrupamento_id from (
               select codigo_produto, banco, agrupamento_id, active, row_number() over (
-                partition by codigo_produto, banco order by edited_at desc, change_id desc
+                partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
               ) as _rn from `{catalog_log}`
             ) where _rn = 1 and active
               and agrupamento_id is not null and agrupamento_id != ''
@@ -1243,7 +1243,7 @@ def _check_curation_referential_integrity(settings: Settings) -> CheckResult:
         nivel_sql = f"""
             select source, code, industrialization_level from (
               select source, code, industrialization_level, row_number() over (
-                partition by source, code order by edited_at desc, change_id desc
+                partition by {sqlbuild.CHAVE_CLASSIFICACAO} order by edited_at desc, change_id desc
               ) as _rn from `{nivel_log}`
             ) where _rn = 1 and industrialization_level != ''
         """

@@ -51,6 +51,11 @@ CATALOG_LIFECYCLE_LOG_SCHEMA = [
     bigquery.SchemaField("edited_by", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("edited_at", "TIMESTAMP", mode="REQUIRED"),
     bigquery.SchemaField("change_id", "STRING", mode="REQUIRED"),
+    # Parte da IDENTIDADE do produto desde que a chave virou (banco, tabela, código).
+    # NULLABLE: os bancos de uma tabela só não a preenchem, e o `ifnull` do
+    # `sql.CHAVE_*` a colapsa na sentinela. Sem ela aqui, uma instalação NOVA criaria
+    # o log sem a coluna e o particionamento quebraria — furo que um teste pegou.
+    bigquery.SchemaField("sidra_tabela", "STRING", mode="NULLABLE"),
 ]
 
 

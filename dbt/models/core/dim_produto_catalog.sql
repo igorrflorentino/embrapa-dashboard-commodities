@@ -45,7 +45,11 @@ with log as (
         active,
         edited_by,
         edited_at,
-        change_id
+        change_id,
+        -- Parte da identidade do produto (banco + TABELA + código): PEVS e PPM unem duas
+        -- tabelas SIDRA sob um token só. Precisa chegar até aqui porque o latest-wins
+        -- particiona por ela — ver o macro chave_produto.
+        sidra_tabela
     from {{ source('research_inputs', 'produto_catalog_log') }}
 
 ),
@@ -63,7 +67,7 @@ current_catalog as (
         -- dim_produto_visibility) is the backstop that turns any real multi-active row into a
         -- red build. This ORDER BY is replicated across the serving readers — change together.
         row_number() over (
-            partition by codigo_produto, banco
+            partition by {{ chave_produto() }}
             order by edited_at desc, change_id desc
         ) as _rn
     from log

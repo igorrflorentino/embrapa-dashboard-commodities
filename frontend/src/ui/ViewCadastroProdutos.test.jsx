@@ -250,12 +250,12 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(postBody.sidra_tabela).toBe('3939');
   });
 
-  it('PEVS offers the two SIDRA halves, and the tag stays OPTIONAL there', async () => {
-    // PEVS spans t289 (extração vegetal) + t291 (silvicultura) since 2026-08-29, so it
-    // gets the same sub-select PPM has. It differs in ONE way that matters: the tag is
-    // optional, because every pevs entry predates the column and the resolver reads an
-    // untagged one as the extraction half. Requiring it here would block registering a
-    // PEVS produto for a reason no researcher could act on.
+  it('PEVS offers the two SIDRA halves, and the tag is REQUIRED there', async () => {
+    // PEVS spans t289 (extração vegetal) + t291 (silvicultura), so it gets the same
+    // sub-select PPM has — e com a mesma exigência. A marca virou obrigatória quando a
+    // identidade de um produto passou a ser (banco, tabela, código): sem ela a entrada não
+    // cai em nenhuma das duas metades, cai numa TERCEIRA identidade que não corresponde a
+    // dado nenhum. Era opcional enquanto a chave a ignorava.
     const { container, getByText } = render(<ViewCadastroProdutos />);
     await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
     const codeInput = await openAddForm(container, getByText);
@@ -267,9 +267,10 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect([...meia.options].map((o) => o.value)).toEqual(['', '289', '291']);
     fireEvent.change(codeInput, { target: { value: '3457' } });
     fireEvent.change(container.querySelector('.cc-add-card .cc-group-select'), { target: { value: 'castanha' } });
-    // No half chosen and Salvar is ALREADY enabled — the difference from PPM.
-    await waitFor(() => expect(getByText('Salvar produto').disabled).toBe(false));
+    // Sem metade escolhida, Salvar fica BLOQUEADO — igual ao PPM.
+    expect(getByText('Salvar produto').disabled).toBe(true);
     fireEvent.change(meia, { target: { value: '291' } });
+    await waitFor(() => expect(getByText('Salvar produto').disabled).toBe(false));
     fireEvent.click(getByText('Salvar produto'));
     await waitFor(() => expect(postBody).toBeTruthy());
     expect(postBody.banco).toBe('pevs');
