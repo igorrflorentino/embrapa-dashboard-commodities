@@ -273,6 +273,45 @@ def _country_reader_kwargs(summary: dict | None) -> dict:
     return kw
 
 
+# A basket that no row can match — an EMPTY basket reads as "no product filter" downstream
+# and would quietly serve the whole banco, the opposite of what was asked.
+_NO_CODE_SENTINEL = "__nenhum_codigo_neste_nivel__"
+
+
+def _apply_levels(
+    banco_id: str,
+    summary: dict | None,
+    codes: tuple[str, ...],
+    *,
+    products: pd.DataFrame | None = None,
+) -> tuple[str, ...]:
+    """Narrow a basket by the selected nível de industrialização.
+
+    The level is a CURATED per-code axis living in its own SCD2 dim, not a column on any
+    fact, so there is nothing to push down: it has to be resolved to codes here.
+    Intersecting with the basket is what lets the two narrowings COMPOSE instead of one
+    silently overriding the other.
+
+    A helper because every basket-honouring reader needs it and only ``snapshot`` had it:
+    shipped on 2026-08-29 threaded through that one path, so the map, the município cube,
+    both product rankings and the three trade readers ignored the filter entirely — the
+    snapshot showed 1,3 bi for commodity_pura while the map beside it showed the whole
+    1.063,5 bi. Same defect as the ``origem`` axis one day earlier, one axis over.
+
+    ``products`` is the banco's product universe; callers that already fetched it pass it
+    in (the reader is cached, so the others simply fetch it).
+    """
+    niveis = _niveis_from_summary(summary)
+    if not niveis:
+        return codes
+    if products is None:
+        products = gateway.fetch_products(banco_id)
+    universo = {str(c) for c in (products["code"] if products is not None else [])}
+    do_nivel = _codes_for_levels(banco_id, niveis, universo)
+    codes = tuple(sorted(set(codes) & do_nivel)) if codes else tuple(sorted(do_nivel))
+    return codes or (_NO_CODE_SENTINEL,)
+
+
 def snapshot(banco_id: str, conv: dict, summary: dict | None = None) -> dict:
     """Return the per-banco serving snapshot for the active conventions + filters.
 
@@ -313,20 +352,7 @@ def snapshot(banco_id: str, conv: dict, summary: dict | None = None) -> dict:
     products = gateway.fetch_products(banco_id)
     quality = gateway.fetch_quality_by_source(source=banco_id)
 
-    # Nível de industrialização — a curated per-code axis, resolved to CODES here rather
-    # than pushed to the marts: the level lives in its own SCD2 dim, not on the fact, so
-    # there is nothing to filter on downstream. Intersecting with the basket is what lets
-    # the two narrowings compose instead of one silently overriding the other.
-    niveis = _niveis_from_summary(summary)
-    if niveis:
-        universo = {str(c) for c in (products["code"] if products is not None else [])}
-        do_nivel = _codes_for_levels(banco_id, niveis, universo)
-        codes = tuple(sorted(set(codes) & do_nivel)) if codes else tuple(sorted(do_nivel))
-        # Every selected level resolved to nothing: an EMPTY basket would read as "no
-        # product filter" downstream and quietly serve the whole banco — the opposite of
-        # what was asked. A sentinel that matches no row keeps the answer honest (empty).
-        if not codes:
-            codes = ("__nenhum_codigo_neste_nivel__",)
+    codes = _apply_levels(banco_id, summary, codes, products=products)
 
     if banco.id in _TRADE:
         # value_col is the currency×correction column the conventions resolve to —
@@ -640,7 +666,7 @@ def geo_yearly(banco_id: str, conv: dict, summary: dict | None = None) -> pd.Dat
     if banco_id not in _LIVE_SOURCES or not banco or "geo" not in banco.provides:
         return None
     value_col, _ = effective_value_column(banco, conv)
-    codes = _basket(summary)
+    codes = _apply_levels(banco_id, summary, _basket(summary))
     # Flow (export/import) is server-side here too — without it the basket cube would
     # sum every flow while the snapshot honours the selected direction (a wrong,
     # internally-inconsistent VALOR TOTAL / map for a COMEX basket). None = every flow.
@@ -704,7 +730,7 @@ def geo_municipio_yearly(
     if banco_id not in _LIVE_SOURCES or not banco or "geo" not in banco.provides:
         return None
     value_col, _ = effective_value_column(banco, conv)
-    codes = _basket(summary)
+    codes = _apply_levels(banco_id, summary, _basket(summary))
     # The client resolves the active sub-UF/município selection to its município code
     # set (via the cached mesh) and sends it as cityCodes, so a narrowed selection
     # scans only those cities — never the whole ~5570-município grid.
@@ -755,7 +781,7 @@ def products_by_municipio(
         return gateway.fetch_products_by_municipio(
             year_start=y0,
             year_end=y1,
-            product_codes=_basket(summary),
+            product_codes=_apply_levels(banco_id, summary, _basket(summary)),
             city_codes=city_codes,
             value_column=value_col,
             source=banco_id,
@@ -837,7 +863,7 @@ def flow_data(banco_id: str, summary: dict | None = None) -> dict | None:
     if banco_id not in _LIVE_SOURCES or "flow" not in banco.provides:
         return None
     y0, y1 = _years_from_summary(summary)
-    codes = _basket(summary)
+    codes = _apply_levels(banco_id, summary, _basket(summary))
     if banco_id == "mdic_comex":
         # Exports only: SG_UF_NCM is the UF *of the product*, so on import rows
         # the real direction is country→UF — summing them into the directed
@@ -885,7 +911,7 @@ def partner_data(
     if banco_id not in _LIVE_SOURCES or "partner" not in banco.provides:
         return None
     y0, y1 = _years_from_summary(summary)
-    codes = _basket(summary)
+    codes = _apply_levels(banco_id, summary, _basket(summary))
     # The active flow / regime (customs) / tipo-de-mercado filters must reach the ranking:
     # the server-side ORDER BY sums the metric over the returned rows, so an unfiltered
     # ranking under an "Importação" (or a regime/market) selection ranks by the wrong,
@@ -931,7 +957,7 @@ def products_by_uf(
         return None
     value_col, _ = effective_value_column(banco, conv or {})
     y0, y1 = _years_from_summary(summary)
-    codes = _basket(summary)
+    codes = _apply_levels(banco_id, summary, _basket(summary))
     if banco_id == "mdic_comex":
         return gateway.fetch_products_by_uf(
             table_key="serving_comex_annual",
@@ -970,7 +996,7 @@ def monthly_data(banco_id: str, summary: dict | None = None) -> pd.DataFrame | N
     if banco_id not in _LIVE_SOURCES or "monthly" not in banco.provides:
         return None
     y0, y1 = _years_from_summary(summary)
-    codes = _basket(summary)
+    codes = _apply_levels(banco_id, summary, _basket(summary))
     if banco_id == "mdic_comex":
         # The active flow filter (export/import) is server-side on the seasonality mart
         # (which keeps ``flow`` in its grain) and must narrow the seasonal profile — COMEX

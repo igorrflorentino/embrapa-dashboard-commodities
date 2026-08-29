@@ -115,15 +115,31 @@ window.snapshotFor = function snapshotFor() {
 // snapshot's byte-for-byte. Returns null until loaded (applyFilters falls back to the
 // all-products ufYearly) or for a banco with no geo grain (COMTRADE).
 
-// The PEVS half (extrativa | silvicultura), read from the store exactly as `flow` is.
-// It must reach BOTH the query string and the CACHE KEY: sending it while keying without
-// it serves the previous half's answer from memory, which looks identical to not sending
-// it at all. Introduced 2026-08-29 and threaded only into the snapshot, so the map, the
-// município cube and both product rankings answered with the two halves summed while the
-// chip announced one — they differ ~6x in value. 'all'/absent → omitted (sum both).
-function activeOrigemParam() {
-  const o = window.dataStore && window.dataStore.origem ? window.dataStore.origem() : 'all';
-  return o && o !== 'all' ? o : undefined;
+// The optional filter axes a data producer must forward, read from the store exactly as
+// `flow` is: `origem` (which half of PEVS) and `niveis` (nível de industrialização).
+//
+// Each must reach BOTH the query string and the CACHE KEY. Sending an axis while keying
+// without it serves the PREVIOUS selection's answer from memory, which looks identical to
+// never sending it — two distinct bugs with one symptom.
+//
+// ONE function for every axis, not one per axis, because the failure already repeated:
+// both shipped wired into the snapshot alone, a day apart, and every other producer
+// answered over a dataset the user had not selected (the halves differ ~6x in value; the
+// snapshot showed 1,3 bi for commodity_pura beside a map showing the whole 1.063,5 bi).
+// The next axis is added here and the producers inherit it.
+function activeAxisParams() {
+  const store = window.dataStore || {};
+  const origem = store.origem ? store.origem() : 'all';
+  const niveis = store.niveis ? store.niveis() : [];
+  return {
+    origem: origem && origem !== 'all' ? origem : undefined,
+    niveis: niveis && niveis.length ? niveis.join(',') : undefined,
+  };
+}
+
+/** Stable cache-key fragment for the axes above — '*' where an axis is inactive. */
+function axisKey(ax) {
+  return `${ax.origem ?? '*'}|${ax.niveis ?? '*'}`;
 }
 
 window.geoYearly = function geoYearly(bancoId, summary) {
@@ -139,8 +155,8 @@ window.geoYearly = function geoYearly(bancoId, summary) {
   const flow = window.dataStore && window.dataStore.flow ? window.dataStore.flow() : 'all';
   const flowParam = flow && flow !== 'all' ? flow : undefined;
   const codes = filterCodes(summary); // undefined = all products; comma list otherwise
-  const origem = activeOrigemParam();
-  const key = `geoYearly:${bancoId}:${conv.currency}|${conv.correction}|${flow}|${origem ?? '*'}:${codes ?? '*'}`;
+  const ax = activeAxisParams();
+  const key = `geoYearly:${bancoId}:${conv.currency}|${conv.correction}|${flow}|${axisKey(ax)}:${codes ?? '*'}`;
   ensure(
     key,
     () => `${API}/geo-yearly?${qs({
@@ -149,7 +165,7 @@ window.geoYearly = function geoYearly(bancoId, summary) {
       currency: conv.currency,
       correction: conv.correction,
       flow: flowParam,
-      origem,
+      ...ax,
     })}`,
   );
   const data = get(key);
@@ -217,8 +233,8 @@ window.municipioYearly = function municipioYearly(bancoId, summary, cityCodes, y
   // URL → no length limit), so distinct selections never collide.
   const y0 = years && years[0] != null ? years[0] : undefined;
   const y1 = years && years[1] != null ? years[1] : undefined;
-  const origem = activeOrigemParam();
-  const key = `municipioYearly:${bancoId}:${conv.currency}|${conv.correction}|${origem ?? '*'}:${codes ?? '*'}:${y0 ?? '*'}-${y1 ?? '*'}:${cityCodes.join(',')}`;
+  const ax = activeAxisParams();
+  const key = `municipioYearly:${bancoId}:${conv.currency}|${conv.correction}|${axisKey(ax)}:${codes ?? '*'}:${y0 ?? '*'}-${y1 ?? '*'}:${cityCodes.join(',')}`;
   ensure(key, () => [
     `${API}/municipio-yearly?${qs({
       banco: bancoId,
@@ -227,7 +243,7 @@ window.municipioYearly = function municipioYearly(bancoId, summary, cityCodes, y
       correction: conv.correction,
       y0,
       y1,
-      origem,
+      ...ax,
     })}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cityCodes }) },
   ]);
@@ -461,9 +477,9 @@ window.productsByUf = function productsByUf(bancoId, summary, conv) {
   const y1 = filterYear(summary && summary.endDate);
   const currency = conv && conv.currency;
   const correction = conv && conv.correction;
-  const origem = activeOrigemParam();
-  const key = `pbu:${bancoId}:${filterSig(summary)}:${currency || ''}:${correction || ''}:${origem ?? '*'}`;
-  ensure(key, () => `${API}/products-by-uf?${qs({ banco: bancoId, codes, states, y0, y1, currency, correction, origem })}`);
+  const ax = activeAxisParams();
+  const key = `pbu:${bancoId}:${filterSig(summary)}:${currency || ''}:${correction || ''}:${axisKey(ax)}`;
+  ensure(key, () => `${API}/products-by-uf?${qs({ banco: bancoId, codes, states, y0, y1, currency, correction, ...ax })}`);
   return get(key) || { products: [], loadError: errorOf(key) };
 };
 // Per-product breakdown WITHIN a município selection — the território profile's
@@ -483,10 +499,10 @@ window.productsByMunicipio = function productsByMunicipio(bancoId, summary, conv
   const y1 = filterYear(summary && summary.endDate);
   const currency = conv && conv.currency;
   const correction = conv && conv.correction;
-  const origem = activeOrigemParam();
-  const key = `pbm:${bancoId}:${codes ?? '*'}:${y0 ?? '*'}-${y1 ?? '*'}:${currency || ''}|${correction || ''}|${origem ?? '*'}:${cityCodes.join(',')}`;
+  const ax = activeAxisParams();
+  const key = `pbm:${bancoId}:${codes ?? '*'}:${y0 ?? '*'}-${y1 ?? '*'}:${currency || ''}|${correction || ''}|${axisKey(ax)}:${cityCodes.join(',')}`;
   ensure(key, () => [
-    `${API}/products-by-municipio?${qs({ banco: bancoId, codes, currency, correction, y0, y1, origem })}`,
+    `${API}/products-by-municipio?${qs({ banco: bancoId, codes, currency, correction, y0, y1, ...ax })}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cityCodes }) },
   ]);
   return get(key) || { products: [], loadError: errorOf(key) };

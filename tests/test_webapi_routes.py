@@ -2178,3 +2178,66 @@ def test_product_uf_route_rejects_an_unknown_origem(monkeypatch):
     resp = client.get("/api/product-uf?banco=ibge_pevs&code=3457&origem=plantada")
     assert resp.status_code == 400
     assert "origem" in resp.get_json()["error"]
+
+
+@pytest.mark.parametrize("seam_fn,serializer,path,payload", _ORIGEM_ROUTES)
+def test_route_threads_niveis_into_the_summary(monkeypatch, seam_fn, serializer, path, payload):
+    """The SECOND axis, shipped a day after the first with the same defect: wired into
+    /snapshot and nowhere else, so these readers served the whole banco under a level's
+    label. Both axes now ride through one helper — this asserts the ride, per route."""
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+    captured = {}
+
+    def fake(*args, **kwargs):
+        todos = [a for a in args if isinstance(a, dict)] + [
+            v for v in kwargs.values() if isinstance(v, dict)
+        ]
+        captured["niveis"] = next(
+            (d.get("niveis") for d in todos if isinstance(d, dict) and "niveis" in d), None
+        )
+        return None
+
+    monkeypatch.setattr(seam, seam_fn, fake)
+    monkeypatch.setattr(serializers, serializer, lambda *a, **k: payload)
+    sep = "&" if "?" in path else "?"
+    query = f"{path}{sep}niveis=commodity_pura,manufaturado_industrial"
+    body = {"cityCodes": ["3501608"]}
+    resp = client.post(query, json=body) if "municipio" in path else client.get(query)
+    assert resp.status_code == 200
+    assert captured["niveis"] == ["commodity_pura", "manufaturado_industrial"]
+
+
+def test_route_rejects_an_unknown_nivel(monkeypatch):
+    """A level outside the declared scale is a 400 — never the whole banco silently."""
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+    monkeypatch.setattr(seam, "geo_yearly", lambda *a, **k: None)
+    monkeypatch.setattr(serializers, "serialize_geo_yearly", lambda *a, **k: {"ufYearly": []})
+    resp = client.get("/api/geo-yearly?banco=ibge_pevs&niveis=commodity_purra")
+    assert resp.status_code == 400
+    assert "commodity_purra" in resp.get_json()["error"]
+
+
+def test_both_axes_compose_in_one_request(monkeypatch):
+    """They narrow different things (a column predicate and a code list), so one must not
+    replace the other — the composition is the whole point of folding them together."""
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+    captured = {}
+    monkeypatch.setattr(
+        seam, "geo_yearly", lambda b, c, summary=None: captured.update(s=summary) or None
+    )
+    monkeypatch.setattr(serializers, "serialize_geo_yearly", lambda *a, **k: {"ufYearly": []})
+    resp = client.get(
+        "/api/geo-yearly?banco=ibge_pevs&origem=silvicultura&niveis=commodity_pura&codes=3457"
+    )
+    assert resp.status_code == 200
+    assert captured["s"] == {
+        "basket": ["3457"],
+        "origem": "silvicultura",
+        "niveis": ["commodity_pura"],
+    }
