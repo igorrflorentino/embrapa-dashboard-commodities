@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -524,6 +525,7 @@ def test_run_all_executes_every_probe(settings: Settings) -> None:
         "Bronze tables",
         "Serving marts",
         "Catalog↔env product codes",
+        "Curation backup coverage",
         "Curation referential integrity",
         "Catalog orphan lifecycle",
         "Catalog → Gold arrival",
@@ -1087,5 +1089,143 @@ def test_curation_integrity_error_degrades_to_skipped(monkeypatch, settings: Set
     monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", _boom)
 
     r = doctor._check_curation_referential_integrity(settings)
+
+    assert r.ok is True and "skipped" in r.detail
+
+
+# ── curation backup coverage ──────────────────────────────────────────────────
+def _backup_manifest(monkeypatch, settings: Settings, corpo: dict | None, *, runs=True):
+    """One sealed run whose _SUCCESS body is `corpo`. `runs=False` = no snapshot at all."""
+    from datetime import UTC, datetime
+
+    marker = MagicMock()
+    marker.exists.return_value = True
+    marker.download_as_text.return_value = json.dumps(corpo or {})
+    client = MagicMock()
+    client.bucket.return_value.blob.return_value = marker
+    monkeypatch.setattr(doctor, "get_credentials", lambda s: None)
+    monkeypatch.setattr(doctor.storage, "Client", lambda **k: client)
+    monkeypatch.setattr(
+        doctor,
+        "_list_backup_runs",
+        lambda c, s: [(datetime(2026, 8, 29, tzinfo=UTC), "backups/run=X/")] if runs else [],
+    )
+    return client
+
+
+def test_curation_backup_fails_when_the_snapshot_predates_coverage(monkeypatch, settings):
+    """An ABSENT key means the snapshot was taken before curation was covered. It must not
+    read as protected just because a Gold backup exists and is fresh — the authored
+    catalog, classifications and editor allowlists would be sitting unprotected."""
+    _backup_manifest(monkeypatch, settings, {"dataset": settings.bq_gold_dataset})
+
+    r = doctor._check_curation_backup(settings)
+
+    assert r.ok is False and "predates curation coverage" in r.detail
+
+
+def test_curation_backup_accepts_a_covered_snapshot(monkeypatch, settings):
+    _backup_manifest(
+        monkeypatch,
+        settings,
+        {"dataset": settings.bq_gold_dataset, "curation_table_count": 12},
+    )
+
+    r = doctor._check_curation_backup(settings)
+
+    assert r.ok is True and "12 curation table(s)" in r.detail
+
+
+def test_curation_backup_distinguishes_zero_from_absent(monkeypatch, settings):
+    """0 means 'covered, dataset empty' (a cold install) — a DIFFERENT state from 'not
+    covered'. Conflating them is what would call an unprotected snapshot protected."""
+    _backup_manifest(
+        monkeypatch, settings, {"dataset": settings.bq_gold_dataset, "curation_table_count": 0}
+    )
+
+    r = doctor._check_curation_backup(settings)
+
+    assert r.ok is True and "0 curation table(s)" in r.detail
+
+
+def test_curation_backup_skips_when_no_snapshot_exists(monkeypatch, settings):
+    """A project that never ran a backup is not a curation-coverage failure."""
+    _backup_manifest(monkeypatch, settings, None, runs=False)
+
+    r = doctor._check_curation_backup(settings)
+
+    assert r.ok is True and "no snapshot yet" in r.detail
+
+
+def _backup_runs_seq(monkeypatch, settings: Settings, marcadores: list[tuple[bool, dict | None]]):
+    """N runs, newest first, each described by (has _SUCCESS marker, manifest body)."""
+    blobs = []
+    for existe, corpo in marcadores:
+        m = MagicMock()
+        m.exists.return_value = existe
+        m.download_as_text.return_value = json.dumps(corpo or {})
+        blobs.append(m)
+    client = MagicMock()
+    client.bucket.return_value.blob.side_effect = blobs
+    monkeypatch.setattr(doctor, "get_credentials", lambda s: None)
+    monkeypatch.setattr(doctor.storage, "Client", lambda **k: client)
+    monkeypatch.setattr(
+        doctor,
+        "_list_backup_runs",
+        lambda c, s: [
+            (datetime(2026, 8, 29, 12 - i, tzinfo=UTC), f"backups/run={i}/")
+            for i in range(len(marcadores))
+        ],
+    )
+
+
+def test_curation_backup_skips_an_unsealed_run_and_reads_the_next(monkeypatch, settings):
+    """A crashed half-backup carries no _SUCCESS marker. It must not answer for coverage —
+    the same rule the freshness check already applies."""
+    _backup_runs_seq(
+        monkeypatch,
+        settings,
+        [(False, None), (True, {"dataset": settings.bq_gold_dataset, "curation_table_count": 7})],
+    )
+
+    r = doctor._check_curation_backup(settings)
+
+    assert r.ok is True and "7 curation table(s)" in r.detail
+
+
+def test_curation_backup_skips_a_snapshot_of_another_dataset(monkeypatch, settings):
+    """dev (dbt_dev_gold) and prod (gold) hold identically-named tables, so a dev-pointed
+    snapshot must not vouch for prod coverage."""
+    _backup_runs_seq(
+        monkeypatch,
+        settings,
+        [
+            (True, {"dataset": "dbt_dev_gold", "curation_table_count": 12}),
+            (True, {"dataset": settings.bq_gold_dataset, "curation_table_count": 3}),
+        ],
+    )
+
+    r = doctor._check_curation_backup(settings)
+
+    assert r.ok is True and "3 curation table(s)" in r.detail
+
+
+def test_curation_backup_reports_when_no_run_is_sealed(monkeypatch, settings):
+    _backup_runs_seq(monkeypatch, settings, [(False, None), (False, None)])
+
+    r = doctor._check_curation_backup(settings)
+
+    assert r.ok is True and "no sealed snapshot" in r.detail
+
+
+def test_curation_backup_degrades_to_skipped_on_any_fault(monkeypatch, settings):
+    """No perms / no bucket must not paint the check red — it has no data to judge."""
+
+    def _boom(s):
+        raise RuntimeError("sem credencial")
+
+    monkeypatch.setattr(doctor, "get_credentials", _boom)
+
+    r = doctor._check_curation_backup(settings)
 
     assert r.ok is True and "skipped" in r.detail

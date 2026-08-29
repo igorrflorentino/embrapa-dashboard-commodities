@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.36.0] - 2026-08-29
+
+### Adicionado
+
+- **O backup passou a cobrir `research_inputs` — a única coisa insubstituível do projeto.**
+  O Gold é **derivável**: perdê-lo custa um `dbt build`, porque cada linha remonta ao
+  Bronze. O `research_inputs` é **autoral** — catálogo de produtos, registro de
+  agrupamentos, classificações de industrialização, log de ciclo de vida e as allowlists
+  de quem pode editar. Nada disso se recalcula de fonte nenhuma, e era **o único dataset
+  sem backup**, enquanto a metade reproduzível tinha um quase diário. São 12 tabelas,
+  1310 linhas, ~220 KiB: o custo de cobrir arredonda para zero.
+- **`embrapa doctor` → `curation-backup`**, que lê o manifesto do snapshot mais recente e
+  **falha** se ele for anterior à cobertura. A chave `curation_table_count` **ausente**
+  significa "snapshot anterior à cobertura"; **`0`** significa "coberto, dataset vazio" —
+  estados diferentes, e confundi-los é o que chamaria de protegido um snapshot que não
+  protege nada.
+
+### Alterado
+
+- O layout do Gold no snapshot segue **byte a byte** o de antes (`run=<id>/<tabela>/`); a
+  curadoria entra sob `run=<id>/_curation/`, então qualquer ferramenta de restauração
+  escrita contra o formato antigo continua valendo.
+- A introspecção da curadoria **não filtra por prefixo** (o Gold filtra): toda tabela desse
+  dataset é autoral, e um filtro seria mais uma coisa a manter em sincronia — a lista fixa
+  de tabelas Gold, que já escondeu um bug real quando 3 dos 4 modelos sumiram, é o
+  precedente.
+
+**Verificado em produção:** snapshot `20260829T182244Z` gravado com 6 tabelas Gold + 12 de
+curadoria; o check saiu de FALHA para `12 curation table(s)`.
+
+---
+
 ## [1.35.7] - 2026-08-29
 
 ### Corrigido
