@@ -1281,12 +1281,84 @@ def _check_curation_referential_integrity(settings: Settings) -> CheckResult:
         return CheckResult("Curation referential integrity", True, f"skipped: {str(exc)[:100]}")
 
 
+# Os bancos que unem DUAS tabelas SIDRA sob um token só, e a coluna que as distingue no
+# Gold. Uma terceira entrada aqui é tudo o que um novo banco multi-tabela precisa.
+_BANCOS_MULTI_TABELA = (
+    ("ibge_pevs", "gold_pevs_production", "origem"),
+    ("ibge_ppm", "gold_ppm_production", "measure_kind"),
+)
+
+
+def _check_shared_code_across_tables(settings: Settings) -> CheckResult:
+    """Um código pode existir nas DUAS tabelas SIDRA de um banco multi-tabela?
+
+    Hoje não: PEVS tem 7 códigos de extração contra 3 de silvicultura, PPM tem 8 de
+    rebanho contra 6 de produção animal, sem interseção (medido 2026-08-29). Se o IBGE
+    publicar um código compartilhado, três coisas acontecem, e só a primeira faz barulho:
+
+    1. O teste de unicidade do Gold — chave sem o discriminador, severidade `error` — falha,
+       e como o prod roda ``dbt build`` os modelos downstream são pulados. O número errado
+       NÃO chega ao dashboard.
+    2. A curadoria não consegue representar o caso: catálogo, gate de visibilidade e nível
+       de industrialização identificam um produto por ``(banco, código)`` e nenhum conhece
+       a tabela. Seriam UM agrupamento, UMA visibilidade e UM nível cobrindo as duas
+       metades — e a tag da tela mostraria uma delas, arbitrária.
+    3. Com ``catalog_authoritative_ingestion`` ligado, o resolver filtra por
+       ``sidra_tabela``: a metade não marcada deixaria de ser buscada em silêncio.
+
+    Corrigir (2) de verdade custaria trocar a identidade do produto em ~25 pontos, 3 dims e
+    3 logs — sobre o único dado que não se recalcula. Este check é a alternativa barata:
+    avisa no instante em que o caso aparecer, antes do build quebrar e muito antes de a
+    ingestão dirigida ser ligada, dando tempo de decidir com um caso concreto na mão.
+
+    FALHA (ok=False): a condição nunca é benigna. Qualquer falta (tabela ausente, sem
+    permissão) degrada para 'skipped'.
+    """
+    try:
+        from embrapa_dashboard.gcp.clients import resolve_bq_client
+        from embrapa_dashboard.serving import sql as sqlbuild
+
+        bq = resolve_bq_client(settings)
+        achados: list[str] = []
+        for banco, tabela, discriminador in _BANCOS_MULTI_TABELA:
+            ref = sqlbuild.table_ref(settings, "bq_gold_dataset", tabela)
+            sql = f"""
+                select product_code, count(distinct {discriminador}) as n
+                from `{ref}`
+                group by product_code
+                having n > 1
+                order by product_code
+            """
+            codigos = [r.product_code for r in bq.query(sql).result()]
+            if codigos:
+                achados.append(f"{banco}: {', '.join(codigos[:5])}")
+        if achados:
+            return CheckResult(
+                "Shared code across SIDRA tables",
+                False,
+                "código(s) presente(s) nas DUAS tabelas de um banco — "
+                + "; ".join(achados)
+                + ". A curadoria identifica um produto por (banco, código) e não consegue "
+                "representar isso: agrupamento, visibilidade e nível ficariam ambíguos, e a "
+                "ingestão dirigida pelo catálogo perderia uma metade. Ver "
+                "PLANS/silvicultura_source.md antes de mexer na chave.",
+            )
+        return CheckResult(
+            "Shared code across SIDRA tables",
+            True,
+            f"nenhum código compartilhado em {len(_BANCOS_MULTI_TABELA)} banco(s) multi-tabela",
+        )
+    except Exception as exc:  # tabela ausente / sem permissão — sem dado para julgar
+        return CheckResult("Shared code across SIDRA tables", True, f"skipped: {str(exc)[:100]}")
+
+
 _POSTCHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
     ("bronze", _check_bronze_tables),
     ("serving", _check_serving_marts),
     ("catalog-parity", _check_catalog_resolver_parity),
     ("curation-backup", _check_curation_backup),
     ("curation-integrity", _check_curation_referential_integrity),
+    ("shared-code", _check_shared_code_across_tables),
     ("orphans", _check_orphan_lifecycle),
     ("catalog-arrival", _check_catalog_data_arrival),
     ("backup", _check_backup_freshness),
