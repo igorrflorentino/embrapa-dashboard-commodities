@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.25] - 2026-08-28
+
+### Corrigido
+
+- **No mapa em território Brasil, o hover nomeava o ESTADO ao lado do valor da REGIÃO.**
+  Reportado com captura: sobre o Amazonas lia-se `AM · Amazonas · 3,8 bi R$`, quando
+  3,8 bi é o Norte inteiro. O Amazonas sozinho são **354 mi** — o rótulo atribuía ao
+  estado **10×** o que ele produz.
+
+  A causa está no desenho, e ele é deliberado: macrorregião não tem geometria vendorizada,
+  então cada UF é pintada com o total da **sua região** e os cinco blocos aparecem sobre a
+  malha que já existe. Só que a linha continuava carregando a identidade da **UF** —
+  `{ ...u, [valueKey]: reg[valueKey] }` — e o popup lia `name` da UF com `value` da região.
+
+  Agora quem monta a linha declara **o que ela representa** (`displayCode`/`displayName`),
+  e o popup obedece; sem essa declaração o polígono é o próprio sujeito e a identidade da
+  UF continua correta. Verificado no navegador nos dois modos: Brasil mostra
+  `N · Norte · 3,8 bi`, e dentro do Norte mostra `AM · Amazonas · 354 mi`.
+
+### Testes
+
+- **O popup não era testável**: o `FakeMap` do teste descartava os handlers de camada, então
+  nada guardava o texto do hover — que é justamente onde a identidade aparece. O fixture
+  passa a registrar handlers por `evento:camada` e a capturar o HTML do popup.
+- Invariante: **nenhuma linha com identidade declarada pode exibir o nome do polígono**,
+  varrida sobre as cinco regiões com uma UF de cada. Mais os dois casos diretos (região
+  nomeia a região; UF sem declaração nomeia a UF). Validada por injeção — repor a leitura
+  antiga faz a varredura acusar `AM · Amazonas`.
+
+---
+
 ## [1.33.24] - 2026-08-28
 
 ### Documentação

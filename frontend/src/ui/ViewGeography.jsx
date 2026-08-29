@@ -402,7 +402,13 @@ function ViewGeography({ families, conventions, summary, database }) {
     return scaledUFs
       .map((u) => {
         const reg = byRegion.get(u.region);
-        return reg ? { ...u, [valueKey]: reg[valueKey], regionLabel: reg.label } : null;
+        // The row keeps the UF's GEOMETRY but carries the REGION's value — so it must also
+        // carry the region's IDENTITY, or the hover names a state next to a number that is
+        // its whole region's. That read "AM · Amazonas / 3,8 bi" while 3,8 bi was Norte.
+        return reg
+          ? { ...u, [valueKey]: reg[valueKey], regionLabel: reg.label,
+              displayCode: reg.id, displayName: reg.label }
+          : null;
       })
       .filter(Boolean);
   }, [scaledUFs, regScaled, valueKey]);

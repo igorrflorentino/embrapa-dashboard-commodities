@@ -24,6 +24,7 @@ let workerUrl;
 class FakeMap {
   constructor({ styleReady = true } = {}) {
     this.paintProps = {};
+    this.handlers = {};
     this.layers = new Set();
     this.styleReady = styleReady;
     this.loadHandler = null;
@@ -54,7 +55,12 @@ class FakeMap {
     if (spec.paint) this.paintProps[`${spec.id}.fill-color`] = spec.paint['fill-color'];
   }
   on(evt, a, b) {
-    if (evt === 'load') this.loadHandler = typeof a === 'function' ? a : b;
+    if (evt === 'load') { this.loadHandler = typeof a === 'function' ? a : b; return; }
+    // Layer handlers were dropped here, which made the hover popup untestable — and the
+    // popup is where a row's IDENTITY is shown, so nothing guarded it naming the wrong
+    // subject. Keyed by `${event}:${layer}` so a test can fire one directly.
+    if (typeof b === 'function') this.handlers[`${evt}:${a}`] = b;
+    else if (typeof a === 'function') this.handlers[evt] = a;
   }
   once(evt, fn) {
     if (evt !== 'idle') return;
@@ -77,9 +83,10 @@ class FakeMap {
 }
 
 const noop = () => {};
+let popupHtml = '';
 const stubPopup = () => ({
   setLngLat() { return this; },
-  setHTML() { return this; },
+  setHTML(html) { popupHtml = html; return this; },
   addTo() { return this; },
   remove: noop,
 });
@@ -87,6 +94,7 @@ const stubPopup = () => ({
 beforeEach(async () => {
   vi.resetModules();
   calls = [];
+  popupHtml = '';
   workerUrl = undefined;
   // The real worker is a 470 kB bundle; under jsdom we only need the URL string.
   vi.doMock('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url', () => ({
@@ -255,5 +263,62 @@ describe('BrazilChoropleth — focusUfs', () => {
     await fakeMap.fireLoad();
     await waitFor(() => expect(Array.isArray(fakeMap.fill)).toBe(true));
     expect(fakeMap.filters['uf-fill']).toBeNull();
+  });
+});
+
+// ── O popup nomeia o SUJEITO do número, não o polígono ──────────────────────
+// A região não tem geometria própria: cada UF é pintada com o total da SUA região, e cinco
+// blocos aparecem. Mas a linha continuava carregando a identidade da UF, então o hover lia
+// "AM · Amazonas / 3,8 bi" quando 3,8 bi era o Norte inteiro — o rótulo nomeando um conjunto
+// menor que o número. Quem monta a linha declara o que ela representa; o popup obedece.
+describe('BrazilChoropleth — o popup nomeia o sujeito do valor', () => {
+  const hover = async (rows, feature) => {
+    fakeMap = new FakeMap();
+    render(<BrazilChoropleth data={rows} valueKey="value" label="R$" />);
+    await waitForMapInit();   // maplibre is lazy-imported; handlers exist only after this
+    await fakeMap.fireLoad();
+    await act(async () => {
+      fakeMap.handlers['mousemove:uf-fill']({ features: [feature], lngLat: { lng: 0, lat: 0 } });
+    });
+    return popupHtml;
+  };
+
+  it('nomeia a REGIÃO quando a linha carrega o valor da região', async () => {
+    const html = await hover(
+      [{ uf: 'AM', name: 'Amazonas', region: 'N', value: 3.8e9,
+         displayCode: 'N', displayName: 'Norte' }],
+      { properties: { uf: 'AM', name: 'Amazonas' } },
+    );
+    expect(html).toContain('Norte');
+    expect(html).not.toContain('Amazonas');   // o número não é do Amazonas
+  });
+
+  it('nomeia a UF quando a linha É da UF (modo estado, sem identidade declarada)', async () => {
+    const html = await hover(
+      [{ uf: 'AM', name: 'Amazonas', region: 'N', value: 1.2e9 }],
+      { properties: { uf: 'AM', name: 'Amazonas' } },
+    );
+    expect(html).toContain('Amazonas');
+    expect(html).toContain('AM');
+  });
+
+  it('nenhuma linha com identidade declarada pode exibir o nome do polígono', async () => {
+    // A invariante, e não o caso: se a linha diz representar outra coisa, o nome da UF
+    // subjacente NUNCA pode aparecer — é isso que enganava o leitor.
+    const regioes = [['N', 'Norte'], ['NE', 'Nordeste'], ['CO', 'Centro-Oeste'],
+                     ['SE', 'Sudeste'], ['S', 'Sul']];
+    const ufs = [['AM', 'Amazonas'], ['BA', 'Bahia'], ['MT', 'Mato Grosso'],
+                 ['SP', 'São Paulo'], ['RS', 'Rio Grande do Sul']];
+    const falhas = [];
+    for (const [i, [code, nome]] of regioes.entries()) {
+      const [uf, ufNome] = ufs[i];
+      const html = await hover(
+        [{ uf, name: ufNome, region: code, value: 1e9, displayCode: code, displayName: nome }],
+        { properties: { uf, name: ufNome } },
+      );
+      if (!html.includes(nome) || html.includes(ufNome)) falhas.push(`${code}: ${html}`);
+      cleanup();
+    }
+    expect(falhas).toEqual([]);
   });
 });
