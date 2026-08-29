@@ -69,13 +69,26 @@ PEVS = {
 s = Settings()
 bq = bigquery.Client(project=s.gcp_project_id, location=s.bq_location)
 
+# Source of truth is the CATALOG, not gold_produto_agrupamento.
+#
+# The first run read Gold and left 4 codes behind: Gold only surfaces codes that have
+# DATA, so a commodity registered in the catalog but not yet ingested (pendente de
+# ingestão) is invisible there — and those are exactly the ones a reorganization must not
+# skip, since nothing else will ever revisit them. The catalog is the authority for
+# grouping; Gold is derived from it.
 atual = list(
     bq.query(
         """
-        select source, code, agrupamento_id
-        from `embrapa-dashboard-commodities.gold.gold_produto_agrupamento`
-        where agrupamento_id in ('madeira', '3433', '3434')
-        order by source, code
+        select codigo_produto as code, banco as source, agrupamento_id
+        from (
+            select codigo_produto, banco, agrupamento_id,
+                   row_number() over (
+                       partition by codigo_produto, banco order by edited_at desc
+                   ) as rn
+            from `embrapa-dashboard-commodities.research_inputs.produto_catalog_log`
+        )
+        where rn = 1 and agrupamento_id in ('madeira', '3433', '3434')
+        order by banco, codigo_produto
         """
     ).result()
 )
@@ -116,23 +129,30 @@ if DRY:
     sys.exit(0)
 
 from embrapa_dashboard.serving import curation  # noqa: E402
+from embrapa_dashboard.webapi.app import app  # noqa: E402
 
 HEADERS = {"x-goog-authenticated-user-email": "accounts.google.com:igorlopesc@gmail.com"}
 ok = err = 0
-for source, code, _antes, alvo, _acao in plano:
-    try:
-        curation.record_produto_catalog(
-            code,
-            source,
-            HEADERS,
-            agrupamento=alvo[1],
-            agrupamento_id=alvo[0],
-            settings=s,
-            client=bq,
-            invalidate_cache=False,
-        )
-        ok += 1
-    except Exception as exc:
-        err += 1
-        print(f"  ✗ {source}/{code}: {str(exc)[:110]}")
+# Inside the Flask app context: registering a NEW entry reaches flask-caching, which is
+# bound to the app. Without it the write dies with "'Cache' object has no attribute
+# 'app'" — and only on the NEW-entry path, so a run that merely UPDATES existing rows
+# appears to succeed while every genuinely new commodity silently fails (observed
+# 2026-08-29: 31 updates landed, 3 registrations did not).
+with app.app_context():
+    for source, code, _antes, alvo, _acao in plano:
+        try:
+            curation.record_produto_catalog(
+                code,
+                source,
+                HEADERS,
+                agrupamento=alvo[1],
+                agrupamento_id=alvo[0],
+                settings=s,
+                client=bq,
+                invalidate_cache=False,
+            )
+            ok += 1
+        except Exception as exc:
+            err += 1
+            print(f"  ✗ {source}/{code}: {str(exc)[:110]}")
 print(f"\ngravados: {ok} · falhas: {err}")
