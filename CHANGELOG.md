@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.30] - 2026-08-28
+
+### Testes
+
+- **O flake do `ViewCadastroProdutos` passa a dizer o que viu.** O teste
+  "shows the existing manual descrição pre-filled…" falhou duas vezes — no CI, num PR
+  só de documentação, e uma vez na suíte completa local — e passa em todo o resto.
+
+  **Não foi possível reproduzi-lo.** Cada hipótese foi descartada por medição, não por
+  opinião: estouro de prazo do `waitFor` (todas as esperas do arquivo passam com
+  `timeout: 1` — nada ali precisa de relógio, então o modo de falha não é "tarde");
+  chamadas de `fetch` atravessando a fronteira entre testes (instrumentado no
+  `afterEach`: nenhuma); dependência de ordem (`--sequence.shuffle`, 3×); o modo
+  `--coverage` que o CI usa e que eu não estava usando (3×); CPU saturada com 24
+  processos de carga, com o arquivo sozinho e com a suíte inteira; e uma closure
+  obsoleta no `onBlur` — construída de propósito, disparando `change` e `blur` dentro
+  do mesmo `act` sem re-render entre eles, e o POST sai correto assim mesmo.
+
+  Sem mecanismo identificado, inventar um conserto seria fingir diagnóstico. O que
+  sobra com valor real é a próxima falha não custar outra hora: `Timed out in waitFor`
+  não distingue "a linha não chegou" de "o campo veio vazio" de "o POST saiu para a
+  URL errada", e essa distinção **é** o diagnóstico. As duas esperas do campo passam a
+  reportar, no erro, o estado da tela: quantas linhas a tabela tinha, se o campo
+  existia, seu valor, se estava desabilitado, e a lista de chamadas de API feitas até
+  ali.
+
+  Validado por injeção — remover a nota salva do fixture acusa
+  `"O campo … nunca chegou com a nota salva" · campoValor: ""`; fazer o blur não salvar
+  acusa `"O blur não disparou o salvamento" · campoValor: "Nota atualizada"`, que já
+  separa "a digitação falhou" de "o salvamento falhou". Uma terceira injeção (campo
+  desabilitado) **não** derrubou o teste — o `fireEvent.change` do jsdom ignora o
+  `disabled` —, então a asserção que eu havia escrito para guardá-la foi removida em vez
+  de ficar no arquivo sem provar nada.
+
+---
+
 ## [1.33.29] - 2026-08-28
 
 Dois fechamentos da varredura da v1.33.28 — a mesma classe no **eixo comércio**, e a
