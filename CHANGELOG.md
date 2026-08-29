@@ -28,6 +28,17 @@ diziam "nightly" ou citavam configurações que deixaram de existir.
 - **`ARCHITECTURE.md`**, **`CLAUDE.md`**, **`README.md`**, **`docs/comtrade_world_backfill.md`**
   e a **skill `ingest-data`** descreviam o lote como noturno. Corrigidos — a menção que
   sobrou no `ARCHITECTURE.md` é histórica e explícita ("nightly until 2026-08-28").
+### Corrigido
+
+- **Teste instável no `ViewCadastroProdutos`.** Dois casos esperavam a **tabela** aparecer
+  (`.dt-table`) e em seguida liam o `value` de um **input** — que é populado um tick depois.
+  Passa sempre localmente e falhou sob carga no CI. As esperas passam a ser gatilhadas no
+  próprio campo que o teste afirma, que é estritamente mais preciso do que esperar o
+  contêiner. **Não provado por injeção**: a corrida não reproduz fora da carga do CI, então
+  a correção vem do mecanismo, não de uma falha reproduzida.
+
+### Documentação (continuação)
+
 - **`docs/operations_runbook.md` descrevia duas configurações que eu mesmo removi**
   (`HEARTBEAT_DAILY_SLACK_DAYS` / `HEARTBEAT_MONTHLY_SLACK_DAYS`), substituídas na v1.33.20
   por `cadence_days` + `HEARTBEAT_SLACK_DAYS`. Eu escrevi aquele trecho na v1.33.19 e o

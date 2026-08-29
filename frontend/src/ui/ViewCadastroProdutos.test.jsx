@@ -426,10 +426,14 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
   it('shows the existing manual descrição pre-filled, and edits it after creation via blur-commit', async () => {
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    // Wait for the INPUT the test is about, not just for the table around it: the rows are
+    // populated a tick after `.dt-table` mounts, so gating on the table let this read a
+    // not-yet-filled field. Passed locally and failed under CI load (2026-08-28).
+    await waitFor(() =>
+      expect(container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]')?.value)
+        .toBe('Nota antiga'));
     // 4403 already has a saved descricao_produto — the field round-trips it, not just at creation.
     const input = container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]');
-    expect(input.value).toBe('Nota antiga');
     // Typing alone must NOT fire a save (no round-trip on every keystroke) — only blur commits.
     fireEvent.change(input, { target: { value: 'Nota atualizada' } });
     expect(postBody).toBeNull();
@@ -444,7 +448,10 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
   it('does not re-save the manual descrição on blur when the (trimmed) value is unchanged', async () => {
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    // Same reason as above: gate on the field's own value, not on the table's presence.
+    await waitFor(() =>
+      expect(container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]')?.value)
+        .toBe('Nota antiga'));
     const input = container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]');
     fireEvent.change(input, { target: { value: '  Nota antiga  ' } }); // same content, stray whitespace
     fireEvent.blur(input);
