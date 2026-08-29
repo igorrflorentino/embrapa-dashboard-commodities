@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.34.2] - 2026-08-29
+
+### Adicionado
+
+- **`scripts/reorganize_madeira_agrupamento.py`** — o agrupamento `madeira` acumulava
+  **136 códigos** de três bancos, e produtos descorrelacionados dentro dele. Medido, eles
+  caem em quatro posições SH4 que a própria nomenclatura aduaneira mantém separadas
+  (conferido contra as descrições em `gold_comex_flows`, não de memória):
+
+  | destino | membros | o que é |
+  |---|---|---|
+  | `madeira_serrada` | 60 | madeira processada (SH 4407) |
+  | `madeira_em_tora` | 48 | madeira em bruto (4403) + PEVS tora e pinheiro |
+  | `lenha` | 24 | lenha, estilhas, partículas, resíduos (4401) + PEVS lenha |
+  | `carvao_vegetal` | 9 | carvão vegetal (4402) + PEVS carvão |
+
+  A reorganização também resolve duas coisas de uma vez: dissolve os agrupamentos
+  **degenerados** `3433` e `3434` (um membro só, id igual ao código — carvão e lenha nunca
+  tiveram grupo de verdade, nem na extração) e **registra os três códigos da silvicultura**
+  (3455/3456/3457), que subiram na v1.34.0 sem agrupamento nenhum e por isso ficavam
+  invisíveis às perspectivas multi-fonte.
+
+  Extração e plantio compartilham cada agrupamento por decisão do projeto: o eixo `origem`
+  já os separa no menu de filtros, então o catálogo não precisa duplicá-los.
+
+  O script roda em **ensaio por padrão** e escreve no log append-only da Curadoria, onde
+  cada edição é uma linha nova com latest-wins — auditável e reversível, nada é apagado.
+
+### Testes
+
+- **Os quatro eixos server-side sem teste de fio ganharam um.** `flow` e `origem` tinham;
+  `customs`, `market`, `reporters` e `partners` não. **Não presumi que funcionavam** —
+  dirigi a API de produção e os quatro estavam corretos (flow: 5.319 + 139 = 5.458 exato;
+  reporters sem parâmetro = `BRA` explícito = 4.982, `__all__` = 56.440). Então isto não
+  conserta bug: fecha o buraco que deixou o `origem` subir quebrado com 1031 testes verdes.
+
+  Cada caso prende as duas metades do contrato que nenhuma tela revela — o parâmetro tem
+  de ir na **requisição** e entrar na **chave de cache** —, e há um caso extra para o
+  sentinela `__all__` do reporter, que é tri-estado: tratá-lo como "sem filtro" devolveria
+  o Brasil sob o rótulo "Mundo".
+
+  Escritos como tabela, para o próximo eixo custar uma linha e não uma cópia. Validados por
+  injeção nos quatro.
+
+---
+
 ## [1.34.1] - 2026-08-29
 
 O eixo `origem` chegava ao rótulo e não ao dado.
