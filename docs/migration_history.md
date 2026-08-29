@@ -2,6 +2,44 @@
 
 These are one-time migration notes from past schema changes. They are kept for historical reference only and are not part of the active development workflow.
 
+## 2026-08-29 — A identidade de um produto ganhou a tabela SIDRA
+
+**O quê.** A chave que identifica um produto na curadoria passou de `(banco, código)` para
+`(banco, tabela, código)`, nos três registros: catálogo, gate de visibilidade e nível de
+industrialização.
+
+**Por quê.** PEVS e PPM unem DUAS tabelas SIDRA sob um token de banco só (extração t289 ×
+silvicultura t291; rebanho 3939 × produção animal 74). Com a chave antiga, um código
+presente nas duas metades seria um produto só: um agrupamento, uma visibilidade e um nível
+cobrindo ambas, a tag da tela mostrando uma delas arbitrariamente, e a ingestão dirigida
+pelo catálogo perdendo a metade não marcada em silêncio. O Gold já barrava o conflito de
+dados (teste de unicidade `error` + `dbt build` pula downstream); era a curadoria que não
+conseguia representá-lo.
+
+**A armadilha da migração.** O log é append-only, e as linhas escritas antes de a coluna
+`sidra_tabela` existir a têm NULL. Promover a coluna para dentro da chave transformaria
+**supersessão em coexistência**: medido antes, a chave de 3 colunas dava **258** entradas
+ativas onde a de 2 dava **234** — 24 fantasmas, 10 de `pevs` e 14 de `ppm`.
+
+**O que foi feito** (`scripts/migrate_catalog_key_add_table.py`, ensaio por padrão):
+1. `UPDATE` em **51** linhas históricas do catálogo, preenchendo `sidra_tabela` com o valor
+   que a própria entrada já carrega. Completa uma coluna que era NULL *porque não existia
+   quando a linha foi escrita* — nenhum valor decidido por um pesquisador mudou.
+2. Coluna `sidra_tabela` adicionada aos logs de **nível** e de **ciclo de vida** (e às
+   constantes de esquema, senão uma instalação nova criaria a tabela sem ela — furo que um
+   teste pegou), com backfill derivado do catálogo: 24 classificações marcadas.
+3. Depois: **234** com qualquer das duas chaves — migração neutra.
+
+**Efeito colateral deliberado.** A tag passou a ser **obrigatória** em entrada nova nos dois
+bancos multi-tabela. Sem ela a entrada não cai em nenhuma das metades: cai na sentinela
+`sql.SEM_TABELA`, uma terceira identidade que não corresponde a dado nenhum.
+
+**Bancos de uma tabela** (comex, comtrade, pam) não foram tocados: para eles a coluna não
+carrega informação e o `ifnull` a colapsa na sentinela, então a chave nova é equivalente à
+antiga.
+
+---
+
 ## Bronze re-partitioning
 
 Bronze tables are now partitioned by `DATE(ingestion_timestamp)` and clustered (IBGE: `municipio_codigo, ano, variavel_codigo`; BCB: `series_code, reference_date_str`). BigQuery cannot retrofit partitioning on existing tables — if you have pre-existing Bronze tables from before this change, drop them before the next `embrapa ingest *` run, otherwise the load job fails with a partition mismatch:

@@ -45,7 +45,11 @@ with log as (
         active,
         edited_by,
         edited_at,
-        change_id
+        change_id,
+        -- Parte da identidade do produto (banco + TABELA + código): PEVS e PPM unem duas
+        -- tabelas SIDRA sob um token só. Precisa chegar até aqui porque o latest-wins
+        -- particiona por ela — ver o macro chave_produto.
+        sidra_tabela
     from {{ source('research_inputs', 'produto_catalog_log') }}
 
 ),

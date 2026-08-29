@@ -45,7 +45,11 @@ with log as (
         note,
         edited_by,
         edited_at,
-        change_id
+        change_id,
+        -- Parte da identidade do produto (banco/source + TABELA + código): PPM e PEVS
+        -- unem duas tabelas SIDRA sob um token só. Precisa vir até aqui porque a window
+        -- de versionamento particiona por ela.
+        sidra_tabela
     from {{ source('research_inputs', 'code_industrialization_log') }}
 
 ),
@@ -59,6 +63,7 @@ versioned as (
         note,
         edited_by,
         edited_at,
+        sidra_tabela,
         -- Order by edit time, breaking ties on the surrogate change_id so two
         -- edits in the same instant still get a deterministic version sequence.
         row_number() over w     as version,
