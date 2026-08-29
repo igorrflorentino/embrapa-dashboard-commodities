@@ -29,7 +29,7 @@ from embrapa_dashboard.serving.research_inputs import (
     ensure_banco_metadata_table,
 )
 
-from . import seam, serializers
+from . import seam, seam_attribute_engineering, serializers
 from .auth import current_author
 from .format import _CORRECTION_INFIX, _CURRENCY_SUFFIX
 
@@ -104,20 +104,16 @@ def _customs_or_400(customs: str | None):
 _ALLOWED_MARKETS = frozenset({"consumo", "processamento", "all"})
 
 
-# The 8 curated levels plus the explicit "not yet classified" sentinel. Open-vocabulary in
-# the writer, but the FILTER validates: a typo'd level would match zero codes and draw an
-# empty dashboard that reads as "sem dados", not as a bad request.
-_ALLOWED_NIVEIS = (
-    "commodity_pura",
-    "commodity_higienizada",
-    "commodity_acondicionada",
-    "commodity_consumivel",
-    "commodity_subproduto",
-    "manufaturado_artesanal",
-    "manufaturado_industrial",
-    "manufaturado_especializado",
-    "sem_classificacao",
-)
+# The curated scale plus the explicit "not yet classified" sentinel. DERIVED from
+# seam_attribute_engineering.CUR_LEVELS, never restated: this file shipped a verbatim copy
+# on 2026-08-29, and a second list of one vocabulary is how the two drift — the filter
+# would come to offer a level the editor cannot write, or refuse one it can.
+#
+# Open-vocabulary in the WRITER (a level outside the scale is still stored), but the
+# FILTER validates: a typo'd level would match zero codes and draw an empty dashboard that
+# reads as "sem dados" rather than as a bad request.
+UNCLASSIFIED_NIVEL = "sem_classificacao"
+_ALLOWED_NIVEIS = (*seam_attribute_engineering.CUR_LEVELS, UNCLASSIFIED_NIVEL)
 
 
 def _niveis_or_400(raw: str | None):

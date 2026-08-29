@@ -524,6 +524,7 @@ def test_run_all_executes_every_probe(settings: Settings) -> None:
         "Bronze tables",
         "Serving marts",
         "Catalog↔env product codes",
+        "Curation referential integrity",
         "Catalog orphan lifecycle",
         "Catalog → Gold arrival",
         "Gold backup freshness",
@@ -948,3 +949,114 @@ def test_silvicultura_sidra_probe_reports_reachability(settings: Settings) -> No
         bad = doctor._check_silvicultura(settings)
     assert ok.ok is True and "t291" in ok.detail
     assert bad.ok is False
+
+
+class _GrupoRow:
+    def __init__(self, codigo_produto: str, banco: str, agrupamento_id: str) -> None:
+        self.codigo_produto = codigo_produto
+        self.banco = banco
+        self.agrupamento_id = agrupamento_id
+
+
+class _NivelRow:
+    def __init__(self, source: str, code: str, industrialization_level: str) -> None:
+        self.source = source
+        self.code = code
+        self.industrialization_level = industrialization_level
+
+
+def _curation_client(monkeypatch, grupos: list, niveis: list, registrados: set[str]) -> MagicMock:
+    """Wire both log queries + the agrupamentos registry the integrity check reads."""
+    client = MagicMock()
+    client.query.return_value.result.side_effect = [grupos, niveis]
+    monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", lambda s: client)
+    monkeypatch.setattr(
+        "embrapa_dashboard.serving.agrupamentos._current_groups",
+        lambda *a, **k: registrados,
+    )
+    monkeypatch.setattr(
+        "embrapa_dashboard.serving.agrupamentos._group_log_ref", lambda cfg: "proj.ds.log"
+    )
+    return client
+
+
+def test_curation_integrity_clean(monkeypatch, settings: Settings) -> None:
+    """Every agrupamento registered and every level in scale → the clean state."""
+    _curation_client(
+        monkeypatch,
+        grupos=[_GrupoRow("3405", "ibge_pevs", "madeira")],
+        niveis=[_NivelRow("ibge_pevs", "3405", "commodity_pura")],
+        registrados={"madeira"},
+    )
+
+    r = doctor._check_curation_referential_integrity(settings)
+
+    assert r.ok is True and "every agrupamento_id registered" in r.detail
+
+
+def test_curation_integrity_fails_on_unregistered_agrupamento(
+    monkeypatch, settings: Settings
+) -> None:
+    """The 2026-08-29 defect: entries naming a group that was never created. The products
+    vanish from every grouped view while the log stays self-consistent, so only a check
+    that crosses the catalog WITH the registry can see it."""
+    _curation_client(
+        monkeypatch,
+        grupos=[
+            _GrupoRow("3405", "ibge_pevs", "madeira"),
+            _GrupoRow("3406", "ibge_pevs", "lenha"),
+        ],
+        niveis=[],
+        registrados={"madeira"},
+    )
+
+    r = doctor._check_curation_referential_integrity(settings)
+
+    assert r.ok is False
+    assert "1 catalog entr" in r.detail and "lenha" in r.detail
+    assert "madeira" not in r.detail  # the registered one is not accused
+
+
+def test_curation_integrity_fails_on_level_outside_scale(monkeypatch, settings: Settings) -> None:
+    """The writer is open-vocabulary, so a typo'd level is stored and then matches no
+    filter AND no 'sem classificação' — invisible either way."""
+    _curation_client(
+        monkeypatch,
+        grupos=[],
+        niveis=[
+            _NivelRow("ibge_pevs", "3405", "commodity_pura"),
+            _NivelRow("ibge_pevs", "3406", "commodity_purra"),
+        ],
+        registrados=set(),
+    )
+
+    r = doctor._check_curation_referential_integrity(settings)
+
+    assert r.ok is False
+    assert "1 classification" in r.detail and "commodity_purra" in r.detail
+
+
+def test_curation_integrity_level_query_excludes_the_explicit_clear(
+    monkeypatch, settings: Settings
+) -> None:
+    """An empty level is the un-classify CLEAR (latest-wins), not an invalid value. It is
+    excluded in SQL, so assert on the emitted query — a fake client cannot filter."""
+    client = _curation_client(monkeypatch, grupos=[], niveis=[], registrados=set())
+
+    doctor._check_curation_referential_integrity(settings)
+
+    nivel_sql = client.query.call_args_list[1].args[0]
+    assert "industrialization_level != ''" in nivel_sql
+
+
+def test_curation_integrity_error_degrades_to_skipped(monkeypatch, settings: Settings) -> None:
+    """A cold install has no logs to read and must not report a red integrity check."""
+
+    def _boom(s):
+        raise RuntimeError("no dataset")
+
+    monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", _boom)
+
+    r = doctor._check_curation_referential_integrity(settings)
+
+    assert r.ok is True and "skipped" in r.detail
