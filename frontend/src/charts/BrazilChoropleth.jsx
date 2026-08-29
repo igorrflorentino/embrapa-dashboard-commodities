@@ -125,7 +125,8 @@ export function BrazilChoropleth({
   useEffect(() => {
     const idx = {};
     (data || []).forEach((d) => {
-      idx[d.uf] = { name: d.name, value: Number(d[valueKey]) || 0, label };
+      idx[d.uf] = { name: d.name, value: Number(d[valueKey]) || 0, label,
+                    displayCode: d.displayCode, displayName: d.displayName };
     });
     lookupRef.current = idx;
   }, [data, valueKey, label]);
@@ -261,7 +262,12 @@ export function BrazilChoropleth({
         const uf = f.properties.uf;
         const hit = lookupRef.current[uf];
         const val = hit ? fmtCompact(hit.value) : '—';
-        const name = (hit && hit.name) || f.properties.name || uf;
+        // A row may represent something COARSER than the polygon it is painted on: in
+        // região mode every UF carries its region's total, so the popup must name the
+        // region. Whoever builds the row says what it represents (displayCode/displayName);
+        // absent that, the polygon IS the subject and the UF's own identity is right.
+        const code = (hit && hit.displayCode) || uf;
+        const name = (hit && (hit.displayName || hit.name)) || f.properties.name || uf;
         const unit = (hit && hit.label) || '';
         popup
           .setLngLat(e.lngLat)
@@ -269,7 +275,7 @@ export function BrazilChoropleth({
             // max-width + word-wrap so a long UF name ("Rio Grande do Sul") can't
             // stretch the popup past a narrow/mobile map edge (audit POPUP-1, defensive).
             `<div style="max-width:180px;overflow-wrap:anywhere">` +
-              `<div style="font:600 12px var(--font-body,sans-serif)">${uf} · ${name}</div>` +
+              `<div style="font:600 12px var(--font-body,sans-serif)">${code} · ${name}</div>` +
               `<div style="font:11px var(--font-body,sans-serif);color:#555">${val} ${unit}</div>` +
             `</div>`,
           )
