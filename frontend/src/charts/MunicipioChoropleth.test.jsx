@@ -59,12 +59,14 @@ class FakeMap {
   }
 }
 
+let popupHtml = '';
 const stubPopup = () => ({
-  setLngLat() { return this; }, setHTML() { return this; },
+  setLngLat() { return this; }, setHTML(html) { popupHtml = html; return this; },
   addTo() { return this; }, remove() {},
 });
 
 beforeEach(async () => {
+  popupHtml = '';
   vi.resetModules();
   fakeMap = new FakeMap();
   window.autoScaleNum = (v) => (Math.abs(v) >= 1e6 ? { factor: 1e6, suffix: 'mi' } : { factor: 1, suffix: '' });
@@ -361,5 +363,48 @@ describe('MunicipioChoropleth — the tally goes quiet when one município is fo
     await waitFor(() => expect(fakeMap.loadHandler).toBeTypeOf('function'));
     await fakeMap.fireLoad();
     expect(container.textContent).toMatch(/em cinza/);
+  });
+});
+
+// ── O texto do popup ────────────────────────────────────────────────────────
+// Não havia asserção nenhuma sobre o que o hover ESCREVE — o stub descartava o HTML. Foi
+// exatamente essa ausência que deixou o mapa do Brasil exibir "AM · Amazonas" ao lado do
+// valor do Norte inteiro por semanas (v1.33.25). Aqui o dado não mistura grão (a linha é do
+// município e o valor é dele), então o que se prende é justamente isso: o nome exibido é o
+// do polígono sob o cursor, e o número é o daquele município.
+describe('MunicipioChoropleth — o popup nomeia o município do próprio polígono', () => {
+  const hover = async (cityCode, props = {}) => {
+    await renderMap(props);
+    await fakeMap.fire('mun-fill', 'mousemove', {
+      features: [{ properties: { codarea: cityCode } }], lngLat: { lng: 0, lat: 0 },
+    });
+    return popupHtml;
+  };
+
+  it('mostra o nome e o valor do município sob o cursor', async () => {
+    const html = await hover('1500107');
+    expect(html).toContain('Abaetetuba');
+    expect(html).not.toContain('Abel Figueiredo');   // o vizinho não pode aparecer
+    expect(html).toMatch(/30\s*mi/);
+  });
+
+  it('cada município mostra o SEU valor, nunca o do outro', async () => {
+    // A invariante, varrida: para cada linha, o popup daquele polígono tem de trazer o
+    // nome dela e nenhum outro nome do conjunto.
+    const falhas = [];
+    for (const alvo of DATA) {
+      const html = await hover(alvo.cityCode);
+      const outros = DATA.filter((d) => d.cityCode !== alvo.cityCode).map((d) => d.city);
+      if (!html.includes(alvo.city)) falhas.push(`${alvo.city}: não se nomeia`);
+      for (const o of outros) if (html.includes(o)) falhas.push(`${alvo.city}: mostra ${o}`);
+      cleanup();
+    }
+    expect(falhas).toEqual([]);
+  });
+
+  it('um município sem linha diz "sem produção registrada", não um traço mudo', async () => {
+    const html = await hover('9999999');
+    expect(html).toContain('sem produção registrada');
+    expect(html).not.toMatch(/\bmi\b|\bbi\b/);   // nenhum número atribuído a ele
   });
 });
