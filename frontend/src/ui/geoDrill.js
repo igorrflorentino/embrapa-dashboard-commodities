@@ -175,6 +175,34 @@ export function subUfLabel(summary, mesh) {
   return `${picked.length} recortes`;
 }
 
+/** The sub-UF recorte as the FILTER CHIP must state it — `subUfLabel` plus the UF(s)
+ *  the recorte resolves to.
+ *
+ *  The trail can say bare "Nordeste Paraense" because the crumb above it already reads
+ *  "Pará". The chip has no such context: it is the header's one-line summary of the
+ *  active filter, and the ABNT citation quotes it verbatim into a methods section, where
+ *  a reader has nothing else to go on. "Marajó" alone would not tell them which state.
+ *
+ *  Returns null when no sub-UF facet is active, so the caller falls through to the
+ *  UF/região wording. */
+export function subUfChipText(summary, mesh) {
+  const label = subUfLabel(summary, mesh);
+  if (!label) return null;
+  const KEYS = [['mesos', 'meso'], ['micros', 'micro'],
+                ['inters', 'intermediaria'], ['imediatas', 'imediata']];
+  const ufs = new Set();
+  for (const [key, meshKey] of KEYS) {
+    const sel = Array.isArray((summary || {})[key]) ? summary[key] : [];
+    for (const code of sel) {
+      for (const m of mesh || []) {
+        if (m[meshKey] && String(m[meshKey].code) === String(code) && m.uf) ufs.add(m.uf);
+      }
+    }
+  }
+  // An unresolvable code yields no UF — say the recorte without inventing a state.
+  return ufs.size ? `${label} (${[...ufs].sort().join(', ')})` : label;
+}
+
 /** How many sub-UF narrowings are in play — the number the trail must account for.
  *  Exported so a test can hold the label to it without re-deriving the rule. */
 export function subUfCount(summary) {
@@ -245,6 +273,6 @@ export function stepOut(summary, regionUfs) {
 if (typeof window !== 'undefined') {
   Object.assign(window, {
     drillLevel, drillTrail, enterRegion, enterUf, enterCity, stepOut,
-    subUfLabel, subUfCount, isRegionExpansion,
+    subUfLabel, subUfChipText, subUfCount, isRegionExpansion,
   });
 }

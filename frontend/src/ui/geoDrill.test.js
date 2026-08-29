@@ -276,7 +276,7 @@ describe('stepOut — the sub-UF rung', () => {
 // v1.32.0: it is now the ONLY place the researcher reads where they are, so its
 // correctness is load-bearing. The property, not the cases, is what protects it.
 
-import { subUfCount, subUfLabel } from './geoDrill.js';
+import { subUfChipText, subUfCount, subUfLabel } from './geoDrill.js';
 
 describe('subUfLabel — never describes a wider recorte than the data', () => {
   const MESH = [
@@ -481,5 +481,42 @@ describe('geoDrill — invariantes das transições', () => {
       if (crumbs.some((c) => c.level === 'focus')) falhas.push(`crumb focus em [${gestos.join(' → ')}]`);
     }
     expect(falhas).toEqual([]);
+  });
+});
+
+// The chip and the ABNT citation are the two places the recorte LEAVES the screen —
+// into a header line a researcher reads at a glance, and into a methods section a
+// reader has nothing else to go on. "Marajó" alone would not tell them which state,
+// so this variant carries the UF the recorte resolves to.
+describe('subUfChipText — the recorte as it leaves the screen', () => {
+  const MESH = [
+    { cityCode: '1', uf: 'PA', meso: { code: '1504', name: 'Nordeste Paraense' },
+      micro: { code: '15012', name: 'Cametá' },
+      intermediaria: { code: '1501', name: 'Belém' },
+      imediata: { code: '150001', name: 'Abaetetuba' } },
+    { cityCode: '9', uf: 'AM', meso: { code: '1301', name: 'Norte Amazonense' },
+      micro: { code: '13001', name: 'Rio Negro' },
+      intermediaria: { code: '1301', name: 'Manaus' },
+      imediata: { code: '130001', name: 'Manaus' } },
+  ];
+
+  it('nomeia o recorte E a UF em que ele fica', () => {
+    expect(subUfChipText({ mesos: ['1504'] }, MESH)).toBe('Nordeste Paraense (PA)');
+  });
+
+  it('lista as UFs quando o recorte atravessa mais de uma', () => {
+    expect(subUfChipText({ mesos: ['1504', '1301'] }, MESH))
+      .toBe('Nordeste Paraense · Norte Amazonense (AM, PA)');
+  });
+
+  it('não inventa uma UF para um código que a malha não resolve', () => {
+    // Um código órfão (malha antiga, deep link velho) ainda deve dizer que HÁ recorte —
+    // vago é aceitável, inventar um estado não é.
+    expect(subUfChipText({ mesos: ['9999'] }, MESH)).toBe('9999');
+  });
+
+  it('é null quando nada estreita — o chamador cai no texto de UF/região', () => {
+    expect(subUfChipText({}, MESH)).toBeNull();
+    expect(subUfChipText({ mesos: [] }, MESH)).toBeNull();
   });
 });

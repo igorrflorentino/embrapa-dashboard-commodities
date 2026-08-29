@@ -11,6 +11,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The REAL recorte formatter, registered on window exactly as main.jsx loads it —
+// stubbing it would let the test and the product disagree about what the file says.
+import './geoDrill.js';
+
 // ── Capture harness for the download() side-effect ───────────────────────────
 let lastCsv;
 let lastDownloadName;
@@ -243,7 +247,7 @@ describe('exportActiveTableCSV — geo snapshot', () => {
     });
     window.exportActiveTableCSV({ view: 'geo', summary: {}, database: 'ibge_pevs' });
     const lines = lastCsv.replace('﻿', '').split('\n');
-    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto');
+    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto;recorte_geografico');
     // partial-year string contains a space but no delimiter → not quoted
     expect(lines[1]).toContain('2022 (parcial)');
     // a value containing a comma AND a double-quote must be CSV-escaped
@@ -298,8 +302,8 @@ describe('exportActiveTableCSV — geo snapshot', () => {
     window.geoExportScope = 'region';
     window.exportActiveTableCSV({ view: 'geo', summary: {}, database: 'ibge_pevs' });
     const lines = lastCsv.replace('﻿', '').split('\n');
-    expect(lines[0]).toBe('ano;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto');
-    expect(lines[1]).toBe('2021;Norte;6000000;1000;2000000;3000000;cesta selecionada');
+    expect(lines[0]).toBe('ano;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto;recorte_geografico');
+    expect(lines[1]).toBe('2021;Norte;6000000;1000;2000000;3000000;cesta selecionada;sem recorte sub-UF');
     expect(lines.length).toBe(3); // header + 2 regions, NOT the per-UF table
   });
 
@@ -318,9 +322,9 @@ describe('exportActiveTableCSV — geo snapshot', () => {
     ];
     window.exportActiveTableCSV({ view: 'geo', summary: {}, database: 'ibge_pevs' });
     const lines = lastCsv.replace('﻿', '').split('\n');
-    expect(lines[0]).toBe('ano;municipio;uf;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto');
-    expect(lines[1]).toBe('2021;Belém;PA;4000000;1000;0;0;cesta selecionada');
-    expect(lines[2]).toBe('2021;Santos;SP;1000000;0;200000;0;cesta selecionada');
+    expect(lines[0]).toBe('ano;municipio;uf;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto;recorte_geografico');
+    expect(lines[1]).toBe('2021;Belém;PA;4000000;1000;0;0;cesta selecionada;sem recorte sub-UF');
+    expect(lines[2]).toBe('2021;Santos;SP;1000000;0;200000;0;cesta selecionada;sem recorte sub-UF');
   });
 
   it('falls back to the per-UF table when geoExportScope is absent (unchanged default)', () => {
@@ -334,7 +338,7 @@ describe('exportActiveTableCSV — geo snapshot', () => {
     // no window.geoExportScope set — export triggered before Geografia ever mounted.
     window.exportActiveTableCSV({ view: 'geo', summary: {}, database: 'ibge_pevs' });
     const lines = lastCsv.replace('﻿', '').split('\n');
-    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto');
+    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto;recorte_geografico');
     expect(lines[1].startsWith('2021;PA;')).toBe(true);
   });
 });
@@ -354,7 +358,7 @@ describe('exportActiveTableCSV — concentration (sorted desc by value)', () => 
     });
     window.exportActiveTableCSV({ view: 'concentration', summary: {}, database: 'ibge_pevs' });
     const lines = lastCsv.replace('﻿', '').split('\n');
-    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_contagem_un;escopo_produto');
+    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_contagem_un;escopo_produto;recorte_geografico');
     // PA (9) must come before AM (1) after the descending sort
     expect(lines[1]).toContain(';PA;');
     expect(lines[2]).toContain(';AM;');
@@ -400,5 +404,40 @@ describe('exportActiveTableCSV — conventions default', () => {
       conventions: { currency: 'USD' },
     });
     expect(lastCsv).toContain('valor_USD');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A sub-UF recorte narrows the rows WITHOUT removing a UF: a state's row carries a
+// fraction of that state and the file used to say nothing. A CSV leaves the product
+// for good — no chip, no permalink, no trail beside it — so the recorte has to ride
+// along in the table, the way escopo_produto already does for the basket.
+// ---------------------------------------------------------------------------
+describe('exportActiveTableCSV — o recorte sub-UF viaja junto com o arquivo', () => {
+  const MESH = [
+    { cityCode: '1', uf: 'PA', meso: { code: '1502', name: 'Marajó' },
+      micro: { code: '15003', name: 'Arari' },
+      intermediaria: { code: '1502', name: 'Breves' },
+      imediata: { code: '150004', name: 'Breves' } },
+  ];
+
+  const UF_ROW = [{ uf: 'PA', name: 'Pará', region: 'Norte', value: 5, q_mass: 1, q_vol: 2, q_count: 3 }];
+
+  it('nomeia o recorte em cada linha quando há um', () => {
+    stubRegistry({ products: PRODUCTS, ufData: UF_ROW, ufLatestYear: 2024, notFilteredByBasket: true });
+    window.geoMesh = () => MESH;
+    window.exportActiveTableCSV({ view: 'geo', summary: { mesos: ['1502'] }, database: 'ibge_pevs' });
+    const lines = lastCsv.replace('\ufeff', '').split('\n');
+    expect(lines[0]).toContain('recorte_geografico');
+    expect(lines[1]).toContain('Marajó (PA)');
+  });
+
+  it('diz explicitamente que NÃO há recorte, em vez de deixar a coluna vazia', () => {
+    // Uma célula vazia é ambígua: "sem recorte" ou "ninguém preencheu?". O leitor de
+    // um CSV solto, sem chip nem permalink ao lado, não tem como desempatar.
+    stubRegistry({ products: PRODUCTS, ufData: UF_ROW, ufLatestYear: 2024, notFilteredByBasket: true });
+    window.geoMesh = () => MESH;
+    window.exportActiveTableCSV({ view: 'geo', summary: {}, database: 'ibge_pevs' });
+    expect(lastCsv.split('\n')[1]).toContain('sem recorte sub-UF');
   });
 });

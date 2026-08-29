@@ -661,6 +661,22 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
     isNarrowingFacet(imediatas.size, Object.keys(imediataNames).length) ||
     isNarrowingFacet(munis.size, MUNIS.length);
 
+  // The recorte as the summary line and the chip must STATE it. Built from the same
+  // isNarrowingFacet rule as the badge above, so the menu cannot claim "todo o
+  // território" while its own badge says "recorte ativo" — and formatted by the one
+  // shared formatter (geoDrill.subUfChipText) the applied-filter path also uses, so the
+  // two can't drift into two different sentences for one selection.
+  const subUfText = useMemo(() => {
+    const only = (set, total) => (isNarrowingFacet(set.size, total) ? [...set] : null);
+    const sel = {
+      mesos:     only(mesos,     Object.keys(mesoNames).length),
+      micros:    only(micros,    Object.keys(microNames).length),
+      inters:    only(inters,    Object.keys(interNames).length),
+      imediatas: only(imediatas, Object.keys(imediataNames).length),
+    };
+    return window.subUfChipText ? window.subUfChipText(sel, mesh || []) : null;
+  }, [mesos, micros, inters, imediatas, mesoNames, microNames, interNames, imediataNames, mesh]);
+
   // search strings, one per multi-select
   const [qProducts, setQProducts] = useState('');
   const [qFlags,    setQFlags]    = useState('');
@@ -852,9 +868,10 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
       munisSize: munis.size,
       munisTotal: MUNIS.length,
       muniSliceable,
+      subUf: subUfText,
     });
     return { prodTxt, period, geoTxt };
-  }, [products, startDate, endDate, nations, regions, states, munis, hasGeo, muniSliceable, MUNIS, PRODS.length]);
+  }, [products, startDate, endDate, nations, regions, states, munis, hasGeo, muniSliceable, MUNIS, PRODS.length, subUfText]);
 
   // chip-bar summary published on apply (display strings only)
   const buildChipSummary = () => {
@@ -876,6 +893,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
       munisSize: munis.size,
       munisTotal: MUNIS.length,
       muniSliceable,
+      subUf: subUfText,
     });
     const qualityChip = window.chipFmt.quality([...flags], QUALITY.length, qualityLabelOf);
     // Guard on flowOptions too (not just hasFlow): a banco could declare provides:['flow']

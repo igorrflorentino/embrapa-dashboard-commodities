@@ -267,7 +267,10 @@ function AppShell({
   // included only when an actual filter is set.
   const scopeBits = [];
   if (summary?.products) scopeBits.push(`Produtos: ${summary.products}`);
-  if (summary?.geo) scopeBits.push(`UFs: ${summary.geo}`);
+  // "Território", not "UFs": the geo chip can now carry a sub-UF recorte
+  // ("Marajó (PA)"), and a mesorregião is not a UF. The prefix has to hold for every
+  // scope the chip can state, or the fix to the chip just moves the wrong word.
+  if (summary?.geo) scopeBits.push(`Território: ${summary.geo}`);
   if (summary?.flags && summary.flags.length && summary.quality) scopeBits.push(`Qualidade: ${summary.quality}`);
   if ((summary?.valueMin != null || summary?.valueMax != null) && summary.valueRange) scopeBits.push(`Faixa de valor: ${summary.valueRange}`);
   const scopeStr = scopeBits.length ? `${scopeBits.join('. ')}. ` : '';

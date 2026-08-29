@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.28] - 2026-08-28
+
+Varredura atrás da classe de defeito da v1.33.27 — **um agregado que leva o nome do
+todo mas é calculado sobre um subconjunto filtrado**. Encontrado um caso, mais grave
+que o original porque sai do produto.
+
+### Corrigido
+
+- **Um recorte sub-UF ficava invisível fora da Geografia.** As quatro facetas agregadas
+  (mesorregião, microrregião, região intermediária, região imediata) estreitam os dados
+  **sem tirar nenhuma UF da seleção** — então toda contagem que os resumos de filtro
+  recebem continua no total, e eles respondiam com o país inteiro. Filtrando a
+  mesorregião do **Marajó** (16 municípios do Pará), o chip do cabeçalho anunciava
+  `Brasil · 27 UFs` enquanto o mapa pintava `PA = 655 mi` — sendo que o Pará inteiro
+  naquele ano é R$ 2,91 bi. A palavra "Marajó" não aparecia em lugar nenhum da tela.
+
+- **A citação ABNT repetia isso.** A referência de "consulta detalhada" — a que se
+  propõe a descrever o recorte exato, e cujo comentário no código diz explicitamente que
+  ela deve *"never over-claim a filtered panel as if it were the full dataset"* — saía
+  como `UFs: Brasil · 27 UFs`, **ao lado de um permalink que carregava `me=1502`**. A
+  referência contradizia o próprio link. Um pesquisador publicaria um método falso.
+
+  Agora sai `Território: Marajó (PA)`. O prefixo mudou de "UFs" para "Território"
+  porque uma mesorregião não é uma UF — consertar o valor e deixar o rótulo errado
+  seria só mudar o defeito de lugar.
+
+- **O CSV não levava o recorte.** Um arquivo baixado sai do produto para sempre: não
+  tem chip, nem permalink, nem trilha ao lado. A tabela de distribuição geográfica
+  trazia `PA` com o valor do Marajó e nada mais. Passa a carregar a coluna
+  `recorte_geografico`, irmã da `escopo_produto` que já viajava junto — e ela diz
+  `sem recorte sub-UF` por extenso quando não há, porque célula vazia é ambígua.
+
+### Sobre a causa
+
+A regra já existia e estava certa: `geoDrill.subUfLabel` (v1.33.1) descreve o recorte
+*"never wider than it is"*, e o FilterMenu já tinha um `subUfNarrowing` alimentando um
+selo "recorte ativo" para que recolher o painel *"never hides an active narrowing
+silently"*. A regra foi aplicada à trilha territorial e ao selo, e **nunca propagada às
+duas superfícies que saem da tela** — o chip e a citação. As três chamadas de
+`geoChipText`/`geoHeaderText` simplesmente nunca mencionavam as facetas.
+
+### Testes
+
+15 casos novos. Validados por injeção: tirar a guarda do chip derruba 2; a da linha do
+menu, 2; omitir a UF no recorte, 2; inventar uma UF para código órfão, 1; tirar a coluna
+do CSV, 7; deixá-la vazia, 3.
+
+Um deles precisou de instrumento novo. Apagar a ligação no `main.jsx` — exatamente onde
+o defeito morava — deixava **os 1012 testes verdes**: as funções puras estavam travadas,
+o fio que as alimenta não. `filterSummary.wiring.test.js` varre o código e exige que
+toda chamada passe o recorte; ele pega tanto a remoção no `main.jsx` quanto em uma das
+duas do FilterMenu.
+
+Conferido no navegador contra o BigQuery de produção: sem filtro → `Brasil · 27 UFs`;
+duas UFs → `1 nação · 2 UFs`; mesorregião → `Marajó (PA)`, com a citação concordando
+com o próprio permalink.
+
+---
+
 ## [1.33.27] - 2026-08-28
 
 O cartão "Soma por região" nomeava uma região inteira sobre um número que era de um
