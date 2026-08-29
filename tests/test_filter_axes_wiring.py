@@ -108,6 +108,13 @@ def test_the_sweep_actually_sees_the_calls() -> None:
         "geo_municipio_yearly",
         "products_by_municipio",
         "products_by_uf",
+        # The three trade readers. They gained the level narrowing in v1.35.6 while their
+        # routes kept using the bare _filter_summary(), so the seam was ready and nothing
+        # fed it: an invalid level answered 200 instead of 400, which is what exposed it.
+        # The list must name EVERY route reaching a basket reader — that is the invariant.
+        "flow_data",
+        "partner_data",
+        "monthly_data",
     ],
 )
 def test_every_route_reaching_a_pevs_seam_parses_origem(rota: str) -> None:
@@ -163,3 +170,32 @@ def test_the_level_narrowing_is_defined_once() -> None:
     assert src.count("def _apply_levels(") == 1
     # The sentinel that keeps an empty resolution honest must not be re-spelled either.
     assert src.count('"__nenhum_codigo_neste_nivel__"') == 1
+
+
+# The five VALUE axes the shared route helper folds. reporters/partners are not here:
+# they come from _filter_summary, which every data route already shares.
+_VALUE_AXES = ("flow", "customs", "market", "origem", "niveis")
+
+
+@pytest.mark.parametrize("eixo", _VALUE_AXES)
+def test_the_route_helper_folds_every_value_axis(eixo: str) -> None:
+    """Wiring eight routes to one helper only helps if the helper carries every axis.
+
+    An axis dropped from it vanishes from ALL eight at once — a wider blast radius than
+    the per-route bug this helper replaced. Found by injection: removing `customs` left
+    the whole suite green, because nothing asserted the helper's contents."""
+    src = _ROUTES.read_text(encoding="utf-8")
+    ini = src.index("def _with_filter_axes(")
+    corpo = src[ini : src.index("\ndef ", ini + 1)]
+    assert f"_{eixo}_or_400(" in corpo or f'"{eixo}"' in corpo, (
+        f"_with_filter_axes nao dobra o eixo {eixo}"
+    )
+    assert f'extra["{eixo}"]' in corpo, f"_with_filter_axes nao escreve {eixo} na summary"
+
+
+def test_the_snapshot_route_does_not_refold_the_axes_itself() -> None:
+    """It folded them inline, and ONLY there, which is how the other eight went without.
+    A second copy would drift the moment an axis is added to one and not the other."""
+    src = _ROUTES.read_text(encoding="utf-8")
+    for eixo in _VALUE_AXES:
+        assert src.count(f'extra["{eixo}"]') == 1, f"{eixo} dobrado em mais de um lugar"
