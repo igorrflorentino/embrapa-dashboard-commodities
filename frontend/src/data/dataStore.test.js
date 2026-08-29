@@ -132,6 +132,51 @@ describe('dataStore', () => {
     expect(snapCalls(f)).toBe(1);
   });
 
+  // ── The rest of the server-side axes ────────────────────────────────────────
+  //
+  // `flow` and `origem` had wire tests; customs, market, reporters and partners had
+  // none. Driving the live API showed all four ACTUALLY WORK (2026-08-29) — this is not
+  // fixing a bug, it is closing the hole that let `origem` ship broken with 1031 green
+  // tests. The contract nobody can see from a screen has two halves, and both are here:
+  // the parameter must reach the REQUEST, and it must enter the CACHE KEY (or the store
+  // serves the previous selection's rows under the new chip).
+  //
+  // Table-driven so the next axis costs one row, not one copy of this comment.
+  const EIXOS = [
+    { nome: 'customs', setter: 'setCustoms', valor: 'C01', param: 'customs=C01' },
+    { nome: 'market', setter: 'setMarket', valor: 'consumo', param: 'market=consumo' },
+    { nome: 'reporters', setter: 'setReporters', valor: ['BRA'], param: 'reporters=BRA' },
+    { nome: 'partners', setter: 'setPartners', valor: ['CHN'], param: 'partners=CHN' },
+  ];
+
+  for (const eixo of EIXOS) {
+    it(`${eixo.nome}: entra na chave de cache E na requisição`, async () => {
+      const f = vi.fn(() => jsonRes(validSnap()));
+      const ds = await loadStore(f);
+
+      await ds.load('un_comtrade');
+      ds[eixo.setter](eixo.valor);
+      await ds.load('un_comtrade');
+
+      expect(snapCalls(f), `${eixo.nome} não mudou a chave de cache`).toBe(2);
+      const urls = f.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/snapshot'));
+      expect(urls[0]).not.toContain(`${eixo.nome}=`); // sem recorte → parâmetro omitido
+      expect(urls[1]).toContain(eixo.param);
+    });
+  }
+
+  it('reporters: o sentinela __all__ (mundo) viaja como tal, não como lista vazia', async () => {
+    // Reporter é TRI-estado — ausente = Brasil, '__all__' = mundo, lista = IN. Tratar o
+    // mundo como "sem filtro" devolveria o Brasil sob o rótulo "Mundo".
+    const f = vi.fn(() => jsonRes(validSnap()));
+    const ds = await loadStore(f);
+    await ds.load('un_comtrade');
+    ds.setReporters('__all__');
+    await ds.load('un_comtrade');
+    const urls = f.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/snapshot'));
+    expect(urls[1]).toContain('reporters=__all__');
+  });
+
   it("setFlow('all') when already all is a no-op (no extra fetch)", async () => {
     const f = vi.fn(() => jsonRes(validSnap()));
     const ds = await loadStore(f);
