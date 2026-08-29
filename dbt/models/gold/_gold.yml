@@ -381,7 +381,7 @@ models:
         description: "8-digit NCM code (castanha 0801* or HS chapter 44)."
         tests: [not_null]
       - name: ncm_description
-        description: "Portuguese NCM description (seed comex_ncm). NULL if the NCM is outside the seeded scope."
+        description: "Portuguese NCM description (seed comex_ncm). NULL only for a code OUTSIDE the ingested scope — a code that reaches this table unnamed is a seed gap, caught by assert_trade_codes_have_a_description."
       - name: hs_chapter
         description: "First 2 digits of ncm_code."
         tests: [not_null]
@@ -522,7 +522,7 @@ models:
         description: "HS code in scope (0801 nuts or 44 wood/charcoal)."
         tests: [not_null]
       - name: cmd_description
-        description: "Portuguese HS description (seed comtrade_hs). NULL if outside the seeded scope."
+        description: "Portuguese HS description (seed comtrade_hs). NULL only for a code OUTSIDE the ingested scope — a code that reaches this table unnamed is a seed gap, caught by assert_trade_codes_have_a_description."
       - name: hs_chapter
         description: "First 2 digits of cmd_code."
         tests: [not_null]
