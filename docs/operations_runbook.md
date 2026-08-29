@@ -251,10 +251,12 @@ one row to `research_inputs.ingestion_heartbeat` (source, timestamp, outcome, du
 | row, `outcome='ok'`, data unchanged | it ran and the source had nothing new — the healthy quiet state |
 | row, `outcome='failed'` | it ran and broke — the Cloud Monitoring alert also fires |
 
-Windows come from `cli.INGESTS`: a source in the nightly batch gets
-`HEARTBEAT_DAILY_SLACK_DAYS` (default 2), the monthly ones get
-`HEARTBEAT_MONTHLY_SLACK_DAYS` (default 35). A source that has NEVER reported is not
-flagged — the table only fills forward from the day this shipped.
+Windows come from each source's own `IngestSpec.cadence_days` in `cli.INGESTS` (1 for BCB
+câmbio, 7 for the weekly batch, 31 for the monthly triggers) plus `HEARTBEAT_SLACK_DAYS`
+(default 3) of grace — so a daily source trips at 4 days, a weekly one at 10, a monthly one
+at 34. That cadence is declared per source rather than inferred from `in_all`, which stopped
+meaning "daily" when the batch went weekly. A source that has NEVER reported is not flagged
+— the table only fills forward from the day this shipped.
 
 The heartbeat write can never fail an ingest (`ingestion_heartbeat.record` swallows every
 error with a warning): a monitor that can take down what it monitors is worse than none.

@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.24] - 2026-08-28
+
+### Documentação
+
+Varredura dos arquivos que descreviam a infraestrutura mudada hoje. **Nove arquivos** ainda
+diziam "nightly" ou citavam configurações que deixaram de existir.
+
+- **`.env.example` não tinha três configurações novas** — `BQ_HEARTBEAT_TABLE`,
+  `HEARTBEAT_SLACK_DAYS` e `SOURCE_FRESHNESS_ANNUAL_SLACK_YEARS`. Quem copiasse o exemplo
+  para montar um `.env` não saberia que existem. Acrescentadas com o porquê de cada padrão.
+- **`docs/adding_a_data_source.md`** mostrava o molde do `IngestSpec` **sem** `cadence_days`.
+  Uma fonte nova herdaria 7 em silêncio e o check de batimento usaria a janela errada. O
+  molde agora inclui o campo, com a nota de que ele e o cron do script de agendamento são
+  presos por teste — então se alteram juntos.
+- **`deploy/ingestion/README.md`** chamava o gatilho de nightly em quatro pontos, não listava
+  o `schedule_currency.sh` e descrevia o `schedule_pam.sh` como "manual scheduler" (é
+  mensal). Ganhou também o parágrafo que faltava: o alerta vê rodada que **falha**, e quem
+  cobre a rodada verde-sem-dado são os dois checks do `doctor`.
+- **`ARCHITECTURE.md`**, **`CLAUDE.md`**, **`README.md`**, **`docs/comtrade_world_backfill.md`**
+  e a **skill `ingest-data`** descreviam o lote como noturno. Corrigidos — a menção que
+  sobrou no `ARCHITECTURE.md` é histórica e explícita ("nightly until 2026-08-28").
+### Corrigido
+
+- **Teste instável no `ViewCadastroProdutos`.** Dois casos esperavam a **tabela** aparecer
+  (`.dt-table`) e em seguida liam o `value` de um **input** — que é populado um tick depois.
+  Passa sempre localmente e falhou sob carga no CI. As esperas passam a ser gatilhadas no
+  próprio campo que o teste afirma, que é estritamente mais preciso do que esperar o
+  contêiner. **Não provado por injeção**: a corrida não reproduz fora da carga do CI, então
+  a correção vem do mecanismo, não de uma falha reproduzida.
+
+### Documentação (continuação)
+
+- **`docs/operations_runbook.md` descrevia duas configurações que eu mesmo removi**
+  (`HEARTBEAT_DAILY_SLACK_DAYS` / `HEARTBEAT_MONTHLY_SLACK_DAYS`), substituídas na v1.33.20
+  por `cadence_days` + `HEARTBEAT_SLACK_DAYS`. Eu escrevi aquele trecho na v1.33.19 e o
+  deixei vencer quatro PRs depois, no mesmo dia — exatamente o modo de falha que passei o
+  dia documentando.
+
+---
+
 ## [1.33.23] - 2026-08-28
 
 ### Documentação

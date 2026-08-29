@@ -38,10 +38,11 @@ feeds Silver → Gold → the `serving` marts.
 | `Dockerfile` | The job image (`uv sync --no-dev`, runs `embrapa ingest all`). |
 | `cloudbuild.yaml` | Builds the image from the repo root via Cloud Build. |
 | `deploy.sh` | Build + create/update the Cloud Run Job. Reads `.env`. |
-| `schedule.sh` | Create/update the nightly (delta) Cloud Scheduler trigger. |
+| `schedule.sh` | Create/update the **weekly** (delta) Cloud Scheduler trigger — Monday 05:00 BRT, the whole `ingest all` batch. Was nightly until 2026-08-28. |
+| `schedule_currency.sh` | Create/update the **daily** BCB câmbio trigger (args → `bcb-currency`). PTAX is the only source that advances every business day; it kept a daily cadence when the batch went weekly. |
 | `schedule_reconcile.sh` | Create/update the MONTHLY deep-refresh trigger (same Job, args overridden to `reconcile`). |
 | `schedule_comtrade.sh` | Per-source UN Comtrade world-backfill scheduler (see `docs/comtrade_world_backfill.md`). |
-| `schedule_pam.sh` | IBGE PAM manual scheduler. |
+| `schedule_pam.sh` | IBGE PAM **monthly** scheduler (same Job, args overridden to `ibge-pam`). |
 | `schedule_ppm.sh` | IBGE PPM (livestock) monthly scheduler (same Job, args overridden to `ibge-ppm`). |
 | `alert.sh` | Create the Cloud Monitoring alert (email channel + policy) for job failures. |
 | `alert_policy.json` | The alert-policy template `alert.sh` applies (`__JOB_NAME__` substituted in). |
@@ -124,7 +125,7 @@ gcloud run jobs add-iam-policy-binding embrapa-ingest-all \
 
 ## Monthly deep-refresh (catch revisions of old data)
 
-The nightly run is **delta** — each source only revisits a recent window, so an
+The scheduled runs are **delta** — each source only revisits a recent window, so an
 upstream **correction to an old year** (IBGE revising a 1999 PEVS value, BCB
 re-publishing an old month) is never re-queried. COMEX is the exception: its
 per-file ETag check already re-detects any year. To catch IBGE/BCB old-year
@@ -168,9 +169,17 @@ gcloud run jobs execute embrapa-ingest-all --region <INGEST_JOB_REGION> \
 
 ## Alert on failure
 
-A blind nightly cron is only safe if a *failure* is noticed. `alert.sh` wires a
+A blind cron is only safe if a *failure* is noticed. `alert.sh` wires a
 **Cloud Monitoring** alert so a failed run emails someone instead of being
 discovered only when the dashboard looks stale.
+
+That alert sees a run that **fails**. A run that finishes green and ingests
+*nothing* looks identical to "the source has not published yet" — which, for the
+annual sources, is the normal state ~11 months a year. Two `embrapa doctor` checks
+cover that half: **Ingest heartbeat** (did the trigger fire? one row per run in
+`research_inputs.ingestion_heartbeat`, written even when nothing was ingested) and
+**Source data freshness** (did the DATA advance?). See
+`docs/operations_runbook.md` § "Is a source still arriving?".
 
 ```bash
 # in .env: who to notify (comma-separated for multiple recipients)
@@ -229,7 +238,7 @@ All have sensible defaults; set them in `.env` only to override:
 - **Single source per run:** override the command to ingest just one source, e.g.
   `gcloud run jobs execute embrapa-ingest-all --args=ibge …` (the entrypoint is
   `embrapa ingest`, so `--args ibge` runs `embrapa ingest ibge`).
-- **First historical backfill:** the nightly job is **delta** (recent years
+- **First historical backfill:** the scheduled job is **delta** (recent years
   only), so it never does the full IBGE/COMEX history. Seed the history once
   locally (`make ingest-ibge-historical` for IBGE; a `--full` COMEX run) — then
   the job keeps it current via delta.

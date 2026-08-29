@@ -25,7 +25,7 @@ uv run embrapa ingest comex             # MDIC Comex Stat flows (export + import
 uv run embrapa ingest comtrade          # UN Comtrade global flows (needs COMTRADE_API_KEY)
 
 # Catch upstream revisions of OLD data (operator-triggered full re-ingest)
-uv run embrapa ingest reconcile         # full re-download of every nightly source
+uv run embrapa ingest reconcile         # full re-download of every scheduled source
 
 # IBGE large historical windows (auto-chunked)
 make ingest-ibge-historical             # uses --chunk-years 5
@@ -54,7 +54,8 @@ BCB SGS API    ──┼──► Python (src/embrapa_dashboard/) → GCS Parque
 
 IBGE and BCB pipelines are delta by default — they query the max reference
 already in Bronze and re-fetch only a small recent window, so a routine
-`ingest all` (e.g. the nightly Cloud Run job) stays small and reliable:
+`ingest all` (the WEEKLY Cloud Run batch since 2026-08-28; BCB câmbio has its own
+daily trigger) stays small and reliable:
 
 - **BCB:** fetch from `max(reference_date_str) - overlap` — 12 months (inflation)
   / 30 days (currency), absorbing BCB revisions of preliminary readings.
