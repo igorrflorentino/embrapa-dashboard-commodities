@@ -370,25 +370,48 @@ def _is_active_entry(bq: bigquery.Client, table_fqn: str, codigo_produto: str, b
 def _validate_sidra_tabela(
     banco: str, sidra_tabela: str | None, cfg: Settings, *, require_for_ppm: bool = True
 ) -> None:
-    """PPM spans two SIDRA tables (herd 3939 / animal 74) under the single banco token
-    ``'ppm'``, so a ppm entry tags which table its code belongs to — the catalog-driven
-    ingestion resolver routes by it (``catalog_resolver``). Every other (single-table)
-    banco must NOT carry one. ``require_for_ppm`` is True for a NEW ppm entry (the tag is
-    mandatory) and False for an UPDATE (the caller preserves the stored tag, or leaves an
-    entry that predates the column untagged). Fail loud (400, pt-BR)."""
-    valid = {cfg.ppm_herd_table_id, cfg.ppm_animal_table_id}
-    if banco == "ppm":
-        if not sidra_tabela:
-            if require_for_ppm:
-                raise ValueError(
-                    "sidra_tabela é obrigatória para o banco 'ppm' — informe "
-                    f"{sorted(valid)} (rebanho / produção animal)."
-                )
-            return  # update of an entry that predates the column — leave it as-is
-        if sidra_tabela not in valid:
-            raise ValueError(f"sidra_tabela {sidra_tabela!r} inválida — use um de {sorted(valid)}.")
-    elif sidra_tabela:
-        raise ValueError(f"sidra_tabela só se aplica ao banco 'ppm' (recebido para {banco!r}).")
+    """Some bancos span TWO SIDRA tables under a single banco token, so their entries tag
+    which table the code belongs to — the catalog-driven ingestion resolver routes by it
+    (``catalog_resolver``). Every other (single-table) banco must NOT carry one.
+
+    TWO bancos are multi-table, and they differ in whether the tag is mandatory:
+
+    * ``ppm`` — rebanho (3939) / produção animal (74). REQUIRED on a new entry: the two
+      tables share no codes and there is no defensible default.
+    * ``pevs`` — extração vegetal (289) / silvicultura (291), since the silviculture half
+      was ingested on 2026-08-29. OPTIONAL: every pevs entry predates the column, and the
+      extraction half is both the historical meaning of an untagged entry and ~4× the
+      other, so ``catalog_resolver`` reads NULL as extraction rather than dropping it.
+      Requiring it here would reject every existing client (the editor sends the field for
+      ppm only) and turn a benign legacy NULL into a 400.
+
+    ``require_for_ppm`` is True for a NEW ppm entry and False for an UPDATE (the caller
+    preserves the stored tag, or leaves a pre-column entry untagged). Fail loud (400,
+    pt-BR)."""
+    valid_por_banco = {
+        "ppm": {cfg.ppm_herd_table_id, cfg.ppm_animal_table_id},
+        "pevs": {cfg.ibge_table_id, cfg.silvicultura_table_id},
+    }
+    valid = valid_por_banco.get(banco)
+    if valid is None:
+        if sidra_tabela:
+            raise ValueError(
+                f"sidra_tabela só se aplica aos bancos {sorted(valid_por_banco)} "
+                f"(recebido para {banco!r})."
+            )
+        return
+    if not sidra_tabela:
+        if banco == "ppm" and require_for_ppm:
+            raise ValueError(
+                "sidra_tabela é obrigatória para o banco 'ppm' — informe "
+                f"{sorted(valid)} (rebanho / produção animal)."
+            )
+        return  # pevs, or an update of an entry that predates the column — leave as-is
+    if sidra_tabela not in valid:
+        raise ValueError(
+            f"sidra_tabela {sidra_tabela!r} inválida para o banco {banco!r} — "
+            f"use um de {sorted(valid)}."
+        )
 
 
 def _current_sidra_tabela(
@@ -599,10 +622,13 @@ def record_produto_catalog(
     if visibilidade is None and ciclo_de_vida:
         visibilidade = _LEGACY_CICLO_TO_VISIBILIDADE.get(ciclo_de_vida)
     sidra_tabela = sidra_tabela.strip() if sidra_tabela else None
-    # A non-ppm banco must never carry a sidra_tabela — reject early (no BQ). The PPM
-    # requirement is enforced below, once we know whether this is a new entry or an update.
-    if banco != "ppm" and sidra_tabela:
-        raise ValueError(f"sidra_tabela só se aplica ao banco 'ppm' (recebido para {banco!r}).")
+    # Reject a bad tag EARLY (no BQ round-trip): a single-table banco carrying one, or a
+    # multi-table banco carrying a table that is not its own. Delegates to the one validator
+    # rather than restating the rule — this check WAS a verbatim copy, and when pevs became
+    # multi-table on 2026-08-29 only the copy in _validate_sidra_tabela was updated, so
+    # every pevs stamp was still rejected with the old "só se aplica ao banco 'ppm'". The
+    # mandatory-for-new-ppm half is enforced below, once new-vs-update is known.
+    _validate_sidra_tabela(banco, sidra_tabela, cfg, require_for_ppm=False)
     agrupamento = agrupamento.strip() if agrupamento else agrupamento
     agrupamento_id = (agrupamento_id or _slug(agrupamento)).strip() or None
     # agrupamento names the commodity (agrupamento_nome) AND seeds agrupamento_id; both

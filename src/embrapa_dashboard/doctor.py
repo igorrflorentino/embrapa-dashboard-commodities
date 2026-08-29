@@ -300,7 +300,13 @@ def _check_catalog_resolver_parity(settings: Settings) -> CheckResult:
         from embrapa_dashboard.ibge import catalog_resolver
 
         plan = [
-            ("pevs", None, settings.product_codes),
+            # PEVS spans two SIDRA tables since 2026-08-29, so it is compared PER TABLE
+            # exactly like ppm. Comparing the token as a whole against IBGE_PRODUCT_CODES
+            # (t289 only) reported the three silviculture codes as permanent DRIFT — a red
+            # herring that is correct-by-design, and an operator who learns to ignore
+            # doctor is the real cost.
+            ("pevs", settings.ibge_table_id, settings.product_codes),
+            ("pevs", settings.silvicultura_table_id, settings.silvicultura_product_codes_list),
             ("pam", None, settings.pam_product_codes_list),
             ("ppm", settings.ppm_herd_table_id, settings.ppm_herd_product_codes_list),
             ("ppm", settings.ppm_animal_table_id, settings.ppm_animal_product_codes_list),

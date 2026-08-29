@@ -158,7 +158,18 @@ def _query_catalog_codes(
     ]
     if sidra_tabela is not None:
         extra_cols = ", sidra_tabela"
-        extra_filter = "and sidra_tabela = @sidra_tabela"
+        # An UNTAGGED pevs entry resolves to the EXTRACTION half. Every pevs entry predates
+        # the column (the tag became meaningful only when silvicultura/t291 arrived on
+        # 2026-08-29), and unlike ppm — whose two tables share no default — pevs has one:
+        # extraction is what "a PEVS produto" meant for the whole history, and is ~4× the
+        # other half. Dropping those rows instead would silently stop ingesting them, which
+        # is the failure this tag exists to prevent. ppm keeps the strict `=`: there a NULL
+        # is a genuinely unanswered question, and guessing a herd/animal default would fetch
+        # the wrong table.
+        if banco == "pevs" and sidra_tabela == settings.ibge_table_id:
+            extra_filter = "and (sidra_tabela = @sidra_tabela or sidra_tabela is null)"
+        else:
+            extra_filter = "and sidra_tabela = @sidra_tabela"
         params.append(bigquery.ScalarQueryParameter("sidra_tabela", "STRING", sidra_tabela))
     else:
         extra_cols = ""

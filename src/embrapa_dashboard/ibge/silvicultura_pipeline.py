@@ -42,6 +42,7 @@ from embrapa_dashboard.gcp.bigquery import (
     load_dataframe,
 )
 from embrapa_dashboard.gcp.clients import resolve_clients
+from embrapa_dashboard.ibge import catalog_resolver
 from embrapa_dashboard.ibge.client import fetch_sidra_dataframe
 from embrapa_dashboard.ibge.pipeline import _bronze_schema, _order_by_fetched_at
 
@@ -87,16 +88,24 @@ def _basename(settings: Settings, product_codes: list[str]) -> str:
 
 
 def _product_codes(settings: Settings) -> list[str]:
-    """The codes to fetch — from the env settings, NOT the Curadoria catalog.
+    """The codes to fetch — the catalog's t291 entries, falling back to env.
 
-    PEVS's catalog token (`'pevs'`) holds t289 codes. Routing this ingest through
-    `catalog_resolver.resolve_product_codes(settings, 'pevs', ...)` would therefore
-    fetch the EXTRACTION codes from the SILVICULTURE table: SIDRA would return an
-    empty slice and the pipeline would report a clean no-op, which is the worst kind
-    of wrong. Until the catalog learns to tag a code with its SIDRA table (as PPM's
-    `sidra_tabela` already does), the env list is the only source of truth here.
+    PEVS's catalog token (``'pevs'``) holds BOTH halves, so this must resolve with its
+    own ``sidra_tabela``: asking for the token alone would hand the SILVICULTURE table
+    the EXTRACTION codes, SIDRA would answer with an empty slice, and the pipeline would
+    report a clean no-op — the worst kind of wrong.
+
+    This read the env list exclusively until 2026-08-29, because the catalog could not
+    yet tell the two halves apart. It now can (the pevs entries carry ``sidra_tabela``,
+    the tag PPM already used), so both halves resolve the same way, and a produto a
+    researcher adds to the silviculture half is ingested without an env edit.
     """
-    return settings.silvicultura_product_codes_list
+    return catalog_resolver.resolve_product_codes(
+        settings,
+        "pevs",
+        env_fallback=settings.silvicultura_product_codes_list,
+        sidra_tabela=settings.silvicultura_table_id,
+    )
 
 
 def extract_raw(

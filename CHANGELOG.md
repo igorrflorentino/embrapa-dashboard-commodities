@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.35.4] - 2026-08-29
+
+### Corrigido
+
+- **O PEVS virou um banco de duas tabelas SIDRA e a curadoria continuava assumindo que só o
+  PPM era.** Quando a silvicultura (t291) entrou hoje, toda a pilha de catálogo seguiu
+  tratando `sidra_tabela` como campo exclusivo do PPM — a validação recusava carimbar uma
+  entrada PEVS, o resolver não sabia separar as metades, o `doctor` acusava DRIFT
+  permanente e a tela não mostrava nem oferecia a marca.
+- **A regra estava escrita duas vezes.** `record_produto_catalog` tinha uma cópia literal
+  inline (como otimização "rejeitar cedo, sem BQ") além do validador dedicado. Ao
+  generalizar só o validador, **toda escrita PEVS continuou sendo recusada** com a mensagem
+  antiga. Agora o portão delega ao mesmo validador em vez de repetir a regra.
+- **O `doctor` acusava DRIFT permanente e correto-por-desenho.** Comparava o token `pevs`
+  inteiro contra `IBGE_PRODUCT_CODES` (só t289), então os três códigos de silvicultura
+  apareciam como divergência para sempre. Agora compara **por tabela**, como o PPM sempre
+  fez: `pevs:289 OK(7) · pevs:291 OK(3)`. Um operador que aprende a ignorar o doctor é o
+  custo real de um alarme falso fixo.
+
+### Alterado
+
+- **As 10 entradas PEVS do catálogo foram carimbadas** (`scripts/stamp_pevs_sidra_tabela.py`,
+  idempotente, ensaio por padrão): t289 nos 7 códigos de extração, t291 nos 3 de
+  silvicultura. A tabela de cada código é derivada de `SILVICULTURA_PRODUCT_CODES`, nunca
+  redigitada.
+- **A silvicultura passou a resolver pelo catálogo**, com escopo `sidra_tabela=291` — o que
+  o docstring do pipeline já previa ("até o catálogo aprender a marcar a tabela SIDRA de um
+  código"). Um produto que o pesquisador adicionar à metade plantada passa a ser ingerido
+  sem edição de `.env`.
+- **Uma entrada PEVS sem marca resolve como extração**, em vez de deixar de ser ingerida:
+  toda entrada é anterior à coluna, extração é o que "um produto PEVS" significou por toda
+  a história e é ~4× a outra metade. O PPM mantém o `=` estrito — lá as duas tabelas não
+  compartilham código e adivinhar buscaria a tabela errada.
+- **A tela de cadastro** oferece "Metade do PEVS" (Extração vegetal / Silvicultura) e mostra
+  o selo na listagem. A marca é **opcional** no PEVS e obrigatória no PPM, derivado de um
+  registro por banco em vez de `banco === 'ppm'` espalhado por quatro lugares.
+
+**Por que isso importa.** Com `catalog_authoritative_ingestion` ligado, o pipeline de
+**extração** — a metade maior — pediria à t289 os três códigos de silvicultura. A SIDRA
+responde com fatia vazia e o pipeline reporta um no-op limpo: a ingestão pararia e nada
+diria. O risco estava latente só porque a flag está `off`.
+
+---
+
 ## [1.35.3] - 2026-08-29
 
 ### Adicionado

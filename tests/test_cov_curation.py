@@ -111,11 +111,54 @@ def test_validate_sidra_tabela_accepts_valid_ppm():
     curation._validate_sidra_tabela("ppm", "74", _settings())
 
 
-def test_validate_sidra_tabela_rejected_for_non_ppm():
+def test_validate_sidra_tabela_rejected_for_single_table_banco():
+    """pam/comex/comtrade map to ONE SIDRA table (or none), so a tag is meaningless there."""
     from embrapa_dashboard.serving import curation
 
     with pytest.raises(ValueError, match="só se aplica"):
+        curation._validate_sidra_tabela("pam", "3939", _settings())
+
+
+def test_validate_sidra_tabela_accepts_both_pevs_halves():
+    """PEVS became multi-table on 2026-08-29 (extração t289 + silvicultura t291)."""
+    from embrapa_dashboard.serving import curation
+
+    curation._validate_sidra_tabela("pevs", "289", _settings())
+    curation._validate_sidra_tabela("pevs", "291", _settings())
+
+
+def test_validate_sidra_tabela_optional_for_pevs():
+    """Unlike ppm, an untagged pevs entry is legal — every entry predates the column and
+    the resolver reads NULL as the extraction half rather than dropping it."""
+    from embrapa_dashboard.serving import curation
+
+    curation._validate_sidra_tabela("pevs", None, _settings())
+
+
+def test_validate_sidra_tabela_rejects_the_other_bancos_table():
+    """A multi-table banco accepts ONLY its own tables — ppm's 3939 is not a pevs half."""
+    from embrapa_dashboard.serving import curation
+
+    with pytest.raises(ValueError, match="inválida para o banco"):
         curation._validate_sidra_tabela("pevs", "3939", _settings())
+
+
+def test_writer_rejects_a_bad_tag_before_touching_bigquery():
+    """The early gate must DELEGATE to _validate_sidra_tabela, not restate it. It was a
+    verbatim copy, and when pevs became multi-table only the validator was updated — so
+    every pevs stamp was still refused with the stale "só se aplica ao banco 'ppm'".
+    No client/settings are needed: a correct gate rejects before resolving either."""
+    from embrapa_dashboard.serving import curation
+
+    with pytest.raises(ValueError, match="inválida para o banco"):
+        curation.record_produto_catalog(
+            "3457",
+            "pevs",
+            {},
+            agrupamento="Madeira",
+            sidra_tabela="3939",
+            settings=_settings(),
+        )
 
 
 def test_validate_sidra_tabela_optional_for_ppm_update():
