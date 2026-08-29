@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.38.0] - 2026-08-29
+
+### Adicionado
+
+- **`embrapa doctor` → `shared-code`**: avisa se um código passar a existir nas **duas**
+  tabelas SIDRA de um banco multi-tabela (PEVS: extração t289 × silvicultura t291; PPM:
+  rebanho 3939 × produção animal 74). Hoje não há nenhum — 7 contra 3 no PEVS, 8 contra 6
+  no PPM, sem interseção.
+
+  Se aparecer, três coisas acontecem e **só a primeira faz barulho**:
+
+  1. O teste de unicidade do Gold (chave sem o discriminador, severidade `error`) falha, e
+     como o prod roda `dbt build` os modelos downstream são pulados — o número errado não
+     chega ao dashboard.
+  2. A curadoria **não consegue representar** o caso: catálogo, gate de visibilidade e nível
+     de industrialização identificam um produto por `(banco, código)` e nenhum dos três
+     conhece a tabela. Seriam um agrupamento, uma visibilidade e um nível cobrindo as duas
+     metades, e a tag da tela mostraria uma delas, arbitrária.
+  3. Com `catalog_authoritative_ingestion` ligado, o resolver filtra por `sidra_tabela` e a
+     metade não marcada deixaria de ser buscada **em silêncio**.
+
+  **Por que só o check, e não a correção definitiva.** Corrigir (2) de verdade exige trocar
+  a identidade do produto em ~25 pontos de código, 3 dims e 3 logs — sobre o único dado do
+  projeto que não se recalcula — para fechar um buraco hoje **inalcançável**, já que (1)
+  barra o dado e (3) depende de uma flag desligada. O check transforma "inalcançável" em
+  "detectado", com tempo para decidir diante de um caso concreto. Gatilho para reabrir: o
+  IBGE publicar um código compartilhado, ou a decisão de ligar a ingestão dirigida.
+
+### Verificação
+
+Quatro injeções. A segunda passou verde e **o defeito era o teste**: ele contava
+`len(_BANCOS_MULTI_TABELA)`, derivado da própria constante, então remover um banco mudava
+os dois lados da asserção. A âncora passou a ser independente —
+`curation._validate_sidra_tabela` mantém a mesma lista por outro motivo, e as duas
+divergirem é sempre defeito. Agora acusa nas duas direções.
+
+---
+
 ## [1.37.2] - 2026-08-29
 
 ### Corrigido

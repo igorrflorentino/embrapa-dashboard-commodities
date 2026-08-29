@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import re
 from datetime import UTC, datetime, timedelta
@@ -527,6 +528,7 @@ def test_run_all_executes_every_probe(settings: Settings) -> None:
         "Catalog↔env product codes",
         "Curation backup coverage",
         "Curation referential integrity",
+        "Shared code across SIDRA tables",
         "Catalog orphan lifecycle",
         "Catalog → Gold arrival",
         "Gold backup freshness",
@@ -1229,3 +1231,84 @@ def test_curation_backup_degrades_to_skipped_on_any_fault(monkeypatch, settings)
     r = doctor._check_curation_backup(settings)
 
     assert r.ok is True and "skipped" in r.detail
+
+
+# ── código compartilhado entre as tabelas de um banco multi-tabela ────────────
+class _Cod:
+    def __init__(self, product_code: str, n: int = 2) -> None:
+        self.product_code = product_code
+        self.n = n
+
+
+def test_shared_code_clean_when_no_banco_shares_a_code(monkeypatch, settings: Settings) -> None:
+    """PEVS e PPM unem duas tabelas SIDRA cada; hoje os códigos são disjuntos."""
+    client = MagicMock()
+    client.query.return_value.result.return_value = []
+    monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", lambda s: client)
+
+    r = doctor._check_shared_code_across_tables(settings)
+
+    assert r.ok is True and "nenhum código compartilhado" in r.detail
+    assert client.query.call_count == len(doctor._BANCOS_MULTI_TABELA), "faltou consultar um banco"
+
+
+def test_shared_code_fails_and_names_the_banco(monkeypatch, settings: Settings) -> None:
+    """A condição nunca é benigna: o teste de unicidade do Gold vai quebrar o build, e a
+    curadoria — que identifica um produto por (banco, código) — não consegue representá-la."""
+    client = MagicMock()
+    client.query.return_value.result.side_effect = [[_Cod("3405")], []]
+    monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", lambda s: client)
+
+    r = doctor._check_shared_code_across_tables(settings)
+
+    assert r.ok is False
+    assert "ibge_pevs: 3405" in r.detail
+    assert "não consegue representar" in r.detail
+
+
+def test_shared_code_query_groups_by_the_discriminator(monkeypatch, settings: Settings) -> None:
+    """Cada banco tem a SUA coluna discriminadora (origem / measure_kind). Agrupar pela
+    errada devolveria zero para sempre — o silêncio que este check existe para evitar."""
+    client = MagicMock()
+    client.query.return_value.result.return_value = []
+    monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", lambda s: client)
+
+    doctor._check_shared_code_across_tables(settings)
+
+    sqls = [c.args[0] for c in client.query.call_args_list]
+    for _banco, tabela, discriminador in doctor._BANCOS_MULTI_TABELA:
+        assert any(f"count(distinct {discriminador})" in q and tabela in q for q in sqls), (
+            f"{tabela} não foi consultada pelo seu discriminador {discriminador}"
+        )
+
+
+def test_shared_code_degrades_to_skipped(monkeypatch, settings: Settings) -> None:
+    def _boom(s):
+        raise RuntimeError("sem permissão")
+
+    monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", _boom)
+
+    r = doctor._check_shared_code_across_tables(settings)
+
+    assert r.ok is True and "skipped" in r.detail
+
+
+def test_the_multi_table_registry_matches_the_curation_validator() -> None:
+    """Âncora INDEPENDENTE para `_BANCOS_MULTI_TABELA`.
+
+    Os testes acima derivam do próprio registro (contam `len(...)`, iteram sobre ele), então
+    remover um banco dali muda os dois lados da asserção e passa verde — uma injeção provou
+    isso. `curation._validate_sidra_tabela` mantém a MESMA lista por outro motivo (só um
+    banco multi-tabela pode carregar `sidra_tabela`), e as duas divergirem é sempre defeito:
+    ou o doctor deixou de vigiar um banco, ou a validação passou a aceitar tag onde não
+    deve.
+    """
+    from embrapa_dashboard.serving import curation
+
+    fonte = inspect.getsource(curation._validate_sidra_tabela)
+    do_validador = {b for b in ("ppm", "pevs", "pam", "comex", "comtrade") if f'"{b}":' in fonte}
+    do_doctor = {b.removeprefix("ibge_") for b, _t, _d in doctor._BANCOS_MULTI_TABELA}
+
+    assert do_doctor == do_validador, (
+        f"doctor vigia {sorted(do_doctor)} e a validação conhece {sorted(do_validador)}"
+    )
