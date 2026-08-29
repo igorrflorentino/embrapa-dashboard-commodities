@@ -452,6 +452,14 @@ function Dashboard() {
     if (window.dataStore?.setMarket) window.dataStore.setMarket(summary.market || 'all');
   }, [summary.market]);
 
+  // Origem → data layer bridge: which half of the PEVS survey is a server-side filter (the
+  // snapshot is pre-aggregated over `origem`), so a change re-fetches rather than
+  // re-rendering the same numbers under a new chip — which is exactly what it did before
+  // this bridge existed.
+  useEffect(() => {
+    if (window.dataStore?.setOrigem) window.dataStore.setOrigem(summary.origem || 'all');
+  }, [summary.origem]);
+
   // Country → data layer bridges: país reporter / parceiro are server-side filters for
   // COMTRADE (the snapshot is pre-aggregated over reporter/partner), so a change re-fetches.
   // reporter: null=Brasil (default), '__all__'=mundo, array=IN-list. partner: null=todos, array.

@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.34.1] - 2026-08-29
+
+O eixo `origem` chegava ao rótulo e não ao dado.
+
+### Corrigido
+
+- **Escolher uma metade da PEVS reetiquetava o painel sem mudar um número.** O chip dizia
+  "Extração vegetal (nativa)", a citação ABNT declarava a metade, o CSV trazia a coluna —
+  e a requisição do snapshot **nunca carregava o parâmetro**. São Paulo continuava com os
+  mesmos R$ 5,79 bi sob os três rótulos, quando em extração ele é **R$ 0**.
+
+  É o defeito de sujeito-errado que o eixo existe para impedir, produzido pelo próprio
+  eixo. Faltavam três elos: o `dataStore` não tinha `activeOrigem` (nem na **chave de
+  cache** — sem isso a store serviria as linhas da metade anterior sob o rótulo novo — nem
+  no query string), não havia ponte `setOrigem` vinda do `summary`, e a rota
+  `/api/snapshot` não lia o parâmetro. O backend abaixo dela já estava correto: consultado
+  direto, `origem=extrativa` sempre devolveu SP = 0.
+
+- A rota ganhou `_origem_or_400`: uma metade inválida agora dá 400 em vez de casar zero
+  linhas e desenhar um dashboard vazio que parece "sem dados para esta seleção".
+
+### O que isso ensina
+
+**Os 1031 testes de frontend passavam com a feature quebrada de ponta a ponta.** Cada
+unidade estava certa — o resolvedor do chip, o fragmento da citação, a coluna do CSV, o
+seam, o SQL — e o fio entre elas não existia. É a mesma lição da v1.33.28, quando apagar a
+ligação no `main.jsx` deixou 1012 testes verdes: **testar a unidade não testa o fio.**
+
+O novo caso em `dataStore.test.js` fecha exatamente isso, e prende as duas metades do
+contrato que nenhuma tela revela: o parâmetro tem de ir na requisição **e** entrar na chave
+de cache. Validado por injeção nas duas. Do lado do servidor, dois casos em
+`test_webapi_routes.py` prendem o elo que faltava — o eixo chega ao seam, e `all` fica de
+fora do summary para que uma requisição sem recorte siga byte-idêntica à de antes.
+
+Encontrado dirigindo a interface real contra a Gold de produção — não por leitura.
+
+---
+
 ## [1.34.0] - 2026-08-29
 
 A PEVS passa a ter as **duas metades**. A pesquisa do IBGE se chama "Produção da Extração

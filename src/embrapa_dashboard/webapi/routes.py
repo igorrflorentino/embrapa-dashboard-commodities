@@ -104,6 +104,21 @@ def _customs_or_400(customs: str | None):
 _ALLOWED_MARKETS = frozenset({"consumo", "processamento", "all"})
 
 
+_ALLOWED_ORIGENS = ("extrativa", "silvicultura")
+
+
+def _origem_or_400(origem: str | None):
+    """Validate the optional PEVS origem param (which half of the survey).
+
+    'all'/absent passes through and sums both — the survey's own total. Anything else
+    400s rather than binding verbatim and matching zero rows: a typo'd half would render
+    an empty dashboard that looks like "no data for this selection" instead of a bad
+    request (mirrors _flow_or_400)."""
+    if origem and origem != "all" and origem not in _ALLOWED_ORIGENS:
+        return None, (jsonify(error=f"origem inválida: {origem!r}"), 400)
+    return origem, None
+
+
 def _market_or_400(market: str | None):
     """Validate the optional tipo-de-mercado param (consumo/processamento; the COMTRADE
     server-side market filter). 'all'/absent passes through. A value outside the seed's
@@ -646,6 +661,9 @@ def snapshot():
     market, err = _market_or_400(request.args.get("market"))
     if err:
         return err
+    origem, err = _origem_or_400(request.args.get("origem"))
+    if err:
+        return err
     # COMTRADE country filters (país reporter / parceiro) — server-side like flow.
     # reporter is 3-state (absent → Brazil, "__all__" → world, list → IN); partner is a list.
     reporters = _reporters_param(request.args.get("reporters"))
@@ -657,6 +675,10 @@ def snapshot():
         summary["customs"] = customs
     if market and market != "all":
         summary["market"] = market
+    # PEVS: which half of the survey. Omitted when 'all' so the request stays
+    # byte-identical to one made before the axis existed.
+    if origem and origem != "all":
+        summary["origem"] = origem
     if reporters is not None:
         summary["reporters"] = reporters
     if partners:
