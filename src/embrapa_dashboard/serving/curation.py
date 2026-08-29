@@ -289,6 +289,19 @@ def _validate_lifecycle(ingestao: str | None, visibilidade: str | None) -> None:
         )
 
 
+def _registered_group_ids(cfg: Settings, bq: bigquery.Client) -> set[str]:
+    """Ids of the agrupamentos that actually exist. Empty set when the registry table is
+    absent — a cold install must not be unable to register its first product, so the
+    caller treats "no registry at all" as "nothing to check against" rather than as
+    "everything is invalid"."""
+    from embrapa_dashboard.serving import agrupamentos
+
+    try:
+        return set(agrupamentos._current_groups(bq, agrupamentos._group_log_ref(cfg)))
+    except Exception:  # uma leitura do registro nunca pode bloquear uma edição
+        return set()
+
+
 def _validate_catalog_edit(codigo_produto: str, banco: str, ciclo_de_vida: str | None) -> None:
     """The composite key (codigo_produto, banco) is required — a blank either breaks
     the key, so we REJECT (fail loud) instead of silently dropping the row. The code
@@ -612,6 +625,22 @@ def record_produto_catalog(
     )
     change_id, supplied = _resolve_change_id(change_id)
     bq = client or _bq_client(cfg)
+    # E o agrupamento tem de EXISTIR no registro de grupos.
+    #
+    # Sem esta guarda, uma escrita pode apontar para um agrupamento_id que nenhum grupo
+    # respalda — e nada quebra: o catálogo aceita, a Gold materializa o id, e o produto
+    # some numa seção "Sem agrupamento registrado" que só um humano olhando a tela nota.
+    # Foi exatamente o que aconteceu em 2026-08-29: uma reorganização escreveu 37 entradas
+    # apontando para `lenha` e `carvao_vegetal`, grupos que nunca foram criados.
+    #
+    # A tela já sabia dizer "registrado"; o que faltava era isto recusar antes.
+    grupos = _registered_group_ids(cfg, bq)
+    if grupos and agrupamento_id not in grupos:
+        raise ValueError(
+            f"O agrupamento {agrupamento!r} (id {agrupamento_id!r}) não existe no registro "
+            "de agrupamentos. Crie-o primeiro — um produto apontando para um agrupamento "
+            "inexistente fica fora de toda análise cruzada sem nenhum erro visível."
+        )
     table_fqn = _catalog_log_ref(cfg)
     ensure_produto_catalog_log_table(cfg, bq)
 

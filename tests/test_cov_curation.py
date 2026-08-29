@@ -906,3 +906,77 @@ def test_check_code_status_is_advisory_when_gold_has_no_codes(monkeypatch):
         curation.gateway, "fetch_source_code_stats", mock.Mock(return_value=pd.DataFrame())
     )
     curation._check_code_status(mock.Mock(), "t.log", "3405", "pevs", is_active=False)
+
+
+# ── a guarda do agrupamento registrado ───────────────────────────────────────
+def test_record_produto_catalog_rejects_an_unregistered_agrupamento(monkeypatch):
+    """Um produto pode apontar para um agrupamento que nenhum grupo respalda — e nada
+    quebra: o catálogo aceita, a Gold materializa o id, e o produto some numa seção "Sem
+    agrupamento registrado" que só um humano olhando a tela nota.
+
+    Aconteceu em 2026-08-29: uma reorganização escreveu 37 entradas apontando para grupos
+    que nunca foram criados. A tela já sabia dizer "registrado"; faltava recusar antes.
+    """
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)
+    monkeypatch.setattr(curation, "_is_active_entry", lambda *a, **k: False)
+    monkeypatch.setattr(curation, "_check_code_status", lambda *a, **k: None)
+    monkeypatch.setattr(curation, "_registered_group_ids", lambda cfg, bq: {"madeira", "acai"})
+    with pytest.raises(ValueError, match="não existe no registro"):
+        curation.record_produto_catalog(
+            "3455",
+            "pevs",
+            _HEADERS,
+            agrupamento="Carvão vegetal",  # id `carvao_vegetal` — não registrado
+            settings=_settings(),
+            client=mock.Mock(),
+            invalidate_cache=False,
+        )
+
+
+def test_record_produto_catalog_accepts_a_registered_agrupamento(monkeypatch):
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)
+    monkeypatch.setattr(curation, "_is_active_entry", lambda *a, **k: False)
+    monkeypatch.setattr(curation, "_check_code_status", lambda *a, **k: None)
+    monkeypatch.setattr(curation, "_registered_group_ids", lambda cfg, bq: {"madeira"})
+    client = mock.Mock()
+    client.query.return_value.result.return_value = []
+    curation.record_produto_catalog(
+        "3457",
+        "pevs",
+        _HEADERS,
+        agrupamento="Madeira",
+        settings=_settings(),
+        client=client,
+        invalidate_cache=False,
+    )
+    client.query.assert_called()
+
+
+def test_an_absent_group_registry_does_not_block_the_first_product(monkeypatch):
+    """Instalação fria: sem registro nenhum não há contra o que validar, e recusar tudo
+    impediria cadastrar o primeiro produto. Vazio = nada a checar, não = tudo inválido."""
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import curation
+
+    monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)
+    monkeypatch.setattr(curation, "_is_active_entry", lambda *a, **k: False)
+    monkeypatch.setattr(curation, "_check_code_status", lambda *a, **k: None)
+    monkeypatch.setattr(curation, "_registered_group_ids", lambda cfg, bq: set())
+    client = mock.Mock()
+    client.query.return_value.result.return_value = []
+    curation.record_produto_catalog(
+        "3457",
+        "pevs",
+        _HEADERS,
+        agrupamento="Qualquer",
+        settings=_settings(),
+        client=client,
+        invalidate_cache=False,
+    )
+    client.query.assert_called()
