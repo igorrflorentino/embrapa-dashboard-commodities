@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.34.3] - 2026-08-29
+
+### Corrigido
+
+- **A reorganização da v1.34.2 separava madeira bruta de serrada, e não devia.** Elas são
+  o mesmo produto em dois estágios de processamento, e o dashboard **já tem um eixo para
+  isso**: Engenharia de Atributos → Nível de industrialização, onde o pesquisador
+  classifica cada código e depois filtra. Criar `madeira_em_tora` e `madeira_serrada`
+  duplicaria no catálogo um eixo vivo — exatamente o motivo pelo qual extração e
+  silvicultura compartilham agrupamento (lá é o eixo `origem` que separa).
+
+  O script passa a produzir **três** agrupamentos, não quatro: `madeira` (bruta + serrada),
+  `lenha` e `carvao_vegetal`. E fica muito mais cirúrgico — **34 ações em vez de 141**,
+  porque os 105 códigos que já estavam em `madeira` simplesmente ficam onde estão.
+
+  Lenha e carvão continuam separados, e por um motivo diferente: não são estágios de
+  processamento da madeira, são produtos distintos que o IBGE conta em separado e que a
+  nomenclatura mantém em posições próprias. Carvão nem sequer é medido na mesma unidade
+  (toneladas contra m³) — o que torna somá-lo com madeira em tora sem sentido, e não
+  apenas grosseiro.
+
+### Uma medição minha estava errada
+
+Ao avaliar se o eixo de industrialização daria conta da separação, respondi que **nenhum**
+dos 136 códigos estava classificado. Estava errado: **todos os 136 estão**. A consulta
+juntava as duas tabelas por `source`, sem eu notar que elas usam convenções diferentes
+(`comex` contra `mdic_comex`) — o join não casava nada e eu li o vazio como ausência de
+dado.
+
+Refeita, ela mostra que a classificação já faz precisamente a separação que eu ia
+duplicar: 4403 (madeira em bruto) inteiramente como `commodity_acondicionada`, 4407
+(serrada) como `commodity_consumivel`/`commodity_pura`.
+
+Nada foi escrito em produção sob o desenho errado — a aplicação do script depende de um
+humano, e isso é o que deu tempo de corrigir antes.
+
+---
+
 ## [1.34.2] - 2026-08-29
 
 ### Adicionado

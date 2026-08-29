@@ -10,14 +10,27 @@ append-only: every edit is a new row and latest-wins, so this is auditable and r
 by re-recording the previous values. Nothing is deleted. Afterwards run a dbt build so
 `gold_produto_agrupamento` picks the new mapping up.
 
-`madeira` held 136 codes across comex/comtrade/pevs — measured, they fall into FOUR HS4
-headings that the customs nomenclature itself keeps apart (verified against
-gold_comex_flows descriptions, not from memory):
+`madeira` held 136 codes across comex/comtrade/pevs, mixing three genuinely different
+PRODUCTS. Measured against the customs nomenclature (verified against gold_comex_flows
+descriptions, not from memory) they split as:
 
   4401  lenha, estilhas, partículas, resíduos     → `lenha`
   4402  carvão vegetal                            → `carvao_vegetal`
-  4403  madeira em bruto / em tora                → `madeira_em_tora`
-  4407  madeira serrada (processada)              → `madeira_serrada`
+  4403  madeira em bruto + 4407 madeira serrada   → `madeira`
+
+Raw (4403) and sawn (4407) deliberately stay TOGETHER. They are the same product at two
+processing stages, and the dashboard already has an axis for that: Engenharia de Atributos
+→ Nível de industrialização, where a researcher classifies each code and then filters on
+it. Splitting them here would duplicate a live axis in the catalog — the same reason
+extraction and planted forest share their agrupamentos (the `origem` axis separates
+those). Measured 2026-08-29: ALL 136 codes are already classified, 4403 entirely as
+`commodity_acondicionada` and 4407 as `commodity_consumivel`/`commodity_pura`, so the
+separation is available today and does not need a second home.
+
+Lenha and carvão vegetal are NOT processing stages of madeira — they are distinct products
+that IBGE counts separately and that the nomenclature keeps in their own headings. Carvão
+is not even measured in the same unit (toneladas vs m³), which is what makes summing it
+with roundwood meaningless rather than merely coarse.
 
 Extraction and planted halves share each agrupamento by design (project lead, 2026-08-29):
 `origem` separates them in the filter menu, so the catalog does not have to.
@@ -38,8 +51,9 @@ DRY = os.environ.get("APPLY") != "1"
 DESTINO = {
     "4401": ("lenha", "Lenha e resíduos lenhosos"),
     "4402": ("carvao_vegetal", "Carvão vegetal"),
-    "4403": ("madeira_em_tora", "Madeira em tora"),
-    "4407": ("madeira_serrada", "Madeira serrada"),
+    # Bruta e serrada no MESMO agrupamento — o nível de industrialização as separa.
+    "4403": ("madeira", "Madeira"),
+    "4407": ("madeira", "Madeira"),
 }
 # PEVS codes: the extraction/silviculture pairs, placed by what they ARE.
 PEVS = {
@@ -47,9 +61,9 @@ PEVS = {
     "3455": ("carvao_vegetal", "Carvão vegetal"),  # silvicultura
     "3434": ("lenha", "Lenha e resíduos lenhosos"),  # extrativa
     "3456": ("lenha", "Lenha e resíduos lenhosos"),  # silvicultura
-    "3435": ("madeira_em_tora", "Madeira em tora"),  # extrativa
-    "3457": ("madeira_em_tora", "Madeira em tora"),  # silvicultura
-    "3450": ("madeira_em_tora", "Madeira em tora"),  # pinheiro brasileiro, em tora
+    "3435": ("madeira", "Madeira"),  # extrativa
+    "3457": ("madeira", "Madeira"),  # silvicultura
+    "3450": ("madeira", "Madeira"),  # pinheiro brasileiro, em tora
 }
 
 s = Settings()
