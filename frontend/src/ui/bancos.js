@@ -95,7 +95,7 @@ window.BANCOS = [
     sub:    'Produção e exploração de produtos agrícolas no território brasileiro',
     // Onboarding description (ViewAbout): plain-language, non-technical — what the banco
     // IS and what it's FOR, for a researcher meeting it for the first time.
-    about:  'Reúne, ano a ano, a quantidade e o valor da produção do extrativismo vegetal e da silvicultura no Brasil — castanha-do-pará, madeira, lenha, carvão vegetal, açaí e outros. É a base para acompanhar a exploração de recursos florestais, nativos e plantados, ao longo das décadas.',
+    about:  'Reúne, ano a ano, a quantidade e o valor da produção do extrativismo vegetal no Brasil — castanha-do-pará, açaí, madeira em tora, lenha e carvão vegetal tirados de floresta NATIVA. A PEVS do IBGE tem duas metades e este banco traz uma: a extração vegetal (tabela SIDRA 289). A silvicultura — a floresta PLANTADA, de onde vem a maior parte da madeira brasileira — fica de fora. É por isso que um estado cuja produção florestal é quase toda plantada, como São Paulo, aparece praticamente zerado aqui: não é lacuna do dado, é o recorte da fonte.',
     domain: 'Produção interna',
     scope:  'Brasil · UF · município',
     source: 'IBGE',
