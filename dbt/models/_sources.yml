@@ -21,6 +21,18 @@ sources:
             warn_after: {count: 10, period: day}
             error_after: {count: 17, period: day}
 
+      # The OTHER half of the same survey: planted forest (SIDRA t291). Same dataset
+      # and same weekly trigger as t289 above — they are published together — so the
+      # freshness window is deliberately identical.
+      - name: sidra_silvicultura_raw
+        identifier: "{{ env_var('BQ_BRONZE_SILVICULTURA_TABLE', 'sidra_t291_raw') }}"
+        description: "IBGE PEVS silviculture table 291 (raw STRING columns)."
+        config:
+          loaded_at_field: ingestion_timestamp
+          freshness:
+            warn_after: {count: 10, period: day}
+            error_after: {count: 17, period: day}
+
   - name: bronze_pam
     description: "Raw SIDRA PAM (table 5457) payloads ingested by `embrapa ingest ibge-pam`."
     database: "{{ target.project }}"

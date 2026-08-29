@@ -528,6 +528,11 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
   // the banco carrying market_nature (only COMTRADE → marketOptionsFor non-null).
   const marketOptions = window.marketOptionsFor ? window.marketOptionsFor(banco) : null;
   const hasMarket     = !!marketOptions;
+  // Origem da produção (extração nativa vs silvicultura plantada) — a server-side filter
+  // gated on the banco carrying the `origem` column (only PEVS → origemOptionsFor
+  // non-null), not on a capability flag. Mirrors the flow/regime/market controls.
+  const origemOptions = window.origemOptionsFor ? window.origemOptionsFor(banco) : null;
+  const hasOrigem     = !!origemOptions;
   // País reporter / parceiro (COMTRADE only) — two country multi-selects backed by the
   // /api/countries universe (NOT a static OPTIONS map like flow/regime/market). Reading
   // window.comtradeCountries() kicks the one-shot fetch; main.jsx's resource subscription
@@ -708,6 +713,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
   const [customs, setCustoms] = useState((value && value.customs) || 'all');
   // Tipo de mercado (server-side, COMTRADE only). 'all' = every purpose.
   const [market, setMarket] = useState((value && value.market) || 'all');
+  const [origem, setOrigem] = useState((value && value.origem) || 'all');
   // País reporter / parceiro (server-side, COMTRADE only) — Sets of ISO-A3 codes. reporter
   // default = {Brasil}; partner default = all. Seeded on open (guarded on the country universe
   // having loaded, like the geo seed) — the initial values here are just pre-seed placeholders.
@@ -755,6 +761,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
       setFlow(v.flow || 'all');
       setCustoms(v.customs || 'all');
       setMarket(v.market || 'all');
+      setOrigem(v.origem || 'all');
       geoSeeded.current = false; // let the geo effect (re)seed once the mesh is ready
       countriesSeeded.current = false; // ditto for the country universe (COMTRADE)
     }
@@ -910,6 +917,9 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
     const regimeChip = (hasRegime && regimeOptions)
       ? (customs === 'all' ? 'Todos os regimes' : ((regimeOptions.find(o => o.value === customs) || {}).label || customs))
       : null;
+    const origemChip = (hasOrigem && origemOptions)
+      ? (origem === 'all' ? 'Ambas' : ((origemOptions.find(o => o.value === origem) || {}).label || origem))
+      : null;
     const marketChip = (hasMarket && marketOptions)
       ? (market === 'all' ? 'Todos os mercados' : ((marketOptions.find(o => o.value === market) || {}).label || market))
       : null;
@@ -919,7 +929,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
     const partnerChip = (hasCountries && countriesReady)
       ? window.chipFmt.partner([...partners], partnerUniverse.length, isoNameOf(partnerUniverse))
       : null;
-    return { products: prodChip, period: periodChip, geo: geoChip, geoApplies, quality: qualityChip, fluxo: fluxoChip, regime: regimeChip, mercado: marketChip, reporter: reporterChip, parceiro: partnerChip };
+    return { products: prodChip, period: periodChip, geo: geoChip, geoApplies, quality: qualityChip, origem: origemChip, fluxo: fluxoChip, regime: regimeChip, mercado: marketChip, reporter: reporterChip, parceiro: partnerChip };
   };
 
   const applyAndClose = () => {
@@ -972,6 +982,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
         customs: customs !== 'all' ? customs : undefined,
         // Tipo de mercado (server-side, COMTRADE): omitted when 'all' = every purpose.
         market: market !== 'all' ? market : undefined,
+        origem: origem !== 'all' ? origem : undefined,
         // País reporter / parceiro (server-side, COMTRADE) — see the encoders above.
         reporters: reporterOut,
         partners: partnerOut,
@@ -996,6 +1007,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
     setFlow('all');
     setCustoms('all');
     setMarket('all');
+    setOrigem('all');
     setReporters(new Set([BRAZIL_ISO]));
     setPartners(new Set(partnerUniverse.map(c => c.iso)));
     [setQProducts, setQFlags, setQNations, setQRegions, setQStates,
@@ -1224,6 +1236,37 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
                             className={'seg-opt ' + (market === o.value ? 'on' : '')}
                             aria-pressed={market === o.value}
                             onClick={() => setMarket(o.value)}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+            )}
+
+            {/* ─── ORIGEM DA PRODUÇÃO — server-side, PEVS only. The survey has two
+                 halves and this picks one; 'all' sums both, which is the survey's own
+                 total. Disjoint sets, so nothing is double-counted either way. ─── */}
+            {hasOrigem && origemOptions && (
+            <section className="fm-section">
+              <div className="fm-section-head">
+                <div className="fm-section-head-l">
+                  <span className="fm-section-label">Origem da produção</span>
+                  <span className="fm-cascade-hint">extração de floresta nativa (SIDRA 289) · silvicultura, floresta plantada (SIDRA 291)</span>
+                </div>
+                <span className="fm-section-meta">
+                  {origem === 'all'
+                    ? 'ambas as metades'
+                    : ((origemOptions.find(o => o.value === origem) || {}).label || '')}
+                </span>
+              </div>
+              <div className="fm-section-inner">
+                <div className="seg">
+                  {origemOptions.map(o => (
+                    <button key={o.value} type="button"
+                            className={'seg-opt ' + (origem === o.value ? 'on' : '')}
+                            aria-pressed={origem === o.value}
+                            onClick={() => setOrigem(o.value)}>
                       {o.label}
                     </button>
                   ))}

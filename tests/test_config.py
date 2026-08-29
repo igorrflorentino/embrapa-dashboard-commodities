@@ -291,3 +291,33 @@ def test_env_example_lists_the_same_pam_codes_as_the_default():
     )
     example = sorted(c.strip() for c in line.split("=", 1)[1].split(",") if c.strip())
     assert example == sorted(_make_settings().pam_product_codes_list)
+
+
+# ─── silvicultura helpers ─────────────────────────────────────────────────────
+def test_silvicultura_product_codes_list_parses_and_rejects_empty() -> None:
+    """An empty code list would make the SIDRA request return everything (or nothing);
+    failing loudly beats ingesting a slice nobody chose."""
+    from embrapa_dashboard.config import Settings
+
+    s = Settings(
+        gcp_project_id="p",
+        gcs_bucket="b",
+        silvicultura_product_codes=" 3455 , 3456 ",
+        _env_file=None,
+    )  # type: ignore[call-arg]
+    assert s.silvicultura_product_codes_list == ["3455", "3456"]
+
+    empty = Settings(
+        gcp_project_id="p", gcs_bucket="b", silvicultura_product_codes="  ,  ", _env_file=None
+    )  # type: ignore[call-arg]
+    with pytest.raises(ValueError, match="SILVICULTURA_PRODUCT_CODES"):
+        _ = empty.silvicultura_product_codes_list
+
+
+def test_silvicultura_variable_codes_is_quantity_then_value() -> None:
+    """Order matters only for readability, but the PAIR is load-bearing: dropping 143
+    would empty the value column for origem='silvicultura' with no error."""
+    from embrapa_dashboard.config import Settings
+
+    s = Settings(gcp_project_id="p", gcs_bucket="b", _env_file=None)  # type: ignore[call-arg]
+    assert s.silvicultura_variable_codes == "142,143"

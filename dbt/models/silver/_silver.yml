@@ -36,6 +36,43 @@ models:
               arguments:
                 expression: "is null or numeric_value >= 0"
 
+  - name: silver_ibge_silvicultura
+    description: >
+      PEVS SILVICULTURE half (SIDRA 291, planted forest) — cleaned, typed, deduplicated.
+      Column-identical to silver_ibge_pevs by construction (it is a mirror of that model);
+      gold_pevs_production unions the two positionally and tells them apart with `origem`.
+      That parity is pinned by assert_pevs_silvers_column_identical, not by a contract:
+      what matters is that the two agree with EACH OTHER, which a per-model contract
+      cannot express.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - reference_year
+              - city_code
+              - product_code
+              - variable_code
+              - unit_of_measure
+    columns:
+      - name: reference_year
+        tests: [not_null]
+      - name: state_acronym
+        tests: [not_null]
+      - name: product_code
+        description: "Classification-194 code (3455/3456/3457), from SIDRA's tipo_de_produto_da_silvicultura_codigo."
+        tests: [not_null]
+      - name: variable_code
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["142", "143"]
+      - name: numeric_value
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "is null or numeric_value >= 0"
+
   - name: silver_ibge_pam
     description: "PAM crop production (SIDRA 5457) cleaned, typed, deduplicated. LONG: one row per (year, city, product, variable)."
     tests:

@@ -274,8 +274,9 @@ function AppShell({
   // descriptions of one selection cannot drift. Same inclusion rule as quality/value
   // below: state a dimension when it is defining or actually restricted, not when it is
   // sitting at "todos".
-  const _trade = window.tradeScopeChips ? window.tradeScopeChips(summary || {}, activeBanco) : {};
+  const _trade = window.axisScopeChips ? window.axisScopeChips(summary || {}, activeBanco) : {};
   for (const [rotulo, chip] of [
+    ['Origem', _trade.origem],
     ['Fluxo', _trade.flow], ['Regime', _trade.regime], ['Mercado', _trade.mercado],
     ['Reporter', _trade.reporter], ['Parceiro', _trade.parceiro],
   ]) {

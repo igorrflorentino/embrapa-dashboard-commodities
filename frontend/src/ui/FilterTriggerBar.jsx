@@ -33,7 +33,8 @@ function FilterTriggerBar({ summary, onOpen, onExport, live = true, banco = null
   // The five trade-axis labels come from the shared resolver (scopeChips.js) — the
   // ABNT citation states the same recorte from the same rule, so the chip row and the
   // reference cannot describe one selection two different ways.
-  const trade = window.tradeScopeChips ? window.tradeScopeChips(summary, banco) : {};
+  const trade = window.axisScopeChips ? window.axisScopeChips(summary, banco) : {};
+  const origemChip   = trade.origem   && trade.origem.label;
   const flowChip     = trade.flow     && trade.flow.label;
   const regimeOpts   = !!trade.regime;
   const regimeChip   = trade.regime   && trade.regime.label;
@@ -46,6 +47,7 @@ function FilterTriggerBar({ summary, onOpen, onExport, live = true, banco = null
   const chips = [
     has('product') && { k: 'Produtos',  v: summary.products },
     { k: 'Período', v: summary.period },
+    origemChip     && { k: 'Origem',     v: origemChip },
     has('flow')    && { k: 'Fluxo',      v: flowChip },
     regimeOpts     && { k: 'Regime',     v: regimeChip },
     marketOpts     && { k: 'Mercado',    v: marketChip },

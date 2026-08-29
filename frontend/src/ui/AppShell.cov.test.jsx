@@ -984,6 +984,53 @@ describe('AppShell — a referência ABNT, varrida sobre a matriz de estados', (
 // "Produtos: Todos (89). Território: Não se aplica.", ao lado de um permalink que
 // carregava rp=BRA&pt=CHN. A prosa contradizia o próprio link por omissão.
 // ---------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------
+// `origem` — qual metade da PEVS o painel cobre. A pesquisa tem duas (extração de
+// floresta nativa e silvicultura plantada) e a plantada vale ~5× a nativa, então um
+// total que as soma sem dizer é o defeito da #349 com outro nome. O eixo tem de
+// aparecer na referência como os de comércio aparecem.
+// ---------------------------------------------------------------------------------
+describe('citação — o eixo origem da PEVS', () => {
+  const openAndPick = (container, label) => {
+    fireEvent.click([...container.querySelectorAll('.util-action')]
+      .find((b) => b.textContent.includes('Citar painel')));
+    [...container.querySelectorAll('.cite-level')]
+      .find((l) => l.textContent.includes(label)).querySelector('input').click();
+    return [...container.querySelectorAll('.cite-text')]
+      .find((n) => !n.classList.contains('cite-text-inline')).textContent;
+  };
+  const pevsProps = (over = {}) => ({
+    ...baseProps(),
+    database: 'ibge_pevs',
+    summary: { startDate: '2010', endDate: '2024', products: 'Todos (7)', ...over },
+  });
+
+  beforeEach(() => {
+    window.origemOptionsFor = (id) => (id === 'ibge_pevs'
+      ? [{ value: 'all', label: 'Ambas' },
+         { value: 'extrativa', label: 'Extração vegetal (nativa)' },
+         { value: 'silvicultura', label: 'Silvicultura (plantada)' }]
+      : null);
+  });
+  afterEach(() => { delete window.origemOptionsFor; });
+
+  it('nomeia a metade escolhida', () => {
+    const { container } = render(<AppShell {...pevsProps({ origem: 'silvicultura' })} />);
+    expect(openAndPick(container, 'Consulta detalhada')).toContain('Origem: Silvicultura (plantada)');
+  });
+
+  it('cala quando o painel cobre as duas — mas só porque "ambas" É o total da pesquisa', () => {
+    const { container } = render(<AppShell {...pevsProps({ origem: 'all' })} />);
+    expect(openAndPick(container, 'Consulta detalhada')).not.toContain('Origem:');
+  });
+
+  it('não aparece num banco que não tem a dimensão', () => {
+    window.origemOptionsFor = () => null;
+    const { container } = render(<AppShell {...pevsProps({ origem: 'silvicultura' })} />);
+    expect(openAndPick(container, 'Consulta detalhada')).not.toContain('Origem');
+  });
+});
+
 describe('citação — o eixo comércio faz parte do recorte', () => {
   const openAndPick = (container, label) => {
     fireEvent.click([...container.querySelectorAll('.util-action')]

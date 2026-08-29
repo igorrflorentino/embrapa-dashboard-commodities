@@ -143,6 +143,8 @@ function readStateFromURL() {
     endDate: q.get('ed') || null,
     // Server-side flow filter (export/import); absent → all flows.
     flow: q.get('fx') || null,
+    // Which half of the PEVS survey (extrativa | silvicultura); absent = both.
+    origem: q.get('or') || null,
     // Server-side customs-procedure filter (regime aduaneiro, COMTRADE); absent → all regimes.
     customs: q.get('cx') || null,
     // Server-side tipo-de-mercado filter (COMTRADE); absent → all purposes.

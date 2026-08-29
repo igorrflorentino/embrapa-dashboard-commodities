@@ -263,13 +263,13 @@ BANCOS: list[Banco] = [
         label="IBGE · Produção da Extração Vegetal e da Silvicultura",
         sub="Produção e exploração de produtos agrícolas no território brasileiro",
         about=(
-            "Reúne, ano a ano, a quantidade e o valor da produção do extrativismo vegetal no "
-            "Brasil — castanha-do-pará, açaí, madeira em tora, lenha e carvão vegetal tirados de "
-            "floresta NATIVA. A PEVS do IBGE tem duas metades e este banco traz uma: a extração "
-            "vegetal (tabela SIDRA 289). A silvicultura — a floresta PLANTADA, de onde vem a maior "
-            "parte da madeira brasileira — fica de fora. É por isso que um estado cuja produção "
-            "florestal é quase toda plantada, como São Paulo, aparece praticamente zerado aqui: "
-            "não é lacuna do dado, é o recorte da fonte."
+            "Reúne, ano a ano, a quantidade e o valor da produção florestal brasileira nas "
+            "DUAS metades da pesquisa do IBGE: a extração vegetal, de floresta nativa "
+            "(castanha-do-pará, açaí, madeira em tora, lenha, carvão), e a silvicultura, de "
+            "floresta plantada — de onde vem a maior parte da madeira do país. O filtro "
+            "Origem da produção separa as duas; sem ele, os números somam ambas, que é o "
+            "total da pesquisa. É por isso que estados de floresta plantada, como São "
+            "Paulo, aparecem aqui: eles quase não têm extrativismo."
         ),
         domain="Produção interna",
         scope="Brasil · UF · município",
@@ -836,8 +836,19 @@ FILTER_SCHEMAS: dict[str, dict] = {
                 "hint": "Commodities da extração vegetal (floresta nativa).",
             },
             {
-                "id": "periodo",
+                "id": "origem",
                 "num": "02",
+                "tier": "specific",
+                "type": "segment",
+                "label": "Origem da produção",
+                "column": "origem",
+                "hint": (
+                    "Metade da pesquisa: extração de floresta nativa ou silvicultura (plantada)."
+                ),
+            },
+            {
+                "id": "periodo",
+                "num": "03",
                 "tier": "universal",
                 "type": "period-value",
                 "label": "Período & faixa de valor",

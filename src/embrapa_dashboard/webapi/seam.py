@@ -152,6 +152,23 @@ def _flow_from_summary(summary: dict | None) -> str | None:
     return flow
 
 
+def _origem_from_summary(summary: dict | None) -> str | None:
+    """Which half of the PEVS survey the panel is scoped to, from the FilterMenu.
+
+    ``'extrativa'`` (native forest, SIDRA t289) | ``'silvicultura'`` (planted, t291).
+    ``'all'`` / absent → ``None`` = sum both, which is the survey's own total and keeps
+    an unfiltered request byte-identical to the one this seam emitted before the axis
+    existed. Mirrors ``_flow_from_summary``; only the PEVS-shaped branch passes it, since
+    PAM/PPM have no ``origem`` column.
+    """
+    if not summary:
+        return None
+    origem = summary.get("origem")
+    if not origem or origem == "all":
+        return None
+    return origem
+
+
 def _customs_from_summary(summary: dict | None) -> str | None:
     """The server-side customs-procedure filter (regime aduaneiro) from the FilterMenu.
 
@@ -313,14 +330,32 @@ def snapshot(banco_id: str, conv: dict, summary: dict | None = None) -> dict:
         product_ts = gateway.fetch_product_timeseries(
             banco_id, year_start=y0, year_end=y1, codes=codes, value_column=value_col
         )
+        # Only the PEVS-shaped branch carries `origem` — the axis exists in
+        # gold_pevs_production alone. None (the default) sums both halves.
+        origem = _origem_from_summary(summary)
         overview_ts = gateway.fetch_production_overview(
-            year_start=y0, year_end=y1, product_codes=codes, value_column=value_col, source=banco_id
+            year_start=y0,
+            year_end=y1,
+            product_codes=codes,
+            value_column=value_col,
+            source=banco_id,
+            origem=origem,
         )
         uf_data = gateway.fetch_production_by_uf(
-            year_start=y0, year_end=y1, product_codes=codes, value_column=value_col, source=banco_id
+            year_start=y0,
+            year_end=y1,
+            product_codes=codes,
+            value_column=value_col,
+            source=banco_id,
+            origem=origem,
         )
         uf_yearly = gateway.fetch_production_by_uf_yearly(
-            year_start=y0, year_end=y1, product_codes=codes, value_column=value_col, source=banco_id
+            year_start=y0,
+            year_end=y1,
+            product_codes=codes,
+            value_column=value_col,
+            source=banco_id,
+            origem=origem,
         )
 
     return {

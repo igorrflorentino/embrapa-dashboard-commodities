@@ -24,22 +24,49 @@
 -- grain orders; a real dropped row moves the total by whole percent. Verified on
 -- prod: both drifts are exactly 0.0.
 --
+-- SCOPED BY `origem` (2026-08-29). Gold carries BOTH halves of the survey — extraction
+-- (t289) and silviculture (t291) — so a grand total across the whole table no longer
+-- reconciles against ONE Silver. Comparing each half to its own Silver is not a
+-- weakening: it is two independent conservation checks instead of one, and it is also
+-- what pins the migration's own promise — that adding silviculture changed NOTHING that
+-- existed, because the `extrativa` subtotal must still equal `silver_ibge_pevs` exactly.
+--
 -- Fails (returns a row) when |gold_total - silver_total| exceeds 1e-6 of the
--- Silver total, per measure.
+-- Silver total, per measure and per half.
 
 with checks as (
 
     select
-        'qty_base'                                                              as measure,
+        'extrativa/qty_base'                                                    as measure,
         (select sum(qty_base) from {{ ref('silver_ibge_pevs') }})               as silver_total,
-        (select sum(qty_base) from {{ ref('gold_pevs_production') }})            as gold_total
+        (select sum(qty_base) from {{ ref('gold_pevs_production') }}
+          where origem = 'extrativa')                                           as gold_total
 
     union all
 
     select
-        'val_brl',
-        (select sum(numeric_value) from {{ ref('silver_ibge_pevs') }} where is_monetary_value),
-        (select sum(val_yearfx_brl) from {{ ref('gold_pevs_production') }})
+        'extrativa/val_brl',
+        (select sum(numeric_value) from {{ ref('silver_ibge_pevs') }}
+          where is_monetary_value),
+        (select sum(val_yearfx_brl) from {{ ref('gold_pevs_production') }}
+          where origem = 'extrativa')
+
+    union all
+
+    select
+        'silvicultura/qty_base',
+        (select sum(qty_base) from {{ ref('silver_ibge_silvicultura') }}),
+        (select sum(qty_base) from {{ ref('gold_pevs_production') }}
+          where origem = 'silvicultura')
+
+    union all
+
+    select
+        'silvicultura/val_brl',
+        (select sum(numeric_value) from {{ ref('silver_ibge_silvicultura') }}
+          where is_monetary_value),
+        (select sum(val_yearfx_brl) from {{ ref('gold_pevs_production') }}
+          where origem = 'silvicultura')
 
 )
 

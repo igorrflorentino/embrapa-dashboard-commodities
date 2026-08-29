@@ -1,5 +1,10 @@
-// scopeChips.js — the trade-axis filter labels (fluxo · regime · mercado · reporter ·
-// parceiro), resolved ONCE for every surface that has to state the active recorte.
+// scopeChips.js — the CATEGORICAL filter axes (origem · fluxo · regime · mercado ·
+// reporter · parceiro), resolved ONCE for every surface that has to state the active
+// recorte.
+//
+// Started as trade-only; `origem` (which half of the PEVS survey a number covers) joined
+// in 2026-08-29 for exactly the same reason the others are here — the chip row and the
+// ABNT citation must describe one selection with one rule, or they drift.
 //
 // These five resolvers lived inline in FilterTriggerBar, so the chip row was the only
 // thing that could name them. The ABNT "consulta detalhada" reference — whose whole job
@@ -26,10 +31,15 @@
     return { label: (opts || []).find((o) => o.value === raw)?.label || raw, narrowed: true };
   };
 
-  window.tradeScopeChips = function tradeScopeChips(summary, banco) {
+  window.axisScopeChips = function axisScopeChips(summary, banco) {
     const s = summary || {};
     const id = banco && banco.id;
     const provides = (banco && banco.provides) || [];
+
+    // Which half of the PEVS survey. Gated on the banco carrying the column (only PEVS),
+    // like regime/mercado — not on a capability flag.
+    const origemOpts = (window.origemOptionsFor && id && window.origemOptionsFor(id)) || null;
+    const origem = origemOpts ? resolve(s.origemLabel, s.origem, origemOpts, 'Ambas') : null;
 
     const flow = provides.includes('flow')
       ? resolve(s.fluxo, s.flow,
@@ -71,6 +81,6 @@
         })()
       : null;
 
-    return { flow, regime, mercado, reporter, parceiro };
+    return { origem, flow, regime, mercado, reporter, parceiro };
   };
 }());

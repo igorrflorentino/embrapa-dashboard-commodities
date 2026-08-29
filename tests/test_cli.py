@@ -95,6 +95,38 @@ def test_ingest_ibge_propagates_pipeline_error(
 
 
 # ─── ingest ibge-pam ─────────────────────────────────────────────────────────
+def test_ingest_ibge_silvicultura_dispatches_and_prints_destination(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    """`ingest ibge-silvicultura` dispatches to its own pipeline with the delta defaults."""
+    pipeline_run = MagicMock(return_value="proj.bronze_ibge.sidra_t291_raw")
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
+    monkeypatch.setattr(cli.silvicultura_pipeline, "run", pipeline_run)
+
+    result = runner.invoke(cli.app, ["ingest", "ibge-silvicultura"])
+
+    assert result.exit_code == 0, result.output
+    pipeline_run.assert_called_once_with(settings, full=False, from_raw=False)
+    assert "silvicultura bronze loaded" in result.output
+    assert "sidra_t291_raw" in result.output
+
+
+def test_ingest_ibge_silvicultura_flags_propagate_and_empty_run_is_reported(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    """--full/--from-raw reach the pipeline, and an empty run says so instead of
+    printing a success line with a blank destination."""
+    pipeline_run = MagicMock(return_value="")
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
+    monkeypatch.setattr(cli.silvicultura_pipeline, "run", pipeline_run)
+
+    result = runner.invoke(cli.app, ["ingest", "ibge-silvicultura", "--full", "--from-raw"])
+
+    assert result.exit_code == 0, result.output
+    pipeline_run.assert_called_once_with(settings, full=True, from_raw=True)
+    assert "Silvicultura ingest skipped" in result.output
+
+
 def test_ingest_ibge_pam_dispatches_and_prints_destination(
     monkeypatch: pytest.MonkeyPatch, settings: Settings
 ) -> None:
@@ -585,6 +617,9 @@ def test_ingest_all_runs_every_pipeline_in_order(
     monkeypatch.setattr(cli, "get_settings", lambda: settings)
     monkeypatch.setattr(cli.ibge_pipeline, "run", lambda s, full: order.append("ibge") or "")
     monkeypatch.setattr(
+        cli.silvicultura_pipeline, "run", lambda s, full: order.append("silvicultura") or ""
+    )
+    monkeypatch.setattr(
         cli.bcb_inflation, "run", lambda s, full: order.append(f"inflation-{full}") or ""
     )
     monkeypatch.setattr(
@@ -597,7 +632,7 @@ def test_ingest_all_runs_every_pipeline_in_order(
     result = runner.invoke(cli.app, ["ingest", "all"])
 
     assert result.exit_code == 0, result.output
-    assert order == ["ibge", "inflation-False", "currency-False", "comex-False"]
+    assert order == ["ibge", "silvicultura", "inflation-False", "currency-False", "comex-False"]
 
 
 def test_ingest_all_full_flag_propagates_to_delta_pipelines(
@@ -607,6 +642,9 @@ def test_ingest_all_full_flag_propagates_to_delta_pipelines(
     seen_full: list[bool] = []
     monkeypatch.setattr(cli, "get_settings", lambda: settings)
     monkeypatch.setattr(cli.ibge_pipeline, "run", lambda s, full: seen_full.append(full) or "")
+    monkeypatch.setattr(
+        cli.silvicultura_pipeline, "run", lambda s, full: seen_full.append(full) or ""
+    )
     monkeypatch.setattr(cli.bcb_inflation, "run", lambda s, full: seen_full.append(full) or "")
     monkeypatch.setattr(cli.bcb_currency, "run", lambda s, full: seen_full.append(full) or "")
     monkeypatch.setattr(cli.comex_pipeline, "run", lambda s, full: seen_full.append(full) or "")
@@ -614,7 +652,7 @@ def test_ingest_all_full_flag_propagates_to_delta_pipelines(
     result = runner.invoke(cli.app, ["ingest", "all", "--full"])
 
     assert result.exit_code == 0, result.output
-    assert seen_full == [True, True, True, True]
+    assert seen_full == [True, True, True, True, True]
 
 
 def test_ingest_all_wraps_each_pipeline_in_observability(
@@ -626,6 +664,7 @@ def test_ingest_all_wraps_each_pipeline_in_observability(
     init_calls: list[str] = []
     monkeypatch.setattr(cli, "get_settings", lambda: settings)
     monkeypatch.setattr(cli.ibge_pipeline, "run", lambda s, full: "")
+    monkeypatch.setattr(cli.silvicultura_pipeline, "run", lambda s, full: "")
     monkeypatch.setattr(cli.bcb_inflation, "run", lambda s, full: "")
     monkeypatch.setattr(cli.bcb_currency, "run", lambda s, full: "")
     monkeypatch.setattr(cli.comex_pipeline, "run", lambda s, full: "")
@@ -639,7 +678,7 @@ def test_ingest_all_wraps_each_pipeline_in_observability(
 
     assert result.exit_code == 0, result.output
     # One event log opened per registered pipeline, in INGESTS order.
-    assert init_calls == ["ibge", "bcb-inflation", "bcb-currency", "comex"]
+    assert init_calls == ["ibge", "ibge-silvicultura", "bcb-inflation", "bcb-currency", "comex"]
 
 
 def test_ingest_all_continues_after_a_source_fails(
@@ -650,6 +689,9 @@ def test_ingest_all_continues_after_a_source_fails(
     ran: list[str] = []
     monkeypatch.setattr(cli, "get_settings", lambda: settings)
     monkeypatch.setattr(cli.ibge_pipeline, "run", lambda s, full: ran.append("ibge") or "")
+    monkeypatch.setattr(
+        cli.silvicultura_pipeline, "run", lambda s, full: ran.append("silvicultura") or ""
+    )
 
     def boom(_s: Settings, full: bool) -> str:
         ran.append("inflation")
@@ -662,7 +704,7 @@ def test_ingest_all_continues_after_a_source_fails(
     result = runner.invoke(cli.app, ["ingest", "all"])
 
     # Every source attempted despite the inflation failure.
-    assert ran == ["ibge", "inflation", "currency", "comex"]
+    assert ran == ["ibge", "silvicultura", "inflation", "currency", "comex"]
     assert result.exit_code == 1
     assert "1 source(s) failed" in result.output
     assert "BCB inflation" in result.output  # the failed source's label
@@ -677,6 +719,7 @@ def test_ingest_all_aborts_cleanly_listing_partial_chunk_failure(
 
     monkeypatch.setattr(cli, "get_settings", lambda: settings)
     monkeypatch.setattr(cli.ibge_pipeline, "run", lambda s, full: "")
+    monkeypatch.setattr(cli.silvicultura_pipeline, "run", lambda s, full: "")
     monkeypatch.setattr(cli.bcb_inflation, "run", lambda s, full: "")
     monkeypatch.setattr(cli.bcb_currency, "run", lambda s, full: "")
 
@@ -717,6 +760,11 @@ def test_ingest_reconcile_chunks_ibge_and_fulls_bcb_comex(
     )
     full_seen: list[str] = []
     monkeypatch.setattr(
+        cli.silvicultura_pipeline,
+        "run",
+        lambda s, full: full_seen.append(f"silvicultura-{full}") or "",
+    )
+    monkeypatch.setattr(
         cli.pam_pipeline, "run", lambda s, full: full_seen.append(f"pam-{full}") or ""
     )
     monkeypatch.setattr(
@@ -741,7 +789,14 @@ def test_ingest_reconcile_chunks_ibge_and_fulls_bcb_comex(
     assert ibge_chunks == [(2010, 2010), (2011, 2011), (2012, 2012)]
     # PAM/PPM (out of `all`) + BCB + COMEX: each once, forced full, in INGESTS order —
     # reconcile catches old-year revisions to PAM/PPM too.
-    assert full_seen == ["pam-True", "ppm-True", "inflation-True", "currency-True", "comex-True"]
+    assert full_seen == [
+        "silvicultura-True",
+        "pam-True",
+        "ppm-True",
+        "inflation-True",
+        "currency-True",
+        "comex-True",
+    ]
     # COMTRADE is key-gated / out of `all` — reconcile never re-ingests it.
     comtrade.assert_not_called()
 
@@ -756,6 +811,9 @@ def test_ingest_reconcile_continues_after_a_source_fails(
 
     ran: list[str] = []
     monkeypatch.setattr(cli.ibge_pipeline, "run", lambda s, **kw: ran.append("ibge") or "dest")
+    monkeypatch.setattr(
+        cli.silvicultura_pipeline, "run", lambda s, **kw: ran.append("silvicultura") or "dest"
+    )
     monkeypatch.setattr(cli.pam_pipeline, "run", lambda s, full: ran.append("pam") or "")
     monkeypatch.setattr(cli.ppm_pipeline, "run", lambda s, full: ran.append("ppm") or "")
 
@@ -769,7 +827,7 @@ def test_ingest_reconcile_continues_after_a_source_fails(
 
     result = runner.invoke(cli.app, ["ingest", "reconcile"])
 
-    assert ran == ["ibge", "pam", "ppm", "inflation", "currency", "comex"]
+    assert ran == ["ibge", "silvicultura", "pam", "ppm", "inflation", "currency", "comex"]
     assert result.exit_code == 1
     assert "1 source(s) failed" in result.output
     assert "BCB inflation" in result.output

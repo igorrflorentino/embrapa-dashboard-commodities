@@ -701,6 +701,30 @@ unit_tests:
   #   FX USD: avg(2000)=2.0, latest=5.0
   #     → val_yearfx_usd    = 1000 / 2.0          = 500   (year >= 1994)
   #     → val_real_ipca_usd = 3000 / 5.0          = 600
+  # ── The `origem` axis ─────────────────────────────────────────────────────
+  # gold_pevs_production carries BOTH halves of the survey, told apart by `origem`.
+  # A row must be stamped by WHICH SILVER IT CAME FROM — if the union ever tags by
+  # position, or a copy-paste swaps the two labels, every silviculture number would
+  # be published as extraction (and vice versa) with nothing else changing shape.
+  # Same product name in both halves on purpose: that is the confusable case.
+  - name: test_pevs_origem_is_stamped_from_the_source_half
+    model: gold_pevs_production
+    given:
+      - input: ref('silver_ibge_pevs')
+        rows:
+          - {reference_year: 2023, state_acronym: "PA", city_code: "1500800", city_name: "Belém", product_code: "3435", product_description: "Madeira em tora", is_monetary_value: true, numeric_value: 100, qty_native: , qty_base: , family: , unit_native: , base_unit: , ingestion_timestamp: "2024-01-01 00:00:00"}
+      - input: ref('silver_ibge_silvicultura')
+        rows:
+          - {reference_year: 2023, state_acronym: "SP", city_code: "3550308", city_name: "São Paulo", product_code: "3457", product_description: "Madeira em tora", is_monetary_value: true, numeric_value: 900, qty_native: , qty_base: , family: , unit_native: , base_unit: , ingestion_timestamp: "2024-01-01 00:00:00"}
+      - input: ref('silver_bcb_inflation')
+        rows: []
+      - input: ref('silver_currency')
+        rows: []
+    expect:
+      rows:
+        - {reference_year: 2023, state_acronym: "PA", product_code: "3435", origem: "extrativa",    val_yearfx_brl: 100}
+        - {reference_year: 2023, state_acronym: "SP", product_code: "3457", origem: "silvicultura", val_yearfx_brl: 900}
+
   - name: test_pevs_deflation_and_fx_arithmetic
     model: gold_pevs_production
     given:
@@ -710,6 +734,11 @@ unit_tests:
           - {reference_year: 2000, state_acronym: "PA", city_code: "1500800", city_name: "Belém", product_code: "0001", product_description: "Açaí", is_monetary_value: true,  numeric_value: 1000, qty_native: , qty_base: , family: , unit_native: , base_unit: , ingestion_timestamp: "2024-01-01 00:00:00"}
           # Quantity variable row (same natural key) → lifts qty/family.
           - {reference_year: 2000, state_acronym: "PA", city_code: "1500800", city_name: "Belém", product_code: "0001", product_description: "Açaí", is_monetary_value: false, numeric_value: 5,    qty_native: 5, qty_base: 5, family: "massa", unit_native: "t", base_unit: "t", ingestion_timestamp: "2024-01-01 00:00:00"}
+      # The model now unions BOTH halves of the survey; dbt requires every ref to be
+      # given. Empty here on purpose — this test is about the deflation arithmetic, and
+      # the origem axis has its own case below.
+      - input: ref('silver_ibge_silvicultura')
+        rows: []
       - input: ref('silver_bcb_inflation')
         rows:
           # IPCA (series 433): Dec-2000 = the record year-end; 2024 = the global latest.

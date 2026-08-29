@@ -37,8 +37,12 @@ describe('dimAppliesTo — capability crossing (requires × provides)', () => {
 describe('bancoFilterDims — only backed AND applicable dims (everything else hidden)', () => {
   const ids = (banco) => window.bancoFilterDims(banco).map((d) => d.id);
 
-  it('PEVS: the four production dims, in order', () => {
-    expect(ids('ibge_pevs')).toEqual(['produtos', 'periodo', 'geografia', 'qualidade']);
+  it('PEVS: the production dims, in order — with `origem` since the survey has two halves', () => {
+    // `origem` (extração nativa | silvicultura plantada) joined in 2026-08-29 when the
+    // t291 half was ingested. It sits right after produtos on purpose: it changes WHAT a
+    // number covers, so it belongs beside the product choice rather than buried below the
+    // period. See PLANS/silvicultura_source.md.
+    expect(ids('ibge_pevs')).toEqual(['produtos', 'origem', 'periodo', 'geografia', 'qualidade']);
   });
 
   it('COMEX: keeps fluxo (now backed) + ncm + uf_origem; hides data-blocked pais/via/valor', () => {

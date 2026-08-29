@@ -413,6 +413,42 @@ describe('exportActiveTableCSV — conventions default', () => {
 // for good — no chip, no permalink, no trail beside it — so the recorte has to ride
 // along in the table, the way escopo_produto already does for the basket.
 // ---------------------------------------------------------------------------
+// A metade da pesquisa que o arquivo cobre. Um CSV sai do produto para sempre: sem
+// chip nem permalink ao lado, um número que soma floresta nativa com plantada (5:1 a
+// favor da plantada) tem de dizer isso na própria tabela.
+describe('exportActiveTableCSV — a origem viaja junto com o arquivo', () => {
+  const UF_ROW = [{ uf: 'SP', name: 'São Paulo', region: 'Sudeste', value: 5, q_mass: 1, q_vol: 2, q_count: 3 }];
+  const OPTS = [{ value: 'all', label: 'Ambas' },
+                { value: 'extrativa', label: 'Extração vegetal (nativa)' },
+                { value: 'silvicultura', label: 'Silvicultura (plantada)' }];
+
+  beforeEach(() => { window.origemOptionsFor = (id) => (id === 'ibge_pevs' ? OPTS : null); });
+  afterEach(() => { delete window.origemOptionsFor; });
+
+  const run = (summary) => {
+    stubRegistry({ products: PRODUCTS, ufData: UF_ROW, ufLatestYear: 2024, notFilteredByBasket: true });
+    window.exportActiveTableCSV({ view: 'geo', summary, database: 'ibge_pevs' });
+    return lastCsv.replace('\ufeff', '').split('\n');
+  };
+
+  it('nomeia a metade escolhida', () => {
+    const lines = run({ origem: 'silvicultura' });
+    expect(lines[0]).toContain('origem');
+    expect(lines[1]).toContain('Silvicultura (plantada)');
+  });
+
+  it('diz "ambas as metades" por extenso quando não há recorte', () => {
+    // Célula vazia seria ambígua, e aqui a ambiguidade é cara: o leitor não teria como
+    // saber se o número é só nativa ou nativa + plantada.
+    expect(run({}).slice(1)[0]).toContain('ambas as metades');
+  });
+
+  it('não acrescenta a coluna num banco sem a dimensão', () => {
+    window.origemOptionsFor = () => null;
+    expect(run({ origem: 'silvicultura' })[0]).not.toContain('origem');
+  });
+});
+
 describe('exportActiveTableCSV — o recorte sub-UF viaja junto com o arquivo', () => {
   const MESH = [
     { cityCode: '1', uf: 'PA', meso: { code: '1502', name: 'Marajó' },

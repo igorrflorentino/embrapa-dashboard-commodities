@@ -44,7 +44,7 @@ from embrapa_dashboard.core import (
     pipeline_run,
 )
 from embrapa_dashboard.gcp.clients import resolve_clients
-from embrapa_dashboard.ibge import pam_pipeline, ppm_pipeline
+from embrapa_dashboard.ibge import pam_pipeline, ppm_pipeline, silvicultura_pipeline
 from embrapa_dashboard.ibge import pipeline as ibge_pipeline
 from embrapa_dashboard.ibge.client import recommended_chunk_years
 
@@ -112,6 +112,17 @@ class IngestSpec:
 # working (see tests/test_cli.py).
 INGESTS: list[IngestSpec] = [
     IngestSpec("ibge", ibge_pipeline, accepts_full=True, label="IBGE PEVS", cadence_days=7),
+    # The OTHER half of the same survey: planted forest (SIDRA t291). Rides the weekly
+    # batch alongside `ibge` because the two are published together — a silvicultura
+    # lagging its own extraction half would put one banco's `origem` axis out of step
+    # with itself, which is worse than either being a day late.
+    IngestSpec(
+        "ibge-silvicultura",
+        silvicultura_pipeline,
+        accepts_full=True,
+        label="IBGE PEVS silvicultura",
+        cadence_days=7,
+    ),
     # PAM is ANNUAL, slow-changing data (~1yr publication lag): kept OUT of the nightly
     # `ingest all` (in_all=False) so the daily cron stays fast — polling an annual source
     # 365×/year to catch one publication buys nothing. It is NOT unscheduled, though:
@@ -348,6 +359,49 @@ def ingest_ibge(
             "[yellow]⚠ IBGE ingest skipped:[/yellow] SIDRA returned no new rows. "
             "On a delta run Bronze is likely already current; on --full, lower "
             "IBGE_END_YEAR in .env to the latest published year."
+        )
+
+
+@ingest_app.command("ibge-silvicultura")
+def ingest_ibge_silvicultura(
+    full: bool = typer.Option(
+        False,
+        "--full",
+        help=(
+            "Re-fetch the whole SILVICULTURA_START_YEAR→END window "
+            "(default is delta: recent years only)."
+        ),
+    ),
+    from_raw: bool = typer.Option(
+        False,
+        "--from-raw",
+        help="Rebuild Bronze from the archived raw SIDRA response(s), without re-querying SIDRA.",
+    ),
+) -> None:
+    """Ingest the PEVS silviculture half (SIDRA t291, planted forest) into Bronze."""
+    settings = get_settings()
+    with (
+        _transient_aware_exit("IBGE PEVS silvicultura"),
+        _tracked_run(
+            "ibge-silvicultura",
+            params={
+                "start_year": settings.silvicultura_start_year,
+                "end_year": settings.silvicultura_end_year,
+                "products": settings.silvicultura_product_codes_list,
+                "full": full,
+                "from_raw": from_raw,
+            },
+        ) as (_run_id, log_path),
+    ):
+        console.print(f"[dim]event log:[/dim] {log_path}")
+        destination = silvicultura_pipeline.run(settings, full=full, from_raw=from_raw)
+    if destination:
+        console.print(f"[green]✓[/green] IBGE PEVS silvicultura bronze loaded → {destination}")
+    else:
+        console.print(
+            "[yellow]⚠ Silvicultura ingest skipped:[/yellow] SIDRA returned no new rows. "
+            "On a delta run Bronze is likely already current; on --full, lower "
+            "SILVICULTURA_END_YEAR in .env to the latest published year."
         )
 
 
@@ -861,7 +915,9 @@ def ingest_reconcile(
 
     Per source: IBGE PEVS runs year-CHUNKED (like `ibge-batch`, so the huge
     1986→today SIDRA pull survives an unattended slow-byte deadline); BCB
-    inflation/FX, COMEX, and the out-of-`all` annual SIDRA sources PAM/PPM run with
+    inflation/FX, COMEX, the silviculture half (t291 — a full 1986→today pull is ~30%
+    of PEVS's and completed single-shot in one request when it was first backfilled,
+    2026-08-29), and the out-of-`all` annual SIDRA sources PAM/PPM run with
     `--full` (single-shot, deadline-resilient since the #148 dynamic SIDRA timeout),
     so an old-year revision to PAM/PPM is caught too. COMTRADE is excluded
     (key-gated), exactly like `ingest all`. Continue-on-failure at the source level.

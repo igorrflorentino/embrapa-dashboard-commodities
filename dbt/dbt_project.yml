@@ -62,6 +62,10 @@ vars:
   # silently empties the matching Gold column.
   ibge_variable_quantity: "{{ env_var('IBGE_VARIABLE_QUANTITY_CODE', '144') }}"
   ibge_variable_value:    "{{ env_var('IBGE_VARIABLE_VALUE_CODE',    '145') }}"
+  # The silviculture half's analogues (SIDRA t291). Same NAME coupling as above:
+  # config.py declares the identical env keys and defaults, and doctor validates parity.
+  silvicultura_variable_quantity: "{{ env_var('SILVICULTURA_VARIABLE_QUANTITY_CODE', '142') }}"
+  silvicultura_variable_value:    "{{ env_var('SILVICULTURA_VARIABLE_VALUE_CODE',    '143') }}"
 
   # IBGE PAM (SIDRA table 5457) variable codes. `v/all` ingests all of them; the
   # Silver model keeps these five real measures (dropping the 3 "% do total"
