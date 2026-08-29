@@ -300,3 +300,63 @@ def test_seed_page_unknown_seed_raises_value_error(monkeypatch):
     monkeypatch.setattr(seam.gateway, "seed_tables", lambda: [])
     with pytest.raises(ValueError, match="não é uma tabela de referência consultável"):
         seam.seed_page("does_not_exist")
+
+
+# ── _apply_levels: the nível narrowing every basket reader shares ─────────────
+# It lived inline in `snapshot` until 2026-08-29, so seven other readers served the whole
+# banco under a level's label. Extracted so there is ONE definition to get right.
+def _levels_fixture(monkeypatch, por_nivel: dict[str, set[str]], universo: list[str]):
+    seam = _seam()
+    monkeypatch.setattr(
+        seam.gateway, "fetch_products", lambda banco_id: pd.DataFrame({"code": universo})
+    )
+    monkeypatch.setattr(
+        seam,
+        "_codes_for_levels",
+        lambda banco_id, niveis, universe: {
+            c for n in niveis for c in por_nivel.get(n, set()) if c in universe
+        },
+    )
+    return seam
+
+
+def test_apply_levels_without_a_selection_returns_the_basket_untouched(monkeypatch):
+    seam = _levels_fixture(monkeypatch, {}, ["1", "2"])
+    assert seam._apply_levels("ibge_pevs", {}, ("1",)) == ("1",)
+    assert seam._apply_levels("ibge_pevs", None, ()) == ()
+
+
+def test_apply_levels_with_no_basket_yields_every_code_of_the_level(monkeypatch):
+    seam = _levels_fixture(monkeypatch, {"pura": {"1", "2"}}, ["1", "2", "3"])
+    out = seam._apply_levels("ibge_pevs", {"niveis": ["pura"]}, ())
+    assert out == ("1", "2")
+
+
+def test_apply_levels_intersects_with_the_basket_so_both_narrowings_compose(monkeypatch):
+    """One must not override the other: a basket of {1,3} under a level of {1,2} is {1}."""
+    seam = _levels_fixture(monkeypatch, {"pura": {"1", "2"}}, ["1", "2", "3"])
+    assert seam._apply_levels("ibge_pevs", {"niveis": ["pura"]}, ("1", "3")) == ("1",)
+
+
+def test_apply_levels_returns_a_sentinel_when_nothing_matches(monkeypatch):
+    """An EMPTY basket reads as 'no product filter' downstream and would serve the whole
+    banco — the opposite of what was asked. The sentinel keeps the answer honest."""
+    seam = _levels_fixture(monkeypatch, {"pura": {"9"}}, ["1", "2"])
+    assert seam._apply_levels("ibge_pevs", {"niveis": ["pura"]}, ("1",)) == (
+        seam._NO_CODE_SENTINEL,
+    )
+
+
+def test_apply_levels_uses_the_products_passed_in_instead_of_refetching(monkeypatch):
+    """`snapshot` already has the universe; the others fetch it (cached). Passing it must
+    actually skip the read — otherwise every snapshot pays for a duplicate query."""
+    seam = _levels_fixture(monkeypatch, {"pura": {"1"}}, ["1"])
+
+    def _boom(banco_id):
+        raise AssertionError("refetched the product universe despite being handed it")
+
+    monkeypatch.setattr(seam.gateway, "fetch_products", _boom)
+    out = seam._apply_levels(
+        "ibge_pevs", {"niveis": ["pura"]}, (), products=pd.DataFrame({"code": ["1"]})
+    )
+    assert out == ("1",)

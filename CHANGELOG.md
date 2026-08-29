@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.35.6] - 2026-08-29
+
+### Corrigido
+
+- **O filtro de nível de industrialização tinha o mesmo defeito do `origem`, um eixo ao
+  lado.** Também nasceu passado só pelo caminho do snapshot, então o mapa, o cubo
+  municipal, os dois rankings de produto e os três leitores de comércio o **ignoravam por
+  completo**: o snapshot mostrava 1,3 bi para `commodity_pura` ao lado de um mapa que
+  mostrava os 1.063,5 bi inteiros.
+
+  O eixo alcança os leitores por um mecanismo **diferente** do `origem` — o nível mora numa
+  dim SCD2 própria e nenhum fato o carrega, então ele se resolve para uma lista de códigos
+  em vez de virar predicado SQL. O bloco que fazia isso vivia inline no `snapshot`; virou
+  `_apply_levels`, chamado pelos **oito** leitores que honram cesta.
+
+### Alterado
+
+- **Um helper por eixo virou um helper para todos.** `_with_origem` (v1.35.5) virou
+  `_with_filter_axes`, que dobra `origem` **e** `niveis` na summary de toda rota; no
+  frontend, `activeOrigemParam` virou `activeAxisParams` + `axisKey`, espalhados com
+  `...ax`. O próximo eixo entra em **um** lugar em vez de precisar ser lembrado em oito
+  sítios de chamada — que é exatamente como estes dois falharam, com um dia de intervalo.
+
+### Verificação
+
+Os dois eixos **compõem** (um recorta coluna, o outro recorta a lista de códigos):
+
+| recorte | valor |
+|---|---|
+| `origem=silvicultura` | 690.562 |
+| `+ niveis=commodity_acondicionada` | 548.906 |
+| `+ niveis=manufaturado_industrial` | 141.655 |
+
+548.906 + 141.655 = 690.561 — os dois níveis particionam a metade exatamente. Um nível
+inválido devolve **400**. E `origem=silvicultura&niveis=commodity_pura` devolve **zero**,
+que é a resposta certa: nenhum dos três produtos de silvicultura é `commodity_pura`
+(carvão é `manufaturado_industrial`; lenha e tora são `commodity_acondicionada`).
+
+As duas varreduras de fio passaram a cobrir os dois eixos, cada uma com a asserção que cabe
+ao mecanismo do eixo. Uma injeção reprovou um **teste meu** que era fraco demais (checava o
+nome do eixo no corpo do helper, não no que ele devolve) — corrigido.
+
+---
+
 ## [1.35.5] - 2026-08-29
 
 ### Corrigido

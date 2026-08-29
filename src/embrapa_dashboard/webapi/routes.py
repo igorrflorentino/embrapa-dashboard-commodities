@@ -714,25 +714,37 @@ def snapshot():
     return jsonify(serializers.serialize_snapshot(seam.snapshot(banco, conv, summary or None)))
 
 
-def _with_origem(summary: dict | None) -> tuple[dict | None, tuple | None]:
-    """Fold the optional ``origem`` param into a route's summary.
+def _with_filter_axes(summary: dict | None) -> tuple[dict | None, tuple | None]:
+    """Fold every OPTIONAL filter axis a data route accepts into its summary.
 
-    EVERY route reaching a PEVS reader needs this, and that is exactly what went wrong:
-    when the axis arrived on 2026-08-29 only the snapshot route parsed it, so the map, the
-    município cube, the per-UF and per-município product rankings and the cross-source view
-    all answered with BOTH halves summed while the chip announced one. The halves differ
-    ~6x in value, so the number was not merely imprecise — it was a different dataset under
-    the user's label, which this project forbids outright.
+    Both axes here were shipped wired into ``/snapshot`` alone and into no other route, one
+    day apart, with the same result: the view answered over a dataset the user had not
+    selected while the chip named the selection.
 
-    A helper rather than four copies of the same three lines: the next route to reach a
-    PEVS reader gets it by calling one function, and the wiring test can name it.
+    * ``origem`` (2026-08-29) — the map, the município cube and both product rankings summed
+      BOTH halves of PEVS. They differ ~6x in value.
+    * ``niveis`` (2026-08-29) — the same readers ignored the industrialization level
+      entirely: the snapshot showed 1,3 bi for commodity_pura beside a map showing the whole
+      1.063,5 bi.
+
+    ONE helper for all axes, not one per axis, precisely because the failure repeated: a
+    route gains every axis by calling this, and the next axis is added in one place instead
+    of being remembered at eight call sites. Returns ``(None, error_response)`` on a bad
+    value — a typo'd axis is a 400, never a silently wider answer.
     """
     origem, err = _origem_or_400(request.args.get("origem"))
     if err:
         return None, err
+    niveis, err = _niveis_or_400(request.args.get("niveis"))
+    if err:
+        return None, err
+    extra = {}
     if origem and origem != "all":
-        summary = dict(summary or {})
-        summary["origem"] = origem
+        extra["origem"] = origem
+    if niveis:
+        extra["niveis"] = niveis
+    if extra:
+        summary = {**(summary or {}), **extra}
     return summary, None
 
 
@@ -755,7 +767,7 @@ def product_uf():
         summary = {"startDate": start, "endDate": end}
         if states:
             summary["states"] = states
-    summary, err = _with_origem(summary)
+    summary, err = _with_filter_axes(summary)
     if err:
         return err
     df = seam.product_uf_ranking(banco, code, conv, summary)
@@ -784,7 +796,7 @@ def geo_yearly():
         summary["basket"] = _csv_param(codes)  # blank-strip + cap (SEC-1)
     if flow:
         summary["flow"] = flow
-    summary, err = _with_origem(summary)
+    summary, err = _with_filter_axes(summary)
     if err:
         return err
     df = seam.geo_yearly(banco, conv, summary or None)
@@ -872,7 +884,7 @@ def municipio_yearly():
         summary["startDate"] = y0
     if y1:
         summary["endDate"] = y1
-    summary, err = _with_origem(summary)
+    summary, err = _with_filter_axes(summary)
     if err:
         return err
     df = seam.geo_municipio_yearly(banco, conv, summary)
@@ -911,7 +923,7 @@ def products_by_municipio():
         summary["startDate"] = y0
     if y1:
         summary["endDate"] = y1
-    summary, err = _with_origem(summary)
+    summary, err = _with_filter_axes(summary)
     if err:
         return err
     df = seam.products_by_municipio(banco, conv, summary)
@@ -932,7 +944,7 @@ def products_by_uf():
     conv, err = _conversion_or_400()
     if err:
         return err
-    summary, err = _with_origem(_filter_summary())
+    summary, err = _with_filter_axes(_filter_summary())
     if err:
         return err
     df = seam.products_by_uf(banco, summary, conv)
