@@ -125,7 +125,7 @@ embrapa discover ibge-periods   [--table-id 289]
 embrapa discover ibge-products  --keywords castanha,madeira
 embrapa discover bcb-series     <code>            # e.g.: 433
 embrapa doctor                                      # environment health check (.env, ADC, BQ/GCS, source APIs, backup freshness)
-embrapa backup-gold                                 # snapshot prod Gold tables to gs://${GCS_BUCKET}/backups/run=<ts>/
+embrapa backup-gold                                 # snapshot prod Gold + research_inputs (curadoria) to gs://${GCS_BUCKET}/backups/run=<ts>/
 embrapa monitor [--pipeline <name>]                 # live progress of a running ingest (tails the JSONL event log)
 embrapa dbt <args>                                  # e.g.: dbt run --select gold
 ```

@@ -116,7 +116,7 @@ Silver/Gold. No `--full-refresh` is needed: `silver_ibge_pevs` is incremental bu
 `ingestion_timestamp`), so a revised old year flows all the way to Gold on a
 plain build.
 
-Cold-storage backup of the prod Gold tables. **The recommended prod path
+Cold-storage backup of the prod Gold tables **and of `research_inputs`** — the researcher-authored curation data (catálogo, agrupamentos, classificações, allowlists). Gold is DERIVABLE (losing it costs a `dbt build`); `research_inputs` is not recomputable from any source, and until v1.36.0 it was the one dataset with no snapshot. `embrapa doctor` fails (`curation-backup`) if the newest snapshot predates that coverage. **The recommended prod path
 bundles build + snapshot in one target — reach for this instead of bare
 `dbt-build-prod` whenever the run is preservation-worthy:**
 
