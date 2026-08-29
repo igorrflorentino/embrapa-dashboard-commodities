@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.36.1] - 2026-08-29
+
+### Corrigido
+
+- **Cinco produtos apareciam sem descrição da fonte ("—") mesmo tendo dados.** O nome vem
+  de um seed curado à mão (`comex_ncm` / `comtrade_hs`) por `left join`; os códigos
+  `14011000`, `15079010`, `20059100` (NCM-8) e `140110`, `200591` (HS-6) **não estavam
+  lá**, então o join devolvia NULL. Dois deles são do capítulo **14** (bambu), que o filtro
+  documentado do seed nunca listou — o produto foi ingerido e cadastrado, e a lacuna só
+  aparecia para quem lesse a tela de cadastro.
+
+  As descrições novas vieram da **tabela oficial do MDIC** (`NCM.csv`, coluna
+  `NO_NCM_POR`), nunca escritas de memória. A fonte foi validada por controle: o código
+  `44011000`, já presente no seed, devolve exatamente o texto que lá estava. Para os dois
+  HS-6, cada um tem **um único** filho NCM, então o texto oficial do NCM é o do SH6; a
+  unidade `kg` vem de `CO_UNID=10` = QUILOGRAMA LÍQUIDO (`NCM_UNIDADE.csv`).
+- **Removidas as 4 entradas HS-4 (`4401`/`4402`) do catálogo de COMEX e COMTRADE.** Foram
+  criadas em v1.35.x pela reorganização dos agrupamentos de madeira, que adicionou o
+  cabeçalho de 4 dígitos sem verificar que os 29 códigos específicos já estavam
+  cadastrados **e nos mesmos agrupamentos**. O COMEX indexa por NCM-8 e o COMTRADE por
+  HS-6, e o catálogo casa pelo código exato — um código de 4 dígitos nunca encontra dado.
+  O check `Catalog → Gold arrival` do `doctor` passou de 4 pendências para zero.
+
+### Adicionado
+
+- **`assert_trade_codes_have_a_description`** (teste dbt): falha quando um código chega ao
+  Gold que o seed não sabe nomear. Compara o seed com os **dados**, não com a nomenclatura
+  inteira — o seed não precisa cobrir todo o universo NCM/HS, só o que a ingestão de fato
+  trouxe. Validado contra produção: acusa exatamente os 5 códigos acima.
+
+**Nota operacional:** o efeito na tela depende de um `dbt build` de produção, que recarrega
+os seeds. O build agendado (seg/qui) aplica sem custo extra.
+
+---
+
 ## [1.36.0] - 2026-08-29
 
 ### Adicionado

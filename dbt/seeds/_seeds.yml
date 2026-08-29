@@ -189,11 +189,19 @@ seeds:
   - name: comex_ncm
     description: |
       MDIC NCM dimension (NCM.csv), filtered to the current COMEX product scope
-      (castanha, banana, soja, milho, arroz, mandioca, açaí/cupuaçu, tapioca +
-      chapter 44 wood/charcoal — chapters 07, 08, 10, 11, 12, 15, 19, 20, 23, 44):
-      CO_NCM → Portuguese description. Joined into
+      (castanha, banana, soja, milho, arroz, mandioca, açaí/cupuaçu, tapioca,
+      bambu + chapter 44 wood/charcoal — chapters 07, 08, 10, 11, 12, 14, 15, 19,
+      20, 23, 44): CO_NCM → Portuguese description. Joined into
       gold_comex_flows on ncm_code = co_ncm. Extend the filter if the COMEX
       product scope grows beyond these chapters.
+
+      Coverage is now ENFORCED rather than remembered: the singular test
+      assert_trade_codes_have_a_description fails when a code reaches Gold that
+      this seed cannot name. It had drifted silently — bambu (ch. 14) was ingested
+      and registered in Curadoria while the seed's filter never listed that
+      chapter, so the editor showed "—" for its name and only a human reading that
+      screen would ever have noticed. Take new descriptions from NO_NCM_POR in
+      MDIC's own NCM.csv, never from memory.
     config:
       column_types:
         co_ncm: string
