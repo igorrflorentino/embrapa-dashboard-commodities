@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.37.1] - 2026-08-29
+
+### Alterado
+
+- **O registro de divergências passou a explicar a classe `ausente no MDIC`.** Ela parece
+  lacuna a preencher e não é: a tabela do MDIC cobre o SH da nomenclatura **brasileira**, e
+  o COMTRADE é comércio **mundial** numa janela de 25 anos. Medido, os 14 casos se dividem
+  em três situações sem conserto do lado do MDIC:
+
+  1. **Aposentado** numa revisão do SH — `440331`/`440335` (madeiras tropicais) só aparecem
+     no Gold em **2000–2005**.
+  2. **Vigente que o Brasil não usa** — `440714` (Hem-fir, conífera norte-americana) tem
+     **703 linhas em 2022–2025** e nenhuma entrada no MDIC.
+  3. **Linha de seed sem dado**, que custa uma linha de CSV.
+
+  Sem essa nota, um mantenedor futuro caçaria entradas que não existem. O seed pode ser
+  mais largo que os dados; o contrário é que quebra, e disso cuida
+  `assert_trade_codes_have_a_description`.
+
+---
+
 ## [1.37.0] - 2026-08-29
 
 Auditoria da captura da descrição da fonte, com duas decisões do pesquisador.

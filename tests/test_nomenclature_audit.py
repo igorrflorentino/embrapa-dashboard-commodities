@@ -108,3 +108,16 @@ def test_so_o_prefixo_e_removido_da_descricao(modelo: str) -> None:
     linha = next(x for x in sql.split("\n") if "as product_description" in x)
     assert linha.count("regexp_replace") == 1, f"{modelo}: mais de uma remoção na descrição"
     assert "substr" not in linha and "left(" not in linha.lower(), f"{modelo}: corte de string"
+
+
+def test_o_registro_explica_a_classe_ausente_no_mdic() -> None:
+    """`ausente no MDIC` parece lacuna e não é: a tabela do MDIC cobre o SH da nomenclatura
+    BRASILEIRA, e o COMTRADE é comércio mundial numa janela de 25 anos. Sem essa nota, um
+    mantenedor futuro caçaria entradas que não existem — os três casos (aposentado,
+    vigente-que-o-Brasil-não-usa, seed sem dado) precisam estar nomeados no documento."""
+    doc = (Path(__file__).resolve().parents[1] / "docs/nomenclatura_divergencias.md").read_text(
+        encoding="utf-8"
+    )
+    assert "440331" in doc and "440714" in doc, "faltam os exemplos que ancoram a nota"
+    assert "não é defeito nem lacuna a preencher" in doc.lower()
+    assert "assert_trade_codes_have_a_description" in doc, "falta apontar quem guarda o converso"
