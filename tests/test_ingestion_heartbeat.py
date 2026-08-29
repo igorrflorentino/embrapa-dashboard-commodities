@@ -56,9 +56,16 @@ def _rows(*pairs):
     return [SimpleNamespace(source=s, last_run=now - timedelta(days=d)) for s, d in pairs]
 
 
-def _patch(rows):
+def _patch(rows, table_age_days: float = 1.0):
+    """`table_age_days` = how long the heartbeat table has existed.
+
+    It is the reference for "never reported": before the table outlives a source's
+    window, silence means nothing (the table starts empty); after, it means the trigger
+    never fired once. Defaults to 1 day so the existing cases stay in the first regime.
+    """
     client = MagicMock()
     client.query.return_value.result.return_value = rows
+    client.get_table.return_value.created = datetime.now(UTC) - timedelta(days=table_age_days)
     return patch("embrapa_dashboard.doctor.bigquery.Client", return_value=client)
 
 
@@ -93,12 +100,50 @@ def test_heartbeat_check_is_quiet_before_any_run_is_recorded(settings) -> None:
     assert "no heartbeat recorded yet" in result.detail
 
 
-def test_heartbeat_check_ignores_a_source_never_observed(settings) -> None:
-    """A source absent from the table is not called broken — the table only fills forward."""
-    with _patch(_rows(("ibge", 1))):
+def test_heartbeat_check_does_not_call_a_never_observed_source_broken_too_early(settings) -> None:
+    """A source absent from a NEW table is not called broken — the table fills forward.
+
+    It is still NAMED, though. The check used to drop such a source from the line and
+    then conclude "every scheduled ingest ran" over the survivors — a sentence that
+    claimed the whole while counting a subset. It now accounts for every source.
+    """
+    with _patch(_rows(("ibge", 1)), table_age_days=1):
         result = doctor._check_ingest_heartbeat(settings)
     assert "⚠" not in result.detail
-    assert "comtrade" not in result.detail
+    assert "comtrade" in result.detail  # named, not silently dropped
+    assert "sem primeiro registro" in result.detail
+    assert "every" not in result.detail.lower()  # no claim over the subset that reported
+
+
+def test_heartbeat_check_flags_a_source_that_NEVER_reported_once_the_table_outlives_its_window(
+    settings,
+) -> None:
+    """The case a brand-new trigger is in, and the one that used to be invisible.
+
+    A scheduler created with the wrong args/service account never fires at all, so it
+    never writes a heartbeat — and "no row" read identically to "not shipped yet",
+    forever. Once the table has existed longer than the source's own window, silence
+    stops being "not yet".
+    """
+    # 40 days of observation: past every source's window (daily 4, weekly 10, monthly 34).
+    with _patch(_rows(("bcb-currency", 0)), table_age_days=40):
+        result = doctor._check_ingest_heartbeat(settings)
+    assert "⚠" in result.detail
+    assert "nunca rodou" in result.detail
+    assert "ibge" in result.detail  # the weekly batch's sources
+    assert "bcb-currency" not in result.detail.split("nunca rodou")[1]  # this one did run
+
+
+def test_heartbeat_check_separates_stopped_from_never_started(settings) -> None:
+    """Two different diagnoses: a trigger that DIED vs one that was never born.
+
+    They need different fixes — check the Job's executions vs check how the scheduler was
+    created — so the line must not merge them into one word.
+    """
+    with _patch(_rows(("bcb-currency", 30)), table_age_days=40):
+        detail = doctor._check_ingest_heartbeat(settings).detail
+    assert "parou de rodar" in detail and "bcb-currency" in detail.split("parou de rodar")[1]
+    assert "nunca rodou" in detail
 
 
 def test_heartbeat_check_reports_a_query_failure(settings) -> None:

@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.31] - 2026-08-28
+
+O check de heartbeat — construído na v1.31.0 para responder *"o gatilho disparou?"* —
+tinha o mesmo defeito que passei a semana varrendo, e não podia ver o caso mais provável
+hoje.
+
+### Corrigido
+
+- **`Ingest heartbeat` dizia `every scheduled ingest ran` listando UMA fonte.** A linha
+  nomeava o todo sobre o subconjunto que reportou: sete fontes têm gatilho, uma tinha
+  registro, e as outras seis eram silenciosamente descartadas do cálculo *e* da frase.
+  É exatamente o padrão das v1.33.25/27/28 — um rótulo que nomeia mais do que o número
+  mede — desta vez no código que existe para detectar silêncio.
+
+- **A isenção de "nunca reportou" nunca expirava.** O docstring dizia, de propósito, que
+  uma fonte ausente da tabela não é acusada, "porque a tabela só começa a encher depois
+  que isto entrar no ar". Razoável no dia 1 — mas sem prazo, o que ela cria é um ponto
+  cego permanente: **"o gatilho nasceu quebrado e jamais disparou uma vez" ficou
+  indistinguível de "ainda não chegou a hora", para sempre.**
+
+  E esse é precisamente o estado de hoje: `embrapa-ingest-all-weekly`, que substituiu o
+  disparo noturno em 2026-08-28, tem `LAST_ATTEMPT` **vazio** — nunca executou, e só
+  dispara às segundas. Se tiver nascido malconfigurado, a ingestão para em silêncio e o
+  guarda-chuva que escrevi para exatamente isso responderia "todas rodaram".
+
+  A isenção passa a valer só enquanto significa alguma coisa: até a **própria tabela de
+  heartbeat** ter existido mais tempo que a janela daquela fonte. Antes disso, silêncio
+  não diz nada (a tabela nasce vazia, e gritar no dia 1 é como um check vira ignorado);
+  depois, silêncio é o sinal mais alto que existe. A referência é a data de criação da
+  tabela — o mecanismo, não um palpite.
+
+- **"Parou de rodar" e "nunca rodou" deixam de virar uma palavra só.** São diagnósticos
+  diferentes e consertos diferentes: um manda olhar as execuções do Job, o outro manda
+  olhar como o scheduler foi criado.
+
+A frase de sucesso passa a prestar contas de todas as fontes — as que rodaram, com a
+idade, e as que ainda não têm primeiro registro mas seguem dentro da janela.
+
+### Testes
+
+Três casos novos (1578 no total), validados por injeção: voltar a isentar quem nunca
+reportou derruba os dois casos novos; voltar a dizer "every" sobre o subconjunto, 1;
+fundir "parou" e "nunca" numa palavra só, 1.
+
+Um teste existente mudou de premissa e foi reescrito em vez de remendado: ele afirmava
+que uma fonte nunca observada é **ignorada**. Ela não é mais — é nomeada. Ignorá-la era
+metade do defeito.
+
+---
+
 ## [1.33.30] - 2026-08-28
 
 ### Testes

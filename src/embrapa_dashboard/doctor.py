@@ -875,8 +875,14 @@ def _check_ingest_heartbeat(settings: Settings) -> CheckResult:
     inferred from `in_all`, which stopped meaning "daily" when the batch went weekly
     (2026-08-28) and only bcb-currency kept a daily trigger.
 
-    A source that has NEVER reported is not flagged: the table only starts filling after
-    this ships, and calling a not-yet-observed source "broken" would cry wolf on day one.
+    A source that has never reported is exempt only while the exemption still MEANS
+    something: until the heartbeat table itself has existed longer than that source's
+    window. Before that, silence is expected (the table starts empty, and crying wolf on
+    day one is how a check gets ignored). After it, silence stops being "not yet" and
+    becomes the loudest signal there is — a trigger created wrong and never fired once.
+    That case used to be invisible here, and it is exactly the case a NEW scheduler is
+    in: the weekly batch (2026-08-28) had never executed, and this check answered
+    "every scheduled ingest ran".
     """
     try:
         from embrapa_dashboard import ingestion_heartbeat
@@ -902,33 +908,57 @@ def _check_ingest_heartbeat(settings: Settings) -> CheckResult:
             )
 
         now = datetime.now(UTC)
+        # How long we have been in a position to observe anything at all. The table's own
+        # creation time is the honest reference: before it existed no source COULD have
+        # reported, so absence says nothing; after it has outlived a source's window,
+        # absence says everything.
+        watched_days = (now - client.get_table(fqn).created).total_seconds() / 86400
+
         overdue: list[str] = []
+        never: list[str] = []
+        pending: list[str] = []
         seen: list[str] = []
         for spec in INGESTS:
             last = rows.get(spec.name)
+            window = spec.cadence_days + settings.heartbeat_slack_days
             if last is None:
-                continue  # never observed — see the docstring
+                # Never reported. Only an answer once the table is older than the window.
+                if watched_days > window:
+                    never.append(f"{spec.name} (nunca, {watched_days:.0f}d observando)")
+                else:
+                    pending.append(spec.name)
+                continue
             age_days = (now - last).total_seconds() / 86400
             # The window is the source's OWN cadence plus a grace margin — not a guess
             # from `in_all`, which stopped meaning "daily" when the batch went weekly.
-            window = spec.cadence_days + settings.heartbeat_slack_days
             if age_days > window:
                 overdue.append(f"{spec.name} {age_days:.0f}d ago (> {window}d)")
             else:
                 seen.append(f"{spec.name}={age_days:.0f}d")
 
-        if overdue:
+        if overdue or never:
+            parts = []
+            if overdue:
+                parts.append("parou de rodar: " + " · ".join(sorted(overdue)))
+            # Distinct from "stopped": nothing ever arrived, and enough time has passed
+            # that something should have. Points at the trigger's CREATION, not its health.
+            if never:
+                parts.append("nunca rodou: " + " · ".join(sorted(never)))
             return CheckResult(
                 "Ingest heartbeat",
                 True,  # warn — the trigger may be paused on purpose
-                "⚠ no run inside its window: "
-                + " · ".join(sorted(overdue))
+                "⚠ "
+                + " ; ".join(parts)
                 + " (check Cloud Scheduler + the Job's executions — this is the TRIGGER, "
                 "not the data)",
             )
-        return CheckResult(
-            "Ingest heartbeat", True, f"every scheduled ingest ran: {' · '.join(sorted(seen))}"
-        )
+        # Never say "every" over the subset that happens to have reported — the sources
+        # still inside their first window are named, so the line accounts for all of them.
+        msg = f"ran inside its window: {' · '.join(sorted(seen)) or 'nenhuma ainda'}"
+        if pending:
+            msg += " · sem primeiro registro, ainda dentro da janela: "
+            msg += " · ".join(sorted(pending))
+        return CheckResult("Ingest heartbeat", True, msg)
     except Exception as exc:
         return CheckResult("Ingest heartbeat", False, str(exc)[:120])
 
