@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.26] - 2026-08-28
+
+Varredura atrás de defeitos equivalentes ao da v1.33.25 — rótulo nomeando um sujeito
+diferente do que o número mede. **Nenhum outro encontrado**; a mesma cegueira de teste que
+o permitiu, sim.
+
+### Verificado, sem achados
+
+- **`regionUfRows` tem um único consumidor**, o mapa já corrigido. Os demais
+  `{ ...x, [valueKey]: ... }` do projeto são escala de unidade — mesmo sujeito, não
+  mistura de grão.
+- **Mapa de calor**: o ramo de região agrega UFs *em* regiões e rotula pela região; o ramo
+  de UF usa a série da própria UF. O comentário do ramo municipal já nomeava este perigo
+  ("never the plain UF grid — the exact 'same vector at the wrong grain' problem").
+- **Exportação CSV**: no modo região troca a **fonte** (`regionData`), não só o rótulo —
+  exatamente o que o mapa deveria ter feito.
+- **Mapa municipal** e **BrazilTileMap**: identidade e valor do mesmo sujeito.
+
+### Testes
+
+- **O popup do mapa municipal não tinha nenhuma asserção sobre o que escreve** — o stub
+  descartava o HTML, igual ao do mapa do Brasil antes da v1.33.25. Era a mesma ausência que
+  deixou o outro defeito viver semanas. O fixture passa a capturar o texto, e três casos o
+  prendem: o popup nomeia o município do próprio polígono e mostra o valor **dele**; a
+  invariante varrida garante que nenhum município exibe o nome de outro; e um município sem
+  linha diz "sem produção registrada" em vez de um traço mudo com número atribuído.
+
+  Validados por injeção: fazer o popup ler a linha errada acusa
+  `Abel Figueiredo: mostra Abaetetuba`; trocar a mensagem por "—" derruba o terceiro.
+
+---
+
 ## [1.33.25] - 2026-08-28
 
 ### Corrigido
