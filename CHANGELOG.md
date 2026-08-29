@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.35.2] - 2026-08-29
+
+### Corrigido
+
+- **37 produtos apareciam em "Sem agrupamento registrado", e a culpa era da v1.34.4.** Um
+  agrupamento é **duas** coisas: uma linha no registro de grupos, e o `agrupamento_id` que
+  as entradas do catálogo carregam. A reorganização da madeira escreveu a segunda **sem a
+  primeira**, então 37 produtos passaram a apontar para `lenha` e `carvao_vegetal` —
+  grupos que nenhuma linha respaldava. Mais um caso pré-existente (`abacaxi`) fecha os 38
+  que a tela mostrava.
+
+  A tela estava certa o tempo todo: a palavra **"registrado"** era a distinção inteira, e
+  eu a li como sinônimo de "sem agrupamento". Procurei o número em quatro consultas
+  diferentes antes de olhar o que ela de fato dizia.
+
+  Os três grupos foram registrados (`scripts/register_missing_agrupamentos.py`). O nome
+  importa e não é cosmético: o id é o **slug do nome**, e "Lenha e resíduos lenhosos"
+  geraria `lenha_e_residuos_lenhosos`, que não casaria com o id que as entradas já
+  carregavam. Os grupos ficaram "Lenha" e "Carvão vegetal", e as 26 entradas foram
+  regravadas para o nome bater com o registro.
+
+- **O escritor do catálogo passa a recusar um agrupamento inexistente.** Era o buraco que
+  permitiu tudo isso: `record_produto_catalog` validava o código e o ciclo de vida, e
+  nada sobre o grupo existir. Uma escrita apontando para o vazio era aceita, a Gold
+  materializava o id, e o produto caía fora de toda análise cruzada **sem erro nenhum** —
+  visível só para quem estivesse olhando aquela seção da tela.
+
+  Um registro **ausente** continua não bloqueando nada: numa instalação fria não há contra
+  o que validar, e recusar tudo impediria cadastrar o primeiro produto. Vazio significa
+  "nada a checar", não "tudo inválido".
+
+### Testes
+
+3 casos novos, validados por injeção: remover a guarda derruba um; fazer o registro vazio
+recusar tudo derruba nove — o que mostra quanta coisa depende de a instalação fria
+continuar funcionando.
+
+---
+
 ## [1.35.1] - 2026-08-29
 
 ### Corrigido
