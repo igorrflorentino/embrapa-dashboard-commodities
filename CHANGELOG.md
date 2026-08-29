@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.35.5] - 2026-08-29
+
+### Corrigido
+
+- **O filtro `origem` não chegava ao mapa, ao cubo municipal nem aos dois rankings de
+  produto.** O eixo nasceu em v1.34.0 e foi passado só pelo caminho do snapshot. Medido
+  sobre 2020–2023 antes da correção — totais **idênticos** para `extrativa`, `silvicultura`
+  e sem filtro nenhum, onde a separação correta é **372,9 bi × 690,6 bi**. As duas metades
+  diferem ~6× em valor, então não era imprecisão: era **um recorte diferente do que o
+  usuário pediu, sob o rótulo dele** — o que a regra dura do projeto proíbe.
+
+  Corrigido no fio inteiro: dois builders SQL (`products_by_uf`, `products_by_municipio`)
+  e dois leitores do gateway passaram a aceitar `origem`; cinco sítios do seam passaram a
+  passá-la; cinco rotas passaram a lê-la por um helper único (`_with_origem`); e os quatro
+  produtores do frontend passaram a **enviá-la e a chavear o cache por ela** — enviar sem
+  chavear serve a resposta da metade anterior a partir da memória, o que parece idêntico a
+  não enviar.
+
+  Verificado pelo HTTP real: `/api/geo-yearly` devolve 1051 linhas sem filtro, 1017 em
+  extrativa, 836 em silvicultura, e `origem=plantada` → **400**.
+
+### Adicionado
+
+- **Testes de FIO para o eixo** (`tests/test_origem_wiring.py`,
+  `frontend/src/data/producers.origem.wiring.test.js`). Cada leitor já tinha teste do seu
+  parâmetro `origem`; ninguém verificava se as **chamadas** o passavam. A varredura lê o
+  AST do seam e exige `origem` em toda chamada a leitor PEVS — distinguindo PEVS de COMEX
+  pelo `table_key`, porque `fetch_products_by_uf` serve os dois e `serving_comex_annual`
+  não tem essa coluna (há teste para o converso também). No frontend, um teste por modo de
+  falha: não enviar, e enviar sem chavear.
+
+**Fora de escopo, medido:** o cruzamento entre fontes também não recebe o eixo, mas suas
+views declaram `requires: []` — não anunciam filtro nenhum (nem a cesta de produtos), então
+ali não há promessa quebrada.
+
+---
+
 ## [1.35.4] - 2026-08-29
 
 ### Corrigido

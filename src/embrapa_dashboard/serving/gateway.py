@@ -307,6 +307,7 @@ def fetch_products_by_municipio(
     city_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     source: str = "ibge_pevs",
+    origem: str | None = None,
 ):
     """Per-product ranking WITHIN the given municípios — "o que este lugar produz".
 
@@ -328,6 +329,7 @@ def fetch_products_by_municipio(
         name_column=name_column,
         year_start=year_start,
         year_end=year_end,
+        origem=origem,
         product_codes=tuple(product_codes),
         city_codes=tuple(city_codes),
         value_column=value_column,
@@ -675,6 +677,7 @@ def fetch_products_by_uf(
     uf_codes: Sequence[str] = (),
     value_column: str = "val_yearfx_usd",
     flow: str | None = None,
+    origem: str | None = None,
 ):
     """Per-product ranking within a UF selection (backs the 'Base de dados' per-UF
     product breakdown). ``table_key`` + columns are internal literals the seam picks
@@ -692,6 +695,7 @@ def fetch_products_by_uf(
         uf_codes=tuple(uf_codes),
         value_column=value_column,
         flow=flow,
+        origem=origem,
     )
     return run_query(sql, params)
 

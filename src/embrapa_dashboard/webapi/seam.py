@@ -616,6 +616,7 @@ def product_uf_ranking(
         uf_codes=states,
         value_column=value_col,
         source=banco_id,
+        origem=_origem_from_summary(summary),
     )
 
 
@@ -650,7 +651,10 @@ def geo_yearly(banco_id: str, conv: dict, summary: dict | None = None) -> pd.Dat
             df = df.rename(columns={"total_value_usd": "total_value"})
         return df
     return gateway.fetch_production_by_uf_yearly(
-        product_codes=codes, value_column=value_col, source=banco_id
+        product_codes=codes,
+        value_column=value_col,
+        source=banco_id,
+        origem=_origem_from_summary(summary),
     )
 
 
@@ -720,6 +724,7 @@ def geo_municipio_yearly(
             city_codes=city_codes,
             value_column=value_col,
             source=banco_id,
+            origem=_origem_from_summary(summary),
         )
     except NotFound:
         # gold_<source>_production not built → documented None (serialize_municipio_yearly
@@ -754,6 +759,7 @@ def products_by_municipio(
             city_codes=city_codes,
             value_column=value_col,
             source=banco_id,
+            origem=_origem_from_summary(summary),
         )
     except NotFound:
         # gold_<source>_production not built → documented None (→ {"products": []}),
@@ -948,6 +954,7 @@ def products_by_uf(
             codes=codes,
             uf_codes=states,
             value_column=value_col,
+            origem=_origem_from_summary(summary),
         )
     return None
 

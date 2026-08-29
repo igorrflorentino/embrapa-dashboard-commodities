@@ -714,6 +714,28 @@ def snapshot():
     return jsonify(serializers.serialize_snapshot(seam.snapshot(banco, conv, summary or None)))
 
 
+def _with_origem(summary: dict | None) -> tuple[dict | None, tuple | None]:
+    """Fold the optional ``origem`` param into a route's summary.
+
+    EVERY route reaching a PEVS reader needs this, and that is exactly what went wrong:
+    when the axis arrived on 2026-08-29 only the snapshot route parsed it, so the map, the
+    município cube, the per-UF and per-município product rankings and the cross-source view
+    all answered with BOTH halves summed while the chip announced one. The halves differ
+    ~6x in value, so the number was not merely imprecise — it was a different dataset under
+    the user's label, which this project forbids outright.
+
+    A helper rather than four copies of the same three lines: the next route to reach a
+    PEVS reader gets it by calling one function, and the wiring test can name it.
+    """
+    origem, err = _origem_or_400(request.args.get("origem"))
+    if err:
+        return None, err
+    if origem and origem != "all":
+        summary = dict(summary or {})
+        summary["origem"] = origem
+    return summary, None
+
+
 @api.get("/product-uf")
 def product_uf():
     """Real per-UF ranking for a single product (backs ViewProductProfile's
@@ -733,6 +755,9 @@ def product_uf():
         summary = {"startDate": start, "endDate": end}
         if states:
             summary["states"] = states
+    summary, err = _with_origem(summary)
+    if err:
+        return err
     df = seam.product_uf_ranking(banco, code, conv, summary)
     return jsonify(serializers.serialize_product_uf(df))
 
@@ -759,6 +784,9 @@ def geo_yearly():
         summary["basket"] = _csv_param(codes)  # blank-strip + cap (SEC-1)
     if flow:
         summary["flow"] = flow
+    summary, err = _with_origem(summary)
+    if err:
+        return err
     df = seam.geo_yearly(banco, conv, summary or None)
     return jsonify(serializers.serialize_geo_yearly(df))
 
@@ -844,6 +872,9 @@ def municipio_yearly():
         summary["startDate"] = y0
     if y1:
         summary["endDate"] = y1
+    summary, err = _with_origem(summary)
+    if err:
+        return err
     df = seam.geo_municipio_yearly(banco, conv, summary)
     return jsonify(serializers.serialize_municipio_yearly(df))
 
@@ -880,6 +911,9 @@ def products_by_municipio():
         summary["startDate"] = y0
     if y1:
         summary["endDate"] = y1
+    summary, err = _with_origem(summary)
+    if err:
+        return err
     df = seam.products_by_municipio(banco, conv, summary)
     # Same shape as the per-UF breakdown, so the view reuses one renderer.
     return jsonify(serializers.serialize_products_by_uf(df))
@@ -898,7 +932,10 @@ def products_by_uf():
     conv, err = _conversion_or_400()
     if err:
         return err
-    df = seam.products_by_uf(banco, _filter_summary(), conv)
+    summary, err = _with_origem(_filter_summary())
+    if err:
+        return err
+    df = seam.products_by_uf(banco, summary, conv)
     return jsonify(serializers.serialize_products_by_uf(df))
 
 

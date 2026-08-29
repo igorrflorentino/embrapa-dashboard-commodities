@@ -114,6 +114,18 @@ window.snapshotFor = function snapshotFor() {
 // The convention is read from the dataStore so the cube's value column matches the
 // snapshot's byte-for-byte. Returns null until loaded (applyFilters falls back to the
 // all-products ufYearly) or for a banco with no geo grain (COMTRADE).
+
+// The PEVS half (extrativa | silvicultura), read from the store exactly as `flow` is.
+// It must reach BOTH the query string and the CACHE KEY: sending it while keying without
+// it serves the previous half's answer from memory, which looks identical to not sending
+// it at all. Introduced 2026-08-29 and threaded only into the snapshot, so the map, the
+// município cube and both product rankings answered with the two halves summed while the
+// chip announced one — they differ ~6x in value. 'all'/absent → omitted (sum both).
+function activeOrigemParam() {
+  const o = window.dataStore && window.dataStore.origem ? window.dataStore.origem() : 'all';
+  return o && o !== 'all' ? o : undefined;
+}
+
 window.geoYearly = function geoYearly(bancoId, summary) {
   const b = window.bancoById && window.bancoById(bancoId);
   if (!b || !(b.provides || []).includes('geo')) return null;
@@ -127,7 +139,8 @@ window.geoYearly = function geoYearly(bancoId, summary) {
   const flow = window.dataStore && window.dataStore.flow ? window.dataStore.flow() : 'all';
   const flowParam = flow && flow !== 'all' ? flow : undefined;
   const codes = filterCodes(summary); // undefined = all products; comma list otherwise
-  const key = `geoYearly:${bancoId}:${conv.currency}|${conv.correction}|${flow}:${codes ?? '*'}`;
+  const origem = activeOrigemParam();
+  const key = `geoYearly:${bancoId}:${conv.currency}|${conv.correction}|${flow}|${origem ?? '*'}:${codes ?? '*'}`;
   ensure(
     key,
     () => `${API}/geo-yearly?${qs({
@@ -136,6 +149,7 @@ window.geoYearly = function geoYearly(bancoId, summary) {
       currency: conv.currency,
       correction: conv.correction,
       flow: flowParam,
+      origem,
     })}`,
   );
   const data = get(key);
@@ -203,7 +217,8 @@ window.municipioYearly = function municipioYearly(bancoId, summary, cityCodes, y
   // URL → no length limit), so distinct selections never collide.
   const y0 = years && years[0] != null ? years[0] : undefined;
   const y1 = years && years[1] != null ? years[1] : undefined;
-  const key = `municipioYearly:${bancoId}:${conv.currency}|${conv.correction}:${codes ?? '*'}:${y0 ?? '*'}-${y1 ?? '*'}:${cityCodes.join(',')}`;
+  const origem = activeOrigemParam();
+  const key = `municipioYearly:${bancoId}:${conv.currency}|${conv.correction}|${origem ?? '*'}:${codes ?? '*'}:${y0 ?? '*'}-${y1 ?? '*'}:${cityCodes.join(',')}`;
   ensure(key, () => [
     `${API}/municipio-yearly?${qs({
       banco: bancoId,
@@ -212,6 +227,7 @@ window.municipioYearly = function municipioYearly(bancoId, summary, cityCodes, y
       correction: conv.correction,
       y0,
       y1,
+      origem,
     })}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cityCodes }) },
   ]);
@@ -445,8 +461,9 @@ window.productsByUf = function productsByUf(bancoId, summary, conv) {
   const y1 = filterYear(summary && summary.endDate);
   const currency = conv && conv.currency;
   const correction = conv && conv.correction;
-  const key = `pbu:${bancoId}:${filterSig(summary)}:${currency || ''}:${correction || ''}`;
-  ensure(key, () => `${API}/products-by-uf?${qs({ banco: bancoId, codes, states, y0, y1, currency, correction })}`);
+  const origem = activeOrigemParam();
+  const key = `pbu:${bancoId}:${filterSig(summary)}:${currency || ''}:${correction || ''}:${origem ?? '*'}`;
+  ensure(key, () => `${API}/products-by-uf?${qs({ banco: bancoId, codes, states, y0, y1, currency, correction, origem })}`);
   return get(key) || { products: [], loadError: errorOf(key) };
 };
 // Per-product breakdown WITHIN a município selection — the território profile's
@@ -466,9 +483,10 @@ window.productsByMunicipio = function productsByMunicipio(bancoId, summary, conv
   const y1 = filterYear(summary && summary.endDate);
   const currency = conv && conv.currency;
   const correction = conv && conv.correction;
-  const key = `pbm:${bancoId}:${codes ?? '*'}:${y0 ?? '*'}-${y1 ?? '*'}:${currency || ''}|${correction || ''}:${cityCodes.join(',')}`;
+  const origem = activeOrigemParam();
+  const key = `pbm:${bancoId}:${codes ?? '*'}:${y0 ?? '*'}-${y1 ?? '*'}:${currency || ''}|${correction || ''}|${origem ?? '*'}:${cityCodes.join(',')}`;
   ensure(key, () => [
-    `${API}/products-by-municipio?${qs({ banco: bancoId, codes, currency, correction, y0, y1 })}`,
+    `${API}/products-by-municipio?${qs({ banco: bancoId, codes, currency, correction, y0, y1, origem })}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cityCodes }) },
   ]);
   return get(key) || { products: [], loadError: errorOf(key) };
