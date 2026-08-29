@@ -111,6 +111,41 @@ async function openAddForm(container, getByText) {
   return codeInput();
 }
 
+// ── Diagnóstico para um flake que NÃO conseguimos reproduzir ────────────────────
+//
+// "shows the existing manual descrição pre-filled…" falhou duas vezes (CI num PR só de
+// documentação, 2026-08-28; e uma vez na suíte completa local) e passa em todo o resto.
+// Foram descartados, cada um por medição: estouro de prazo do waitFor (todas as esperas
+// deste arquivo passam com timeout de 1 ms — nada aqui precisa de relógio), chamadas de
+// fetch atravessando a fronteira entre testes (instrumentado: nenhuma), dependência de
+// ordem (--sequence.shuffle), o modo --coverage do CI, CPU saturada com 24 processos de
+// carga, e uma closure obsoleta no onBlur (construída de propósito: o POST sai correto
+// mesmo sem re-render entre o change e o blur).
+//
+// Sem mecanismo identificado, o que ainda tem valor é não gastar outra hora na próxima
+// vez: estas asserções passam a dizer O QUE VIRAM. Um "Timed out in waitFor" não
+// distingue "a linha não chegou" de "o campo estava desabilitado" de "o POST saiu para
+// a URL errada" — e essa distinção é o diagnóstico inteiro.
+const _diag = (container) => {
+  const campo = container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]');
+  const chamadas = (global.fetch && global.fetch.mock ? global.fetch.mock.calls : [])
+    .map((c) => `${(c[1] && c[1].method) || 'GET'} ${String(c[0]).split('/api')[1] || c[0]}`);
+  return JSON.stringify({
+    linhasNaTabela: container.querySelectorAll('.dt-table tbody tr').length,
+    campoExiste: !!campo,
+    campoValor: campo ? campo.value : null,
+    campoDesabilitado: campo ? campo.disabled : null,
+    postUrl,
+    postBody,
+    fetches: chamadas,
+  }, null, 2);
+};
+// waitFor que, ao estourar, conta o que estava na tela em vez de só dizer que estourou.
+const esperar = (container, predicado, oQue) =>
+  waitFor(() => expect(predicado()).toBe(true), {
+    onTimeout: (err) => new Error(`${oQue}\n\nEstado no momento da falha:\n${_diag(container)}\n\n${err.message}`),
+  });
+
 describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
   it('renders each agrupamento with members, source description, and Gold-state columns', async () => {
     const { container } = render(<ViewCadastroProdutos />);
@@ -429,16 +464,17 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     // Wait for the INPUT the test is about, not just for the table around it: the rows are
     // populated a tick after `.dt-table` mounts, so gating on the table let this read a
     // not-yet-filled field. Passed locally and failed under CI load (2026-08-28).
-    await waitFor(() =>
-      expect(container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]')?.value)
-        .toBe('Nota antiga'));
+    await esperar(container,
+      () => container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]')?.value === 'Nota antiga',
+      'O campo de descrição de 4403 nunca chegou com a nota salva.');
     // 4403 already has a saved descricao_produto — the field round-trips it, not just at creation.
     const input = container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]');
     // Typing alone must NOT fire a save (no round-trip on every keystroke) — only blur commits.
     fireEvent.change(input, { target: { value: 'Nota atualizada' } });
-    expect(postBody).toBeNull();
+    expect(postBody, `Digitar não pode salvar. Estado:\n${_diag(container)}`).toBeNull();
     fireEvent.blur(input);
-    await waitFor(() => expect(postBody).toBeTruthy());
+    await esperar(container, () => postBody !== null,
+      'O blur não disparou o salvamento da descrição.');
     expect(postUrl).toContain('/api/catalog/entry');
     expect(postBody.codigo_produto).toBe('4403');
     expect(postBody.descricao_produto).toBe('Nota atualizada');
@@ -449,9 +485,9 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
   it('does not re-save the manual descrição on blur when the (trimmed) value is unchanged', async () => {
     const { container } = render(<ViewCadastroProdutos />);
     // Same reason as above: gate on the field's own value, not on the table's presence.
-    await waitFor(() =>
-      expect(container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]')?.value)
-        .toBe('Nota antiga'));
+    await esperar(container,
+      () => container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]')?.value === 'Nota antiga',
+      'O campo de descrição de 4403 nunca chegou com a nota salva.');
     const input = container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]');
     fireEvent.change(input, { target: { value: '  Nota antiga  ' } }); // same content, stray whitespace
     fireEvent.blur(input);
