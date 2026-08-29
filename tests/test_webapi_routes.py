@@ -220,6 +220,39 @@ def test_invalid_market_nature_is_400(monkeypatch):
     assert "tipo de mercado inválido" in bad.get_json()["error"]
 
 
+def test_invalid_industrialization_level_is_400(monkeypatch):
+    """A level outside the curated scale 400s rather than matching zero codes and drawing
+    an empty dashboard that reads as "sem dados" instead of as a typo."""
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+
+    def must_not_run(*a, **k):
+        raise AssertionError("seam reached despite an invalid nível")
+
+    monkeypatch.setattr(seam, "snapshot", must_not_run)
+    monkeypatch.setattr(serializers, "serialize_snapshot", lambda *a, **k: {"ok": True})
+
+    bad = client.get("/api/snapshot?banco=ibge_pevs&niveis=commodity_pura,bruto")
+    assert bad.status_code == 400
+    assert "nível de industrialização inválido" in bad.get_json()["error"]
+
+
+def test_niveis_reach_the_seam_and_absence_means_no_filter(monkeypatch):
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+    seen: list[dict | None] = []
+    monkeypatch.setattr(seam, "snapshot", lambda b, c, summary: seen.append(summary) or {})
+    monkeypatch.setattr(serializers, "serialize_snapshot", lambda *a, **k: {"ok": True})
+
+    client.get("/api/snapshot?banco=ibge_pevs&niveis=commodity_pura,sem_classificacao")
+    assert seen[-1] == {"niveis": ["commodity_pura", "sem_classificacao"]}
+
+    client.get("/api/snapshot?banco=ibge_pevs")
+    assert seen[-1] is None
+
+
 def test_invalid_origem_is_400(monkeypatch):
     """A PEVS half outside {extrativa, silvicultura, all} 400s rather than binding
     verbatim and matching zero rows — which would draw an EMPTY dashboard that reads as

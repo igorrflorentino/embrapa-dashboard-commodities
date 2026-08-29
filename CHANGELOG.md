@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.35.0] - 2026-08-29
+
+O menu de filtros ganhou **Nível de industrialização** — o eixo existia no editor, na
+dimensão SCD2 e na view "Valor agregado", mas em lugar nenhum onde se pudesse recortar
+um painel por ele.
+
+Isso importava mais do que parecia: foi o argumento que sustentou juntar madeira bruta e
+serrada num agrupamento só (v1.34.3). Sem o filtro, a separação que eu prometi não
+existia.
+
+### Adicionado
+
+- **Filtro por nível de industrialização** — multi-seleção sobre a escala curada de 8
+  níveis, disponível nos quatro bancos que têm códigos classificados. Resolvido no
+  servidor: o nível mora numa dimensão própria e não no fato, então o seam traduz níveis →
+  códigos e **intersecta com a cesta** — as duas restrições se compõem em vez de uma
+  sobrescrever a outra.
+
+  O eixo viaja: chip, referência ABNT (só quando reduz o escopo), coluna no CSV e
+  parâmetro `ni` no permalink.
+
+- **"Sem classificação" é opção explícita.** O eixo é curado à mão e por construção nunca
+  está completo, então o que ainda não tem nível precisa poder ser **visto**, não sumir de
+  todo recorte. Ele não é lido da dimensão — é definido por **ausência** dela, e é por
+  isso que o resolvedor recebe o universo de códigos do banco.
+
+  E há uma guarda para o caso de todos os níveis escolhidos não resolverem código nenhum:
+  uma cesta vazia seria lida adiante como "sem filtro de produto" e serviria o banco
+  inteiro — o oposto do que foi pedido. Um sentinela que não casa com nada mantém a
+  resposta honesta.
+
+- **A PEVS foi a 100% de cobertura** (`scripts/classify_pevs_industrialization.py`). Ela
+  estava em 50%, e três das cinco lacunas foram criadas pela v1.34.0, que cadastrou os
+  produtos da silvicultura sem classificá-los. Cada nível foi herdado de um análogo
+  **dentro da PEVS**, não do comércio: o NCM de açaí classificado é purê (SH 2007) e os de
+  castanha são descascadas — ambos a jusante do que a PEVS mede.
+
+### Verificação
+
+Contra a Gold de produção, os níveis **particionam** o dado sem vazamento:
+`commodity_acondicionada` R$ 30,81 bi + `manufaturado_industrial` R$ 8,93 bi +
+`commodity_pura` R$ 1,17 bi = **R$ 40,91 bi**, exatamente o total sem filtro. E
+`sem_classificacao` dá zero, como tem de dar agora que a PEVS está inteira.
+
+9 testes novos, validados por injeção — quebrar o sentinela de "sem classificação",
+aceitar um nível inválido na rota, tirar o parâmetro da requisição, e ignorar a fonte ao
+resolver os códigos, cada um derruba o seu.
+
+Dois deles cobrem o **fio**, não o resolvedor: que um nível escolhido chega aos leitores
+como códigos, e que ele **compõe** com a cesta em vez de sobrescrevê-la. Era a lacuna que
+o portão de cobertura acusou — o resolvedor estava testado isolado e a integração não,
+exatamente o padrão que deixou o eixo `origem` subir quebrado.
+
+**Um dos testes não guardava o que dizia guardar.** Ele afirmava impedir que um código de
+outra fonte com os mesmos dígitos vazasse para o resultado — e a injeção que remove a
+separação por banco passou. O caso pedia um nível que a outra fonte não tinha, então a
+contaminação não tinha como aparecer. Reescrito para pedir exatamente o nível que só
+existe na outra fonte: agora a injeção derruba.
+
+---
+
 ## [1.34.4] - 2026-08-29
 
 Reorganização dos agrupamentos de madeira **aplicada em produção**, com duas correções

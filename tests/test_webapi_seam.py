@@ -2636,3 +2636,124 @@ def test_codes_stays_source_scoped_so_nothing_sums_across_sources(monkeypatch):
         assert seam_base._codes("castanha_de_caju", "pam") == ("40143",)
         # An unknown source degrades to "no codes" instead of 500-ing the view.
         assert seam_base._codes("castanha_de_caju", "sefaz") == ()
+
+
+# ─── nível de industrialização ────────────────────────────────────────────────
+def _levels_df(pares):
+    return pd.DataFrame(
+        [{"source": s, "code": c, "industrialization_level": n} for s, c, n in pares]
+    )
+
+
+def test_codes_for_levels_selects_only_the_chosen_levels_of_that_banco(monkeypatch):
+    """The dim is keyed by (source, code): another banco's code with the same digits must
+    not be pulled in."""
+    seam = _seam()
+    monkeypatch.setattr(
+        seam.gateway,
+        "fetch_current_code_industrialization",
+        lambda: _levels_df(
+            [
+                ("ibge_pevs", "3435", "commodity_acondicionada"),
+                ("ibge_pevs", "3405", "commodity_pura"),
+                ("mdic_comex", "3435", "manufaturado_industrial"),
+            ]
+        ),
+    )
+    universo = {"3435", "3405", "9999"}
+    assert seam._codes_for_levels("ibge_pevs", ("commodity_pura",), universo) == {"3405"}
+    # O caso que expõe a contaminação: `manufaturado_industrial` só existe no COMEX. Se o
+    # resolvedor ignorasse a fonte, o código 3435 da PEVS herdaria o nível do código
+    # homônimo do COMEX e apareceria aqui. Pedir esse nível na PEVS tem de dar VAZIO.
+    assert seam._codes_for_levels("ibge_pevs", ("manufaturado_industrial",), universo) == set()
+
+
+def test_codes_for_levels_resolves_the_unclassified_sentinel_by_absence(monkeypatch):
+    """`sem_classificacao` cannot be read off the dim — it is defined by ABSENCE from it,
+    which is why the universe has to be passed in. Offering it at all is the point: the
+    axis is curated by hand and never complete, so what has no level must stay visible."""
+    seam = _seam()
+    monkeypatch.setattr(
+        seam.gateway,
+        "fetch_current_code_industrialization",
+        lambda: _levels_df([("ibge_pevs", "3435", "commodity_acondicionada")]),
+    )
+    universo = {"3435", "3403", "3404"}
+    assert seam._codes_for_levels("ibge_pevs", ("sem_classificacao",), universo) == {
+        "3403",
+        "3404",
+    }
+    # Combinado com um nível real, os dois conjuntos se somam.
+    assert (
+        seam._codes_for_levels(
+            "ibge_pevs", ("commodity_acondicionada", "sem_classificacao"), universo
+        )
+        == universo
+    )
+
+
+def test_no_levels_selected_means_no_filter(monkeypatch):
+    seam = _seam()
+    universo = {"a", "b"}
+    assert seam._codes_for_levels("ibge_pevs", (), universo) == universo
+
+
+def _snapshot_codes(monkeypatch, summary, niveis_df, produtos):
+    """Drive snapshot() and return the product_codes that reached the readers."""
+    seam = _seam()
+    visto: dict[str, object] = {}
+
+    def _rec(**kw):
+        visto["codes"] = kw.get("product_codes")
+        return pd.DataFrame()
+
+    monkeypatch.setattr(seam.gateway, "fetch_products", lambda b: pd.DataFrame({"code": produtos}))
+    monkeypatch.setattr(seam.gateway, "fetch_quality_by_source", lambda source=None: pd.DataFrame())
+    monkeypatch.setattr(seam.gateway, "fetch_product_timeseries", lambda *a, **k: pd.DataFrame())
+    monkeypatch.setattr(seam.gateway, "fetch_quality_timeseries", lambda b: pd.DataFrame())
+    monkeypatch.setattr(seam.gateway, "fetch_quality_by_product", lambda b: pd.DataFrame())
+    monkeypatch.setattr(seam.gateway, "fetch_production_by_uf", lambda **k: pd.DataFrame())
+    monkeypatch.setattr(seam.gateway, "fetch_production_by_uf_yearly", lambda **k: pd.DataFrame())
+    monkeypatch.setattr(seam.gateway, "fetch_production_overview", _rec)
+    monkeypatch.setattr(seam.gateway, "fetch_current_code_industrialization", lambda: niveis_df)
+    seam.snapshot("ibge_pevs", {"currency": "BRL", "correction": "IPCA"}, summary)
+    return visto["codes"]
+
+
+def test_snapshot_resolves_levels_to_codes_and_intersects_with_the_basket(monkeypatch):
+    """The WIRE, not the resolver: a level chosen in the menu has to reach the readers as
+    codes. And it must COMPOSE with the basket — "só o açaí, e só o que é bruto" is one
+    question, not two competing ones, so the answer is the intersection."""
+    niveis = _levels_df(
+        [
+            ("ibge_pevs", "3403", "commodity_pura"),
+            ("ibge_pevs", "3405", "commodity_pura"),
+            ("ibge_pevs", "3435", "commodity_acondicionada"),
+        ]
+    )
+    produtos = ["3403", "3405", "3435"]
+
+    # Só o nível: todos os códigos daquele nível.
+    assert _snapshot_codes(monkeypatch, {"niveis": ["commodity_pura"]}, niveis, produtos) == (
+        "3403",
+        "3405",
+    )
+
+    # Nível + cesta: a interseção, não um sobrescrevendo o outro.
+    assert _snapshot_codes(
+        monkeypatch, {"niveis": ["commodity_pura"], "basket": ["3403", "3435"]}, niveis, produtos
+    ) == ("3403",)
+
+
+def test_snapshot_never_lets_an_empty_level_result_become_no_filter(monkeypatch):
+    """A basket that resolves to NOTHING must not collapse into "sem filtro de produto",
+    which downstream would serve the whole banco — the exact opposite of what was asked.
+    The sentinel matches no row, so the panel comes back honestly empty."""
+    niveis = _levels_df([("ibge_pevs", "3403", "commodity_pura")])
+    codes = _snapshot_codes(
+        monkeypatch,
+        {"niveis": ["commodity_pura"], "basket": ["3435"]},  # interseção vazia
+        niveis,
+        ["3403", "3435"],
+    )
+    assert codes and all(c not in ("3403", "3435") for c in codes)

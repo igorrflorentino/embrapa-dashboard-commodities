@@ -42,7 +42,12 @@ describe('bancoFilterDims — only backed AND applicable dims (everything else h
     // t291 half was ingested. It sits right after produtos on purpose: it changes WHAT a
     // number covers, so it belongs beside the product choice rather than buried below the
     // period. See PLANS/silvicultura_source.md.
-    expect(ids('ibge_pevs')).toEqual(['produtos', 'origem', 'periodo', 'geografia', 'qualidade']);
+    // `nivel` (industrialização) entrou em 2026-08-29: era a única dimensão que o
+    // dashboard classificava mas não deixava filtrar — o eixo existia no editor e na view
+    // "Valor agregado", e não no menu.
+    expect(ids('ibge_pevs')).toEqual([
+      'produtos', 'nivel', 'origem', 'periodo', 'geografia', 'qualidade',
+    ]);
   });
 
   it('COMEX: keeps fluxo (now backed) + ncm + uf_origem; hides data-blocked pais/via/valor', () => {

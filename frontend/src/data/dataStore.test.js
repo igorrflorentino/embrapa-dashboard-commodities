@@ -132,6 +132,28 @@ describe('dataStore', () => {
     expect(snapCalls(f)).toBe(1);
   });
 
+  it('niveis: lista entra na chave de cache E na requisição, e "todos" não é recorte', async () => {
+    // O eixo curado de industrialização. Multi-select, então a chave usa a lista
+    // ORDENADA: escolher [B,A] depois de [A,B] não pode refazer a consulta, e escolher
+    // um subconjunto diferente tem de refazer.
+    const f = vi.fn(() => jsonRes(validSnap()));
+    const ds = await loadStore(f);
+
+    await ds.load('ibge_pevs');
+    ds.setNiveis(['commodity_pura', 'sem_classificacao']);
+    await ds.load('ibge_pevs');
+
+    expect(snapCalls(f)).toBe(2);
+    const urls = f.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/snapshot'));
+    expect(urls[0]).not.toContain('niveis=');
+    expect(urls[1]).toContain('niveis=commodity_pura%2Csem_classificacao');
+
+    // Mesma seleção em outra ordem: mesma chave, sem consulta nova.
+    ds.setNiveis(['sem_classificacao', 'commodity_pura']);
+    await settle();
+    expect(snapCalls(f)).toBe(2);
+  });
+
   // ── The rest of the server-side axes ────────────────────────────────────────
   //
   // `flow` and `origem` had wire tests; customs, market, reporters and partners had

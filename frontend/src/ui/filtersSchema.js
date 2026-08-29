@@ -133,6 +133,10 @@ window.FILTER_SCHEMAS = {
         requires: 'product', backed: true,
         label: 'Produtos · PEVS',          column: 'codigo_pevs',
         hint: 'Produtos da extração vegetal (floresta nativa).' },
+      { id: 'nivel',     tier: 'shared',    type: 'multi',
+        requires: 'product', backed: true, serverParam: 'niveis',
+        label: 'Nível de industrialização', column: 'industrialization_level',
+        hint: 'Do bruto ao manufaturado, pela classificação curada de cada código.' },
       { id: 'origem',    tier: 'specific',  type: 'segment',
         requires: null, backed: true, serverParam: 'origem',
         label: 'Origem da produção',       column: 'origem',
@@ -360,6 +364,20 @@ window.flowOptionsFor = (bancoId) => window.FLOW_OPTIONS[bancoId] || null;
 // Origem (extração vs silvicultura) options for a banco, or null when the banco has no
 // `origem` column (only PEVS carries it). Mirrors flowOptionsFor.
 window.origemOptionsFor = (bancoId) => window.ORIGEM_OPTIONS[bancoId] || null;
+
+// Nível de industrialização — a CURATED per-code axis (Engenharia de Atributos), offered
+// wherever codes have been classified. The 8 levels themselves live in ENRICH_LEVELS
+// (data/enrichment.js), which is the editor's own registry: one source of truth for the
+// scale, so the filter can never drift from what the editor writes.
+window.NIVEL_BANCOS = ['ibge_pevs', 'ibge_ppm', 'mdic_comex', 'un_comtrade'];
+window.nivelOptionsFor = (bancoId) => {
+  if (!window.NIVEL_BANCOS.includes(bancoId)) return null;
+  const niveis = (window.ENRICH_LEVELS || []).map((l) => ({ value: l.id, label: l.label }));
+  // "Sem classificação" is an EXPLICIT option, never an implicit exclusion: the axis is
+  // curated by hand and therefore never complete, so a researcher must be able to see
+  // what has no level instead of having it vanish from every slice.
+  return niveis.concat([{ value: 'sem_classificacao', label: 'Sem classificação' }]);
+};
 
 // Customs-procedure (regime aduaneiro) options for a banco, or null when the banco has
 // no customs_code dimension (only COMTRADE carries it). Mirrors flowOptionsFor.

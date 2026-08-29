@@ -47,6 +47,7 @@ function FilterTriggerBar({ summary, onOpen, onExport, live = true, banco = null
   const chips = [
     has('product') && { k: 'Produtos',  v: summary.products },
     { k: 'Período', v: summary.period },
+    summary.nivel  && { k: 'Industrialização', v: summary.nivel },
     origemChip     && { k: 'Origem',     v: origemChip },
     has('flow')    && { k: 'Fluxo',      v: flowChip },
     regimeOpts     && { k: 'Regime',     v: regimeChip },

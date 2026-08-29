@@ -120,6 +120,47 @@ def _basket(summary: dict | None) -> tuple[str, ...]:
     return tuple(codes) if codes else ()
 
 
+# The sentinel for "this code has no level yet". Offered as an explicit choice rather than
+# folded into the others: a researcher slicing by level must be able to SEE what is
+# unclassified instead of having it vanish from every slice, which is the project's
+# no-invisible-filtering rule applied to a dimension that is curated by hand and therefore
+# never complete by construction.
+UNCLASSIFIED_LEVEL = "sem_classificacao"
+
+
+def _codes_for_levels(banco_id: str, niveis: tuple[str, ...], universe: set[str]) -> set[str]:
+    """The codes of ``banco_id`` whose current industrialization level is in ``niveis``.
+
+    ``universe`` is the banco's full code set, needed only for the ``sem_classificacao``
+    sentinel: an unclassified code is defined by ABSENCE from the classification dim, so
+    it cannot be selected by looking at the dim alone.
+
+    Returns a SET so the caller can intersect it with the basket — the two narrowings
+    compose (a researcher may want "só o açaí, e só o que é bruto"), and intersection is
+    the only composition that keeps both promises.
+    """
+    if not niveis:
+        return set(universe)
+    df = gateway.fetch_current_code_industrialization()
+    classificados: dict[str, str] = {}
+    if df is not None and len(df):
+        for row in df.itertuples(index=False):
+            if row.source == banco_id:
+                classificados[str(row.code)] = str(row.industrialization_level)
+    escolhidos = {c for c, nivel in classificados.items() if nivel in niveis}
+    if UNCLASSIFIED_LEVEL in niveis:
+        escolhidos |= {c for c in universe if c not in classificados}
+    return escolhidos
+
+
+def _niveis_from_summary(summary: dict | None) -> tuple[str, ...]:
+    """Industrialization levels selected (empty tuple = no level filter = all)."""
+    if not summary:
+        return ()
+    niveis = summary.get("niveis")
+    return tuple(niveis) if niveis else ()
+
+
 def _states(summary: dict | None) -> tuple[str, ...]:
     """Origin-UF acronyms selected (empty tuple = no UF filter = all).
 
@@ -271,6 +312,21 @@ def snapshot(banco_id: str, conv: dict, summary: dict | None = None) -> dict:
 
     products = gateway.fetch_products(banco_id)
     quality = gateway.fetch_quality_by_source(source=banco_id)
+
+    # Nível de industrialização — a curated per-code axis, resolved to CODES here rather
+    # than pushed to the marts: the level lives in its own SCD2 dim, not on the fact, so
+    # there is nothing to filter on downstream. Intersecting with the basket is what lets
+    # the two narrowings compose instead of one silently overriding the other.
+    niveis = _niveis_from_summary(summary)
+    if niveis:
+        universo = {str(c) for c in (products["code"] if products is not None else [])}
+        do_nivel = _codes_for_levels(banco_id, niveis, universo)
+        codes = tuple(sorted(set(codes) & do_nivel)) if codes else tuple(sorted(do_nivel))
+        # Every selected level resolved to nothing: an EMPTY basket would read as "no
+        # product filter" downstream and quietly serve the whole banco — the opposite of
+        # what was asked. A sentinel that matches no row keeps the answer honest (empty).
+        if not codes:
+            codes = ("__nenhum_codigo_neste_nivel__",)
 
     if banco.id in _TRADE:
         # value_col is the currency×correction column the conventions resolve to —

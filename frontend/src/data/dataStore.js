@@ -53,6 +53,9 @@ let activeMarket = 'all';
 // both, the survey's own total. Being in the cache key is what makes switching halves
 // refetch instead of re-rendering the same numbers under a new chip.
 let activeOrigem = 'all';
+// Nível de industrialização — a LIST (multi-select), server-side like the others: the
+// level lives in its own curated dim, so the BFF resolves it to codes. Empty = no filter.
+let activeNiveis = [];
 // Active COMTRADE country filters (país reporter / parceiro) — server-side, same contract
 // as activeFlow. reporter is 3-state: null = Brasil (default, byte-identical to before),
 // '__all__' = mundo (world total), or a sorted ISO-A3 array (IN-list). partner: null = todos,
@@ -70,7 +73,7 @@ const _sameSel = (a, b) =>
 const convKey = () => {
   const rep = activeReporters == null ? 'BR' : activeReporters === '__all__' ? 'ALL' : activeReporters.join('~');
   const par = activePartners == null ? 'ALL' : activePartners.join('~');
-  return `${activeConv.currency}|${activeConv.correction}|${activeFlow}|${activeCustoms}|${activeMarket}|${activeOrigem}|${rep}|${par}`;
+  return `${activeConv.currency}|${activeConv.correction}|${activeFlow}|${activeCustoms}|${activeMarket}|${activeOrigem}|${activeNiveis.join('+') || 'all'}|${rep}|${par}`;
 };
 const cacheKey = (id) => `${id}|${convKey()}`;
 
@@ -224,6 +227,9 @@ async function fetchSnapshot(id) {
   // Server-side PEVS origem filter: only sent when narrowing → the BFF sums both halves
   // otherwise, byte-identical to before the axis existed.
   if (activeOrigem && activeOrigem !== 'all') qs.set('origem', activeOrigem);
+  // Server-side industrialization filter: only sent when narrowing → the BFF serves every
+  // level otherwise, byte-identical to before the axis existed.
+  if (activeNiveis.length) qs.set('niveis', activeNiveis.join(','));
   // Server-side COMTRADE country filters. reporter: '__all__' → world sentinel, array → CSV
   // IN-list, null → omit (Brazil default). partner: array → CSV IN-list, null → omit (all).
   if (activeReporters === '__all__') qs.set('reporters', '__all__');
@@ -267,6 +273,7 @@ window.dataStore = {
   // The active tipo de mercado (consumo/processamento), same role as flow()/customs().
   market: () => activeMarket,
   origem: () => activeOrigem,
+  niveis: () => activeNiveis,
 
   // Live provenance for a banco. The numeric coverage (rows, products, UFs, year
   // span) + the last-refresh stamp are overlaid from /api/source-meta when it has
@@ -484,6 +491,17 @@ window.dataStore = {
     if (next === activeOrigem) return;
     const loadedBancos = [...new Set(Object.keys(store).map((k) => k.split('|')[0]))];
     activeOrigem = next;
+    notify();
+    loadedBancos.forEach((id) => this.load(id));
+  },
+
+  // Nível bridge: same contract as the others — the level is resolved server-side, so a
+  // new selection is a DIFFERENT cache key → re-fetch every loaded banco.
+  setNiveis(niveis) {
+    const next = Array.isArray(niveis) ? [...new Set(niveis)].sort() : [];
+    if (next.join('+') === activeNiveis.join('+')) return;
+    const loadedBancos = [...new Set(Object.keys(store).map((k) => k.split('|')[0]))];
+    activeNiveis = next;
     notify();
     loadedBancos.forEach((id) => this.load(id));
   },
