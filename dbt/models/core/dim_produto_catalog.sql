@@ -63,7 +63,7 @@ current_catalog as (
         -- dim_produto_visibility) is the backstop that turns any real multi-active row into a
         -- red build. This ORDER BY is replicated across the serving readers — change together.
         row_number() over (
-            partition by codigo_produto, banco
+            partition by {{ chave_produto() }}
             order by edited_at desc, change_id desc
         ) as _rn
     from log

@@ -1132,6 +1132,7 @@ def test_ensure_code_industrialization_log_table_creates_with_explicit_schema(mo
         "edited_by",
         "edited_at",
         "change_id",
+        "sidra_tabela",
     }
     assert client.create_table.call_args.kwargs["exists_ok"] is True
 

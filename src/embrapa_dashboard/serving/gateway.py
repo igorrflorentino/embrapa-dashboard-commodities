@@ -943,7 +943,7 @@ def fetch_agrupamentos():
         members as (
           select agrupamento_id, count(*) as n_members from (
             select codigo_produto, banco, agrupamento_id, active, row_number() over (
-              partition by codigo_produto, banco order by edited_at desc, change_id desc
+              partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
             ) as _rn from `{catalog_table}`
           ) where _rn = 1 and active
           group by agrupamento_id
@@ -971,7 +971,7 @@ def fetch_produto_catalog(banco: str | None = None):
                ciclo_de_vida, ingestao, visibilidade, agrupamento_id, sidra_tabela
         from (
           select *, row_number() over (
-            partition by codigo_produto, banco order by edited_at desc, change_id desc
+            partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
           ) as _rn
           from `{table}` {where}
         )
@@ -1085,11 +1085,11 @@ def fetch_orphan_produtos():
             -- LAST value the commodity had while still active (ignore the NULL tombstone),
             -- otherwise the Descontinuados view could never show the orphan's agrupamento.
             last_value(agrupamento ignore nulls) over (
-              partition by codigo_produto, banco order by edited_at, change_id
+              partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at, change_id
               rows between unbounded preceding and unbounded following
             ) as agrupamento,
             row_number() over (
-              partition by codigo_produto, banco order by edited_at desc, change_id desc
+              partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
             ) as _rn
           from `{log}`
         ) where _rn = 1 and not active
@@ -1138,7 +1138,7 @@ def fetch_lifecycle_status():
                edited_at as flagged_at
         from (
           select *, row_number() over (
-            partition by element_kind, banco, code order by edited_at desc, change_id desc
+            partition by {sqlbuild.CHAVE_CICLO_DE_VIDA} order by edited_at desc, change_id desc
           ) as _rn
           from `{table}`
         ) where _rn = 1

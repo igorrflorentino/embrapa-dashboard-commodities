@@ -64,7 +64,7 @@ versioned as (
         row_number() over w     as version,
         lead(edited_at) over w  as valid_to
     from log
-    window w as (partition by source, code order by edited_at, change_id)
+    window w as (partition by {{ chave_produto('code', 'source') }} order by edited_at, change_id)
 
 )
 

@@ -127,12 +127,23 @@ def test_validate_sidra_tabela_accepts_both_pevs_halves():
     curation._validate_sidra_tabela("pevs", "291", _settings())
 
 
-def test_validate_sidra_tabela_optional_for_pevs():
-    """Unlike ppm, an untagged pevs entry is legal — every entry predates the column and
-    the resolver reads NULL as the extraction half rather than dropping it."""
+def test_validate_sidra_tabela_required_for_every_multi_table_banco():
+    """A tag virou OBRIGATÓRIA nos dois bancos multi-tabela quando a identidade de um
+    produto passou a ser (banco, tabela, código): sem ela a entrada não cai em nenhuma das
+    duas metades, cai numa TERCEIRA identidade (a sentinela) que não corresponde a dado
+    nenhum. Era opcional no pevs enquanto a chave a ignorava."""
     from embrapa_dashboard.serving import curation
 
-    curation._validate_sidra_tabela("pevs", None, _settings())
+    for banco in ("pevs", "ppm"):
+        with pytest.raises(ValueError, match="obrigatória"):
+            curation._validate_sidra_tabela(banco, None, _settings())
+
+
+def test_validate_sidra_tabela_preserved_on_update():
+    """Num UPDATE o chamador preserva a tag guardada, então a ausência é legítima."""
+    from embrapa_dashboard.serving import curation
+
+    curation._validate_sidra_tabela("pevs", None, _settings(), require_for_ppm=False)
 
 
 def test_validate_sidra_tabela_rejects_the_other_bancos_table():
