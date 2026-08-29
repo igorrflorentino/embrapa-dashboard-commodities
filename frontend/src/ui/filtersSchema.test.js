@@ -8,6 +8,9 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
+// O registro dos 8 níveis é do EDITOR (data/enrichment.js); o filtro os lê de lá para
+// que a escala não possa divergir do que o editor grava.
+import '../data/enrichment.js';
 import './bancos.js';
 import './views.js';
 import './filtersSchema.js';
@@ -121,5 +124,33 @@ describe('auditFilterSchemaCoverage — the shipped schema has no drift', () => 
     window.auditFilterSchemaCoverage();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+// ── nivelOptionsFor ──────────────────────────────────────────────────────────
+//
+// A primeira versão gateava por uma LISTA de bancos escrita à mão, e ela subiu sem o
+// IBGE PAM: eu a montei a partir de uma consulta cujo resultado truncei, e `ibge_pam`
+// ordena logo antes de `ibge_pevs` — a linha que o incluiria foi justamente a cortada.
+// Derivar da capacidade torna esse erro impossível de repetir.
+describe('nivelOptionsFor — derivado da capacidade, não de uma lista', () => {
+  it('oferece os níveis para TODO banco que tem produtos, PAM incluído', () => {
+    for (const id of ['ibge_pevs', 'ibge_pam', 'ibge_ppm', 'mdic_comex', 'un_comtrade']) {
+      const opts = window.nivelOptionsFor(id);
+      expect(opts, `${id} ficou sem o filtro de industrialização`).toBeTruthy();
+      expect(opts.length).toBe((window.ENRICH_LEVELS || []).length + 1); // +1 = sem classificação
+    }
+  });
+
+  it('a escala vem de ENRICH_LEVELS, que é o registro do editor', () => {
+    // Uma cópia da escala aqui poderia divergir do que o editor grava; o filtro
+    // ofereceria níveis que ninguém consegue atribuir, ou omitiria os que existem.
+    const ids = window.nivelOptionsFor('ibge_pevs').map((o) => o.value);
+    for (const l of window.ENRICH_LEVELS) expect(ids).toContain(l.id);
+    expect(ids).toContain('sem_classificacao');
+  });
+
+  it('é null para um banco sem produtos', () => {
+    expect(window.nivelOptionsFor('__inexistente__')).toBeNull();
   });
 });
