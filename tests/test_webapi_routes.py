@@ -2241,3 +2241,50 @@ def test_both_axes_compose_in_one_request(monkeypatch):
         "origem": "silvicultura",
         "niveis": ["commodity_pura"],
     }
+
+
+# ── the three trade routes: seam ready, route not feeding it ──────────────────
+# They gained the level narrowing in v1.35.6 while still calling the bare
+# _filter_summary(), so `niveis` never reached them. The tell was an INVALID level
+# answering 200 instead of 400 — a route that validates nothing parsed nothing.
+_TRADE_ROUTES = [
+    ("flow_data", "serialize_flow", "/api/flow?banco=mdic_comex"),
+    ("partner_data", "serialize_partner", "/api/partners?banco=mdic_comex"),
+    ("monthly_data", "serialize_monthly", "/api/monthly?banco=mdic_comex"),
+]
+
+
+@pytest.mark.parametrize("seam_fn,serializer,path", _TRADE_ROUTES)
+def test_trade_route_threads_niveis(monkeypatch, seam_fn, serializer, path):
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+    captured = {}
+
+    def fake(*args, **kwargs):
+        todos = [a for a in args if isinstance(a, dict)] + [
+            v for v in kwargs.values() if isinstance(v, dict)
+        ]
+        captured["niveis"] = next(
+            (d.get("niveis") for d in todos if isinstance(d, dict) and "niveis" in d), None
+        )
+        return None
+
+    monkeypatch.setattr(seam, seam_fn, fake)
+    monkeypatch.setattr(serializers, serializer, lambda *a, **k: {})
+    resp = client.get(f"{path}&niveis=commodity_pura")
+    assert resp.status_code == 200
+    assert captured["niveis"] == ["commodity_pura"]
+
+
+@pytest.mark.parametrize("seam_fn,serializer,path", _TRADE_ROUTES)
+def test_trade_route_rejects_an_unknown_nivel(monkeypatch, seam_fn, serializer, path):
+    """The 200-on-garbage that gave the gap away."""
+    from embrapa_dashboard.webapi import seam, serializers
+
+    client = _client(monkeypatch)
+    monkeypatch.setattr(seam, seam_fn, lambda *a, **k: None)
+    monkeypatch.setattr(serializers, serializer, lambda *a, **k: {})
+    resp = client.get(f"{path}&niveis=commodity_purra")
+    assert resp.status_code == 400
+    assert "commodity_purra" in resp.get_json()["error"]

@@ -129,17 +129,29 @@ window.snapshotFor = function snapshotFor() {
 // The next axis is added here and the producers inherit it.
 function activeAxisParams() {
   const store = window.dataStore || {};
-  const origem = store.origem ? store.origem() : 'all';
+  const um = (nome) => {
+    const v = store[nome] ? store[nome]() : 'all';
+    return v && v !== 'all' ? v : undefined;
+  };
   const niveis = store.niveis ? store.niveis() : [];
+  // All FIVE value axes the BFF folds (routes._with_filter_axes), mirrored here so the two
+  // sides gain an axis together. 'all'/absent → omitted, which keeps a request
+  // byte-identical to one made before the axis existed.
   return {
-    origem: origem && origem !== 'all' ? origem : undefined,
+    flow: um('flow'),
+    customs: um('customs'),
+    market: um('market'),
+    origem: um('origem'),
     niveis: niveis && niveis.length ? niveis.join(',') : undefined,
   };
 }
 
-/** Stable cache-key fragment for the axes above — '*' where an axis is inactive. */
+/** Stable cache-key fragment for the axes above — '*' where an axis is inactive.
+ *  Derived from the object, never a hand-written list: an axis added to
+ *  activeAxisParams and forgotten here would be SENT but not KEYED, and the previous
+ *  selection's answer would come back from memory. */
 function axisKey(ax) {
-  return `${ax.origem ?? '*'}|${ax.niveis ?? '*'}`;
+  return Object.keys(ax).sort().map((k) => `${k}=${ax[k] ?? '*'}`).join('|');
 }
 
 window.geoYearly = function geoYearly(bancoId, summary) {
@@ -152,11 +164,9 @@ window.geoYearly = function geoYearly(bancoId, summary) {
   // over flow), so it belongs in the cube's cache key + request exactly like the
   // snapshot's — without it a COMEX basket renders all-flows VALOR TOTAL/map while
   // the rest of the app is flow-filtered. 'all'/absent → omitted (sum every flow).
-  const flow = window.dataStore && window.dataStore.flow ? window.dataStore.flow() : 'all';
-  const flowParam = flow && flow !== 'all' ? flow : undefined;
   const codes = filterCodes(summary); // undefined = all products; comma list otherwise
   const ax = activeAxisParams();
-  const key = `geoYearly:${bancoId}:${conv.currency}|${conv.correction}|${flow}|${axisKey(ax)}:${codes ?? '*'}`;
+  const key = `geoYearly:${bancoId}:${conv.currency}|${conv.correction}|${axisKey(ax)}:${codes ?? '*'}`;
   ensure(
     key,
     () => `${API}/geo-yearly?${qs({
@@ -164,7 +174,6 @@ window.geoYearly = function geoYearly(bancoId, summary) {
       codes,
       currency: conv.currency,
       correction: conv.correction,
-      flow: flowParam,
       ...ax,
     })}`,
   );
@@ -425,11 +434,12 @@ window.flowData = function flowData(bancoId, summary) {
   // country origin it is not-applicable, so omit it (and note it below).
   const states = applies ? filterStates(summary) : undefined;
   const notApplicable = ufNote(bancoId, summary, applies);
-  const key = `trade:flow:${bancoId}:${filterSig(summary)}:${countrySig(summary)}`;
+  const ax = activeAxisParams();
+  const key = `trade:flow:${bancoId}:${filterSig(summary)}:${countrySig(summary)}:${axisKey(ax)}`;
   ensure(key, () =>
     `${API}/flow?${qs({
       banco: bancoId, codes, states, y0, y1,
-      reporters: filterReporters(summary), partners: filterPartners(summary),
+      reporters: filterReporters(summary), partners: filterPartners(summary), ...ax,
     })}`);
   const data = get(key);
   const dim = (d) => (window.bancoDim ? window.bancoDim(bancoId, d) : {});
@@ -453,11 +463,12 @@ window.partnerData = function partnerData(bancoId, summary, metric) {
   // re-ranks server-side rather than re-sorting a value-ranked page (which would
   // drop niche high-price buyers — see serving/sql.trade_by_partner).
   const m = metric || 'value';
-  const key = `trade:partners:${bancoId}:${m}:${filterSig(summary)}:${countrySig(summary)}`;
+  const ax = activeAxisParams();
+  const key = `trade:partners:${bancoId}:${m}:${filterSig(summary)}:${countrySig(summary)}:${axisKey(ax)}`;
   ensure(key, () =>
     `${API}/partners?${qs({
       banco: bancoId, codes, states, y0, y1, metric: m,
-      reporters: filterReporters(summary), partners: filterPartners(summary),
+      reporters: filterReporters(summary), partners: filterPartners(summary), ...ax,
     })}`);
   const data = get(key);
   const flowLabel = (window.bancoDim && window.bancoDim(bancoId, 'partner').label) || 'Parceiro';
@@ -515,8 +526,9 @@ window.monthlyData = function monthlyData(bancoId, summary) {
   const y1 = filterYear(summary && summary.endDate);
   // The seasonality mart now KEEPS state_acronym in its grain (P6), so the UF
   // (`states`) filter narrows the seasonal profile to one origin state — send it.
-  const key = `trade:monthly:${bancoId}:${filterSig(summary)}`;
-  ensure(key, () => `${API}/monthly?${qs({ banco: bancoId, codes, states, y0, y1 })}`);
+  const ax = activeAxisParams();
+  const key = `trade:monthly:${bancoId}:${filterSig(summary)}:${axisKey(ax)}`;
+  ensure(key, () => `${API}/monthly?${qs({ banco: bancoId, codes, states, y0, y1, ...ax })}`);
   const data = get(key);
   return data
     ? { ...data }

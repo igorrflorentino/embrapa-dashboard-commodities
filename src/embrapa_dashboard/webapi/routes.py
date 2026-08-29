@@ -675,38 +675,16 @@ def snapshot():
     conv, err = _conversion_or_400()
     if err:
         return err
-    flow, err = _flow_or_400(request.args.get("flow"))
-    if err:
-        return err
-    customs, err = _customs_or_400(request.args.get("customs"))
-    if err:
-        return err
-    market, err = _market_or_400(request.args.get("market"))
-    if err:
-        return err
-    origem, err = _origem_or_400(request.args.get("origem"))
-    if err:
-        return err
-    niveis, err = _niveis_or_400(request.args.get("niveis"))
-    if err:
-        return err
     # COMTRADE country filters (país reporter / parceiro) — server-side like flow.
     # reporter is 3-state (absent → Brazil, "__all__" → world, list → IN); partner is a list.
     reporters = _reporters_param(request.args.get("reporters"))
     partners = _csv_param(request.args.get("partners"))
-    summary: dict = {}
-    if flow:
-        summary["flow"] = flow
-    if customs and customs != "all":
-        summary["customs"] = customs
-    if market and market != "all":
-        summary["market"] = market
-    # PEVS: which half of the survey. Omitted when 'all' so the request stays
-    # byte-identical to one made before the axis existed.
-    if origem and origem != "all":
-        summary["origem"] = origem
-    if niveis:
-        summary["niveis"] = niveis
+    # The five value axes come from the shared helper. They were folded inline here, and
+    # ONLY here, which is how the other eight data routes went without them.
+    folded, err = _with_filter_axes(None)
+    if err:
+        return err
+    summary: dict = dict(folded or {})
     if reporters is not None:
         summary["reporters"] = reporters
     if partners:
@@ -732,13 +710,30 @@ def _with_filter_axes(summary: dict | None) -> tuple[dict | None, tuple | None]:
     of being remembered at eight call sites. Returns ``(None, error_response)`` on a bad
     value — a typo'd axis is a 400, never a silently wider answer.
     """
+    flow, err = _flow_or_400(request.args.get("flow"))
+    if err:
+        return None, err
+    customs, err = _customs_or_400(request.args.get("customs"))
+    if err:
+        return None, err
+    market, err = _market_or_400(request.args.get("market"))
+    if err:
+        return None, err
     origem, err = _origem_or_400(request.args.get("origem"))
     if err:
         return None, err
     niveis, err = _niveis_or_400(request.args.get("niveis"))
     if err:
         return None, err
+    # 'all' is the absent state for the tri-state axes: omitting the key keeps a request
+    # byte-identical to one made before the axis existed.
     extra = {}
+    if flow:
+        extra["flow"] = flow
+    if customs and customs != "all":
+        extra["customs"] = customs
+    if market and market != "all":
+        extra["market"] = market
     if origem and origem != "all":
         extra["origem"] = origem
     if niveis:
@@ -1046,7 +1041,10 @@ def flow():
     reader; ``states`` narrows the COMEX origin only — COMTRADE's origin is a
     reporter country, so the frontend surfaces it as not-applicable there)."""
     banco = request.args.get("banco", "")
-    return jsonify(serializers.serialize_flow(seam.flow_data(banco, _filter_summary())))
+    summary, err = _with_filter_axes(_filter_summary())
+    if err:
+        return err
+    return jsonify(serializers.serialize_flow(seam.flow_data(banco, summary)))
 
 
 _ALLOWED_PARTNER_METRICS = frozenset({"value", "weight", "price"})
@@ -1063,9 +1061,10 @@ def partners():
     metric = request.args.get("metric", "value")
     if metric not in _ALLOWED_PARTNER_METRICS:
         return jsonify(error=f"métrica inválida: {metric!r}"), 400
-    return jsonify(
-        serializers.serialize_partner(seam.partner_data(banco, _filter_summary(), rank_by=metric))
-    )
+    summary, err = _with_filter_axes(_filter_summary())
+    if err:
+        return err
+    return jsonify(serializers.serialize_partner(seam.partner_data(banco, summary, rank_by=metric)))
 
 
 @api.get("/monthly")
@@ -1074,7 +1073,10 @@ def monthly():
     ``codes``/``y0``/``y1``). The seasonality mart collapses UF away, so the UF
     (``states``) filter does not apply here — the frontend surfaces that honestly."""
     banco = request.args.get("banco", "")
-    return jsonify(serializers.serialize_monthly(seam.monthly_data(banco, _filter_summary())))
+    summary, err = _with_filter_axes(_filter_summary())
+    if err:
+        return err
+    return jsonify(serializers.serialize_monthly(seam.monthly_data(banco, summary)))
 
 
 # ── cross-source comparable series ─────────────────────────────────────────────

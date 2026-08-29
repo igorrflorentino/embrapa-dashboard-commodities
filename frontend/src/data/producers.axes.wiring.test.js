@@ -24,7 +24,12 @@ const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'producer
 
 // The producers that fetch filtered data. Both axes ride together through one helper —
 // which is the point: the next axis is added there, not remembered at four call sites.
-const PRODUCERS = ['geoYearly', 'municipioYearly', 'productsByUf', 'productsByMunicipio'];
+const PRODUCERS = [
+  'geoYearly', 'municipioYearly', 'productsByUf', 'productsByMunicipio',
+  // The three trade producers. Their routes gained the axes in v1.35.7 after an invalid
+  // level answered 200 instead of 400 — the tell that nothing was being parsed there.
+  'flowData', 'partnerData', 'monthlyData',
+];
 
 /** The body of one `window.<name> = function ...` assignment, up to the next one. */
 function bodyOf(name) {
@@ -49,17 +54,30 @@ describe('filter-axis wiring — producers', () => {
     const chave = bodyOf(name).match(/const key = `[^`]+`/);
     expect(chave, `${name} não monta chave de cache literal`).toBeTruthy();
     expect(chave[0]).toContain('axisKey(ax)');
+    // axisKey derives the fragment from the object's own keys, so a NEW axis is keyed
+    // automatically — a hand-written list here would be the next thing forgotten.
   });
 
-  it('the axis helper RETURNS both axes — a missing one is silent, not an error', () => {
+  it('the axis helper RETURNS every axis — a missing one is silent, not an error', () => {
     // Asserts on the returned object, not on the function text: an axis that is still
     // read from the store but dropped from the return leaves its name in the body, so a
     // substring check over the whole helper passes while the axis never ships. (That is
     // exactly what this test did until an injection exposed it.)
     const helper = SRC.slice(SRC.indexOf('function activeAxisParams'), SRC.indexOf('function axisKey'));
     const retorno = helper.slice(helper.indexOf('return {'), helper.lastIndexOf('};'));
-    for (const eixo of ['origem', 'niveis']) {
+    for (const eixo of ['flow', 'customs', 'market', 'origem', 'niveis']) {
       expect(retorno, `o helper nao devolve ${eixo}`).toMatch(new RegExp(`\\b${eixo}\\s*:`));
+    }
+  });
+
+  it('axisKey DERIVES the fragment from the object, never a hand-written list', () => {
+    // Found by injection: replacing the body with `return ax.origem` left every test
+    // green, because they all asserted on the CALL SITE (`axisKey(ax)`) and never on what
+    // axisKey does. An axis sent but not keyed serves the previous selection from cache.
+    const corpo = SRC.slice(SRC.indexOf('function axisKey'), SRC.indexOf('window.', SRC.indexOf('function axisKey')));
+    expect(corpo).toContain('Object.keys(ax)');
+    for (const eixo of ['flow', 'customs', 'market', 'origem', 'niveis']) {
+      expect(corpo, `axisKey nomeia ${eixo} — deveria derivar, nao listar`).not.toContain(eixo);
     }
   });
 

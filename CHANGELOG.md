@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.35.7] - 2026-08-29
+
+### Corrigido
+
+- **As três rotas de comércio (`/flow`, `/partners`, `/monthly`) não parseavam eixo
+  nenhum.** Em v1.35.6 os leitores ganharam o recorte por nível e as rotas continuaram
+  chamando `_filter_summary()` cru — o seam pronto e nada o alimentando. O sinal foi um
+  nível **inválido respondendo 200** em vez de 400: uma rota que não valida é uma rota que
+  não parseia. Também não chegavam `flow`, `customs` nem `market`, apesar de o comentário
+  no `flow_data` dizer explicitamente que eles *"must narrow the Sankey too"*.
+- **`flow` agora recorta o Sankey do COMTRADE** (`export` e `import` devolvem respostas
+  distintas) e um valor inválido devolve 400. No COMEX o Sankey **continua fixo em export**
+  — isso é por desenho no seam, não um eixo perdido.
+
+### Alterado
+
+- **Os cinco eixos de valor passaram a ser dobrados num lugar só.** A rota `/snapshot` os
+  dobrava inline, e *só* ela — que é exatamente como as outras oito ficaram sem. Agora ela
+  também deriva de `_with_filter_axes`. No frontend, `activeAxisParams` passou a devolver
+  os cinco, `axisKey` **deriva** o fragmento das chaves do próprio objeto (nunca uma lista
+  escrita à mão), e o `geoYearly` deixou de tratar `flow` por conta própria.
+
+### Varredura completa dos sete eixos
+
+| eixo | estado |
+|---|---|
+| `flow` | chega e valida · COMEX fixa `export` por desenho |
+| `customs` | chega · a base só tem `C00` (2.053.708 linhas), então não há o que recortar |
+| `market` | chega · coluna 100% NULL — o eixo congelado, documentado |
+| `reporters` | já chegava · 3 estados (ausente = Brasil, `__all__`, lista) |
+| `partners` | já chegava |
+| `origem` | corrigido em v1.35.5 |
+| `niveis` | v1.35.6 + estas três rotas |
+
+**Duas injeções reprovaram testes MEUS**, não código: nada assertava o *conteúdo* do helper
+de rotas (remover `customs` deixava tudo verde), e a varredura do frontend olhava o sítio de
+chamada `axisKey(ax)` em vez do que `axisKey` faz (trocar o corpo por `return ax.origem`
+passava). Ambos fechados, e a injeção repetida agora acusa.
+
+---
+
 ## [1.35.6] - 2026-08-29
 
 ### Corrigido
