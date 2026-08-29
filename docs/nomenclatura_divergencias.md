@@ -14,7 +14,20 @@ As quatro classes:
 | `oficial abreviado` | o MDIC encurtou para caber no campo (`Outs.painéis`) |
 | `nosso mais pleno` | mesmo sentido, nosso texto carrega mais qualificadores |
 | `procedência distinta` | veio de outra fonte (tradução WCO/Comtrade) |
-| `ausente no MDIC` | o código não existe na tabela auxiliar |
+| `ausente no MDIC` | o código não existe na tabela auxiliar — ver a nota abaixo |
+
+**Sobre `ausente no MDIC`.** Não é defeito nem lacuna a preencher: a tabela do MDIC
+cobre o SH da nomenclatura BRASILEIRA, e o COMTRADE é comércio mundial numa janela
+de 25 anos. Três situações caem nessa classe e nenhuma tem conserto do lado do MDIC:
+
+1. **Código aposentado** numa revisão do SH, presente só nos anos antigos —
+   `440331` e `440335` (madeiras tropicais) aparecem no Gold apenas em 2000–2005.
+2. **Código vigente que o Brasil não usa** — `440714` (Hem-fir, conífera
+   norte-americana) tem 703 linhas em 2022–2025 e nenhuma entrada no MDIC.
+3. **Linha de seed sem dado**, que só custa uma linha de CSV.
+
+O seed pode ser mais largo que os dados; o contrário é que quebra, e disso cuida o
+teste `assert_trade_codes_have_a_description`.
 
 ## comex_ncm (NCM-8 · NO_NCM_POR)
 
