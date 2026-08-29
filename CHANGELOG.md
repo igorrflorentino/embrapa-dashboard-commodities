@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.33.32] - 2026-08-28
+
+Um pesquisador reparou que São Paulo e Rio de Janeiro não têm dados no IBGE PEVS e
+perguntou se estava certo. **O dado está certo; a descrição do banco é que estava
+errada** — e era ela que fazia o vazio parecer defeito.
+
+### O que foi medido
+
+- SP e RJ **têm** linhas na Gold (SP: 39.634, R$ 132,1 mi; RJ: 4.011, R$ 10,5 mi), com os
+  7 produtos e 1986–2024. O que zerou foi o **valor recente**: SP tinha 119 municípios
+  com produção em 2007 e nenhum desde 2015.
+- Confrontado com a fonte: o **próprio SIDRA t289 devolve `-`** para SP em carvão
+  vegetal, lenha, madeira em tora e pinheiro brasileiro em 2023. Nosso zero é fiel.
+- SP não está ausente da PEVS: tem R$ 5,85 mi em 2023, todos em **palmito e pinhão** —
+  produtos fora do recorte de 9 commodities deste projeto.
+
+### Corrigido
+
+- **A descrição do banco prometia a metade que não ingerimos.** A PEVS do IBGE tem duas
+  metades: extração vegetal (floresta nativa, tabela SIDRA **289**) e silvicultura
+  (floresta plantada, tabela 291). Ingerimos só a primeira. As duas cópias do registro —
+  SPA e backend — diziam *"do extrativismo vegetal **e da silvicultura**"* e
+  *"recursos florestais, **nativos e plantados**"*, e o hint do filtro de produtos
+  repetia. Nada disso é verdade sobre o que o banco contém.
+
+  A diferença não é marginal. Em 2023, no Brasil: a metade que temos vale **R$ 6,2 bi**;
+  a que não temos, **R$ 31,7 bi**. Só São Paulo produz **R$ 4,45 bi/ano** de madeira em
+  tora, lenha e carvão — exatamente os produtos que rastreamos — mas de floresta
+  plantada. O Gold inteiro de SP, 39 anos, é R$ 132 mi.
+
+  O **nome** da pesquisa continua como é ("Produção da Extração Vegetal e da
+  Silvicultura" é nome próprio, e a citação ABNT precisa dele). O que mudou foi a
+  descrição de cobertura, que agora diz qual metade está aqui, qual ficou de fora, e
+  usa São Paulo como o exemplo que explica o vazio — porque é exatamente onde o leitor
+  tropeça.
+
+### Testes
+
+Um arquivo novo prende a afirmação ao mecanismo que a decide, `IBGE_TABLE_ID`: enquanto
+ele for 289, nenhuma das duas cópias pode descrever a silvicultura como incluída — e
+ambas **precisam** dizer que ela está fora, para que uma reescrita futura que largue a
+ressalva falhe aqui em vez de falhar num pesquisador. O bare "silvicultura" não é
+proibido: ele está no nome da pesquisa, que fica.
+
+4 casos, validados por injeção — reintroduzir a promessa em cada cópia derruba a sua;
+apagar a ressalva derruba outra; devolver o hint antigo derruba a quarta.
+
+---
+
 ## [1.33.31] - 2026-08-28
 
 O check de heartbeat — construído na v1.31.0 para responder *"o gatilho disparou?"* —
