@@ -616,6 +616,7 @@ def test_ibge_variable_codes_parity_fails_on_typo(settings_factory) -> None:
 def _small_codes(settings_factory):
     return settings_factory(
         ibge_product_codes="3405",
+        silvicultura_product_codes="3457",
         pam_product_codes="40124",
         ppm_herd_product_codes="2670",
         ppm_animal_product_codes="2682",
@@ -637,7 +638,8 @@ def test_catalog_parity_matches_env(monkeypatch, settings_factory) -> None:
     from embrapa_dashboard.ibge import catalog_resolver
 
     codes = {
-        ("pevs", None): ["3405"],
+        ("pevs", "289"): ["3405"],
+        ("pevs", "291"): ["3457"],
         ("pam", None): ["40124"],
         ("ppm", "3939"): ["2670"],
         ("ppm", "74"): ["2682"],
@@ -658,7 +660,8 @@ def test_catalog_parity_reports_drift_without_failing(monkeypatch, settings_fact
     from embrapa_dashboard.ibge import catalog_resolver
 
     codes = {
-        ("pevs", None): ["3405", "9999"],
+        ("pevs", "289"): ["3405", "9999"],
+        ("pevs", "291"): ["3457"],
         ("pam", None): ["40124"],
         ("ppm", "3939"): ["2670"],
         ("ppm", "74"): ["2682"],
@@ -671,6 +674,32 @@ def test_catalog_parity_reports_drift_without_failing(monkeypatch, settings_fact
     r = doctor._check_catalog_resolver_parity(_small_codes(settings_factory))
     assert r.ok is True  # never fails on intended drift
     assert "DRIFT" in r.detail and "9999" in r.detail
+
+
+def test_catalog_parity_compares_each_pevs_half_separately(monkeypatch, settings_factory) -> None:
+    """PEVS spans two SIDRA tables since 2026-08-29, so it is compared PER TABLE like ppm.
+
+    Comparing the token as a whole against IBGE_PRODUCT_CODES (t289 only) reported the
+    silviculture codes as DRIFT forever — correct-by-design, and the kind of standing red
+    herring that teaches an operator to stop reading doctor. Asserts on the SCOPES the
+    check asks for, because a bare-token read is exactly the regression."""
+    from embrapa_dashboard.ibge import catalog_resolver
+
+    pedidos = []
+
+    def _fake(s, banco, *, sidra_tabela=None, bq_client=None):
+        pedidos.append((banco, sidra_tabela))
+        return {"289": ["3405"], "291": ["3457"], "3939": ["2670"], "74": ["2682"]}.get(
+            sidra_tabela, ["40124"]
+        )
+
+    monkeypatch.setattr(catalog_resolver, "read_catalog_codes", _fake)
+    r = doctor._check_catalog_resolver_parity(_small_codes(settings_factory))
+
+    assert ("pevs", "289") in pedidos and ("pevs", "291") in pedidos
+    assert ("pevs", None) not in pedidos, "leitura do token inteiro — a metade some no DRIFT"
+    assert "pevs:289 OK" in r.detail and "pevs:291 OK" in r.detail
+    assert "DRIFT" not in r.detail
 
 
 def test_bronze_targets_reference_real_settings_fields(settings: Settings) -> None:

@@ -46,13 +46,27 @@ const _CC_BANCOS = [
   { v: 'comtrade', label: 'UN COMTRADE' },
 ];
 const _CC_BANCO_LABEL = Object.fromEntries(_CC_BANCOS.map((b) => [b.v, b.label]));
-// PPM stores herd (SIDRA 3939) + animal production (SIDRA 74) under one banco token; a
-// ppm entry tags which so catalog-driven ingestion routes it. Empty/NA for other bancos.
-const _CC_PPM_TABELAS = [
-  { v: '3939', label: 'Rebanho (efetivo)' },
-  { v: '74', label: 'Produção animal' },
-];
-const _CC_PPM_LABEL = Object.fromEntries(_CC_PPM_TABELAS.map((t) => [t.v, t.label]));
+// Dois bancos guardam DUAS tabelas SIDRA sob um mesmo token, e a entrada marca qual —
+// é por essa marca que a ingestão dirigida pelo catálogo roteia. Vazio/NA nos demais.
+// `obrigatorio` distingue os dois casos: as tabelas do PPM não compartilham nenhum código
+// e não há padrão defensável, enquanto no PEVS a metade de extração é o que "um produto
+// PEVS" significou por toda a história (e é ~4× a outra), então uma entrada sem marca
+// resolve como extração em vez de deixar de ser ingerida.
+const _CC_SIDRA_TABELAS = {
+  ppm: {
+    campo: 'Tabela PPM', obrigatorio: true, vazio: 'Escolha rebanho ou produção…',
+    opcoes: [{ v: '3939', label: 'Rebanho (efetivo)' }, { v: '74', label: 'Produção animal' }],
+  },
+  pevs: {
+    campo: 'Metade do PEVS', obrigatorio: false, vazio: 'Extração vegetal (padrão)',
+    opcoes: [{ v: '289', label: 'Extração vegetal' }, { v: '291', label: 'Silvicultura' }],
+  },
+};
+const _CC_SIDRA_LABEL = Object.fromEntries(
+  Object.entries(_CC_SIDRA_TABELAS).map(([banco, cfg]) => [
+    banco, Object.fromEntries(cfg.opcoes.map((t) => [t.v, t.label])),
+  ]),
+);
 const _CC_EMPTY_DRAFT = {
   codigo_produto: '', banco: 'comex', agrupamento_id: '',
   descricao_produto: '', ingestao: 'ativa', visibilidade: 'visivel', sidra_tabela: '',
@@ -538,12 +552,14 @@ function ViewCadastroProdutos() {
   const codeMatch = (draft.codigo_produto && codeLoadedForBanco)
     ? codeIndex.has(draft.codigo_produto) : null;
   const groupChosen = !!data.groups.find((x) => x.group_id === draft.agrupamento_id);
-  // PPM entries MUST tag their SIDRA table (herd/animal); other bancos never do.
-  const ppmTagged = draft.banco !== 'ppm' || !!draft.sidra_tabela;
+  // Só um banco EXIGE a marca de tabela (ppm); o pevs a aceita e tem padrão, os demais
+  // não a têm. Derivado do registro — um `draft.banco !== 'ppm'` aqui voltaria a bloquear
+  // o dia em que outro banco passar a exigi-la.
+  const sidraTagged = !_CC_SIDRA_TABELAS[draft.banco]?.obrigatorio || !!draft.sidra_tabela;
   // A code the source doesn't (yet) list is no longer blocked — it registers as *pendente
   // de ingestão* (the catalog now drives ingestion). We only need a code, a group, the PPM
   // tag when applicable, and edit permission.
-  const canSubmit = !!draft.codigo_produto && groupChosen && ppmTagged && !locked;
+  const canSubmit = !!draft.codigo_produto && groupChosen && sidraTagged && !locked;
 
   const submitAdd = async () => {
     if (!draft.codigo_produto || !draft.banco) {
@@ -555,8 +571,9 @@ function ViewCadastroProdutos() {
       setStatus({ kind: 'err', msg: 'Escolha um agrupamento (ou crie um novo acima).' });
       return;
     }
-    if (draft.banco === 'ppm' && !draft.sidra_tabela) {
-      setStatus({ kind: 'err', msg: 'Escolha a tabela PPM (rebanho ou produção animal).' });
+    const cfgSidra = _CC_SIDRA_TABELAS[draft.banco];
+    if (cfgSidra?.obrigatorio && !draft.sidra_tabela) {
+      setStatus({ kind: 'err', msg: `Escolha a ${cfgSidra.campo.toLowerCase()}.` });
       return;
     }
     // Reset + close ONLY on a successful write; a 400/403 keeps the form open with the
@@ -602,8 +619,10 @@ function ViewCadastroProdutos() {
                       same produto can be cadastered twice — this qualifies WHICH one. It belongs
                       here, next to the banco it qualifies, NOT in the Descrição cell (where it
                       used to sit below the researcher's annotation and read like part of it). */}
-                  {e.banco === 'ppm' && e.sidra_tabela && (
-                    <span className="cc-sidra-tag">{_CC_PPM_LABEL[e.sidra_tabela] || e.sidra_tabela}</span>
+                  {e.sidra_tabela && _CC_SIDRA_TABELAS[e.banco] && (
+                    <span className="cc-sidra-tag">
+                      {_CC_SIDRA_LABEL[e.banco]?.[e.sidra_tabela] || e.sidra_tabela}
+                    </span>
                   )}
                 </td>
                 <td className="tnum" data-label="Código">{e.codigo_produto}</td>
@@ -851,13 +870,14 @@ function ViewCadastroProdutos() {
               </select>
             </label>
 
-            {draft.banco === 'ppm' && (
+            {_CC_SIDRA_TABELAS[draft.banco] && (
               <label className="cc-field">
-                <span className="cc-field-label">Tabela PPM</span>
+                <span className="cc-field-label">{_CC_SIDRA_TABELAS[draft.banco].campo}</span>
                 <select value={draft.sidra_tabela} disabled={locked}
                         onChange={(e) => setDraft((d) => ({ ...d, sidra_tabela: e.target.value }))}>
-                  <option value="">Escolha rebanho ou produção…</option>
-                  {_CC_PPM_TABELAS.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
+                  <option value="">{_CC_SIDRA_TABELAS[draft.banco].vazio}</option>
+                  {_CC_SIDRA_TABELAS[draft.banco].opcoes.map(
+                    (t) => <option key={t.v} value={t.v}>{t.label}</option>)}
                 </select>
               </label>
             )}

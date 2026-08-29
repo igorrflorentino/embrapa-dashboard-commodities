@@ -151,6 +151,47 @@ def test_ppm_routes_by_sidra_tabela(settings_factory):
     assert names == {"banco", "sidra_tabela"}
 
 
+def test_pevs_extraction_half_also_matches_untagged_entries(settings_factory):
+    """An UNTAGGED pevs entry belongs to the EXTRACTION half.
+
+    Every pevs entry predates the sidra_tabela column — the tag only became meaningful when
+    silvicultura (t291) was ingested on 2026-08-29. A strict `=` would drop all of them and
+    the extraction ingest would quietly resolve to nothing, which is the exact failure the
+    tag exists to prevent. Extraction is both the historical meaning of an untagged entry
+    and ~4× the other half, so it is the one defensible default."""
+    settings = settings_factory(catalog_authoritative_ingestion=True)
+    fake = _FakeBQ(rows=_rows("3405"))
+    catalog_resolver.resolve_product_codes(
+        settings, "pevs", env_fallback=ENV, sidra_tabela="289", bq_client=fake
+    )
+    sql, _ = fake.calls[0]
+    assert "sidra_tabela = @sidra_tabela or sidra_tabela is null" in sql
+
+
+def test_pevs_silviculture_half_is_strict(settings_factory):
+    """The OTHER half gets no such grace: an untagged entry read as silviculture would hand
+    t291 the extraction codes — SIDRA answers empty and the run reports a clean no-op."""
+    settings = settings_factory(catalog_authoritative_ingestion=True)
+    fake = _FakeBQ(rows=_rows("3457"))
+    catalog_resolver.resolve_product_codes(
+        settings, "pevs", env_fallback=ENV, sidra_tabela="291", bq_client=fake
+    )
+    sql, _ = fake.calls[0]
+    assert "is null" not in sql
+
+
+def test_ppm_never_defaults_an_untagged_entry(settings_factory):
+    """ppm keeps the strict `=`: its two tables share no codes, so a NULL there is a
+    genuinely unanswered question and guessing would fetch the wrong table."""
+    settings = settings_factory(catalog_authoritative_ingestion=True)
+    fake = _FakeBQ(rows=_rows("2670"))
+    catalog_resolver.resolve_product_codes(
+        settings, "ppm", env_fallback=ENV, sidra_tabela="3939", bq_client=fake
+    )
+    sql, _ = fake.calls[0]
+    assert "is null" not in sql
+
+
 def test_max_bytes_billed_applied(settings_factory):
     """The resolver query is bounded by bq_max_bytes_billed (cost guard)."""
     settings = settings_factory(catalog_authoritative_ingestion=True, bq_max_bytes_billed=12345)

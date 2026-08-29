@@ -250,6 +250,51 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(postBody.sidra_tabela).toBe('3939');
   });
 
+  it('PEVS offers the two SIDRA halves, and the tag stays OPTIONAL there', async () => {
+    // PEVS spans t289 (extração vegetal) + t291 (silvicultura) since 2026-08-29, so it
+    // gets the same sub-select PPM has. It differs in ONE way that matters: the tag is
+    // optional, because every pevs entry predates the column and the resolver reads an
+    // untagged one as the extraction half. Requiring it here would block registering a
+    // PEVS produto for a reason no researcher could act on.
+    const { container, getByText } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    const codeInput = await openAddForm(container, getByText);
+    fireEvent.change(container.querySelectorAll('.cc-add-card select')[0], { target: { value: 'pevs' } });
+    await waitFor(() => expect(container.textContent).toContain('Metade do PEVS'));
+    const meia = [...container.querySelectorAll('.cc-add-card select')].find(
+      (s) => [...s.options].some((o) => o.value === '291'),
+    );
+    expect([...meia.options].map((o) => o.value)).toEqual(['', '289', '291']);
+    fireEvent.change(codeInput, { target: { value: '3457' } });
+    fireEvent.change(container.querySelector('.cc-add-card .cc-group-select'), { target: { value: 'castanha' } });
+    // No half chosen and Salvar is ALREADY enabled — the difference from PPM.
+    await waitFor(() => expect(getByText('Salvar produto').disabled).toBe(false));
+    fireEvent.change(meia, { target: { value: '291' } });
+    fireEvent.click(getByText('Salvar produto'));
+    await waitFor(() => expect(postBody).toBeTruthy());
+    expect(postBody.banco).toBe('pevs');
+    expect(postBody.sidra_tabela).toBe('291');
+  });
+
+  it('shows the SIDRA-half tag on a pevs row, not only on ppm', async () => {
+    // The chip was gated on `banco === 'ppm'`, so a silvicultura produto looked identical
+    // to an extraction one in the listing — the two halves differ ~4× in size and share
+    // agrupamentos (madeira/lenha/carvão), so the row alone could not tell them apart.
+    mockFetch({
+      entries: {
+        entries: [{
+          codigo_produto: '3457', banco: 'pevs', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          descricao_fonte: 'Madeira em tora', sidra_tabela: '291',
+        }],
+        total: 1,
+      },
+    });
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.cc-sidra-tag')).toBeTruthy());
+    expect(container.querySelector('.cc-sidra-tag').textContent).toContain('Silvicultura');
+  });
+
   it('says "Pendente de ingestão" ONLY for a banco the catalog actually steers', async () => {
     // Same empty produto, two worlds. The catalog drives ingestion only for the IBGE
     // pipelines, and only while catalog_authoritative_ingestion is on; the backend reports
@@ -453,7 +498,9 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(container.querySelector('td[data-label="Descrição"] .cc-sidra-tag')).toBeNull();
   });
 
-  it('omits the SIDRA tag for non-PPM bancos', async () => {
+  it('omits the SIDRA tag for SINGLE-TABLE bancos', async () => {
+    // "non-PPM" until 2026-08-29; pevs joined ppm as multi-table, so what earns a tag is
+    // spanning two SIDRA tables, not being ppm.
     const { container } = render(<ViewCadastroProdutos />);
     await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
     expect(container.querySelector('.cc-sidra-tag')).toBeNull(); // comex + comtrade rows

@@ -76,7 +76,16 @@ def extract_raw(
             f"--table-id {settings.ibge_table_id}` to find the first available year."
         )
     product_codes = catalog_resolver.resolve_product_codes(
-        settings, "pevs", env_fallback=settings.product_codes, bq_client=bq_client
+        settings,
+        "pevs",
+        env_fallback=settings.product_codes,
+        # PEVS spans TWO SIDRA tables under one banco token since 2026-08-29 (t289 here,
+        # t291 in silvicultura_pipeline). Without this filter the catalog hands t289 the
+        # silviculture codes too, and SIDRA answers with an empty slice that this pipeline
+        # reports as a clean no-op — the extraction half would stop ingesting and nothing
+        # would say so. An UNTAGGED entry resolves here (see catalog_resolver).
+        sidra_tabela=settings.ibge_table_id,
+        bq_client=bq_client,
     )
     started = time.monotonic()
     logger.info(
@@ -240,7 +249,16 @@ def _delta_start_year(settings: Settings, bq_client: bigquery.Client) -> Setting
     # returns to the delta window). This precedes the "already current" skip below so a new
     # product added when Bronze is at end_year still backfills instead of being skipped.
     resolved = catalog_resolver.resolve_product_codes(
-        settings, "pevs", env_fallback=settings.product_codes, bq_client=bq_client
+        settings,
+        "pevs",
+        env_fallback=settings.product_codes,
+        # PEVS spans TWO SIDRA tables under one banco token since 2026-08-29 (t289 here,
+        # t291 in silvicultura_pipeline). Without this filter the catalog hands t289 the
+        # silviculture codes too, and SIDRA answers with an empty slice that this pipeline
+        # reports as a clean no-op — the extraction half would stop ingesting and nothing
+        # would say so. An UNTAGGED entry resolves here (see catalog_resolver).
+        sidra_tabela=settings.ibge_table_id,
+        bq_client=bq_client,
     )
     present = bronze_products_present(
         bq_client, table_fqn, "tipo_de_produto_extrativo_codigo", resolved

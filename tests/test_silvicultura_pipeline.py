@@ -244,12 +244,26 @@ def test_from_raw_with_no_archive_is_a_clean_noop(settings) -> None:
     load.assert_not_called()
 
 
-def test_product_codes_come_from_env_not_the_pevs_catalog_token(settings) -> None:
-    """The catalog's 'pevs' token holds t289 codes. Resolving THIS ingest through it would
-    query the SILVICULTURE table with EXTRACTION codes — SIDRA answers empty and the run
-    reports a clean no-op, which is the worst kind of wrong."""
-    assert silvicultura_pipeline._product_codes(settings) == ["3457"]
-    assert not hasattr(silvicultura_pipeline, "catalog_resolver")
+def test_product_codes_resolve_the_catalog_scoped_to_t291(settings, monkeypatch) -> None:
+    """This ingest MUST scope its catalog read to its own SIDRA table.
+
+    The 'pevs' token holds BOTH halves, so resolving it bare would query the SILVICULTURE
+    table with EXTRACTION codes — SIDRA answers empty and the run reports a clean no-op,
+    the worst kind of wrong. Until 2026-08-29 the guard was to skip the catalog entirely
+    (the entries carried no table tag); now they do, so the guard is the SCOPE."""
+    visto = {}
+
+    def _fake(cfg, banco, *, env_fallback, sidra_tabela=None, bq_client=None):
+        visto.update(banco=banco, sidra_tabela=sidra_tabela, env_fallback=env_fallback)
+        return ["3455", "3456", "3457"]
+
+    monkeypatch.setattr(silvicultura_pipeline.catalog_resolver, "resolve_product_codes", _fake)
+
+    assert silvicultura_pipeline._product_codes(settings) == ["3455", "3456", "3457"]
+    assert visto["banco"] == "pevs"
+    # The scope is the whole guard: a None here would hand t291 the extraction codes.
+    assert visto["sidra_tabela"] == settings.silvicultura_table_id
+    assert visto["env_fallback"] == settings.silvicultura_product_codes_list
 
 
 def test_bronze_shares_the_ibge_dataset_with_the_extraction_half(settings) -> None:
