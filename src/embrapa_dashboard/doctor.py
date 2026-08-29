@@ -1131,10 +1131,109 @@ def _check_catalog_data_arrival(settings: Settings) -> CheckResult:
         return CheckResult("Catalog → Gold arrival", True, f"skipped: {str(exc)[:100]}")
 
 
+def _check_curation_referential_integrity(settings: Settings) -> CheckResult:
+    """Do the curation logs still point at things that EXIST?
+
+    Two writes a researcher makes daily reference a vocabulary defined elsewhere, and
+    both stored the reference without checking it:
+
+    * a catalog entry names an ``agrupamento_id``, which must exist in the agrupamentos
+      registry. On 2026-08-29 a bulk reorganization wrote 37 entries naming groups it
+      never created. Nothing failed: the write succeeded, the log was consistent with
+      itself, and the products simply vanished from every grouped view — surfacing only
+      as the "Sem agrupamento registrado (38)" heading a human happened to read. The
+      writer now rejects this; a violation reaching here arrived by some path that
+      bypasses the writer (a direct BQ insert, a restored backup, a registry row
+      deleted after the fact), which is exactly what a checker is for.
+    * a classification names an industrialization level. The writer is deliberately
+      OPEN-vocabulary (it stores a level outside the scale), so a typo'd level leaves
+      that product invisible to every level slice AND absent from "sem classificação" —
+      the same silent hole, one axis over. Measured 2026-08-29: 308 classifications
+      across 5 levels, all valid; the invariant holds and nothing was enforcing it.
+
+    FAILS (ok=False) rather than advising: unlike a tombstoned product, neither
+    condition is ever legitimate. Reads only the two small append-logs — no Gold scan,
+    so it is free. Any fault (tables absent, no perms) degrades to 'skipped', because a
+    cold install must not report a red integrity check it has no data to fail.
+    """
+    try:
+        from embrapa_dashboard.gcp.clients import resolve_bq_client
+        from embrapa_dashboard.serving import agrupamentos
+        from embrapa_dashboard.serving import sql as sqlbuild
+        from embrapa_dashboard.webapi.seam_attribute_engineering import CUR_LEVELS
+
+        bq = resolve_bq_client(settings)
+        catalog_log = sqlbuild.table_ref(
+            settings, "bq_research_inputs_dataset", settings.bq_produto_catalog_log_table
+        )
+        nivel_log = sqlbuild.table_ref(
+            settings,
+            "bq_research_inputs_dataset",
+            settings.bq_code_industrialization_log_table,
+        )
+        registered = set(agrupamentos._current_groups(bq, agrupamentos._group_log_ref(settings)))
+
+        # Latest-wins per key, exactly as every reader collapses these logs.
+        grupo_sql = f"""
+            select codigo_produto, banco, agrupamento_id from (
+              select codigo_produto, banco, agrupamento_id, active, row_number() over (
+                partition by codigo_produto, banco order by edited_at desc, change_id desc
+              ) as _rn from `{catalog_log}`
+            ) where _rn = 1 and active
+              and agrupamento_id is not null and agrupamento_id != ''
+        """
+        pendentes = [
+            (r.codigo_produto, r.banco, r.agrupamento_id)
+            for r in bq.query(grupo_sql).result()
+            if r.agrupamento_id not in registered
+        ]
+
+        nivel_sql = f"""
+            select source, code, industrialization_level from (
+              select source, code, industrialization_level, row_number() over (
+                partition by source, code order by edited_at desc, change_id desc
+              ) as _rn from `{nivel_log}`
+            ) where _rn = 1 and industrialization_level != ''
+        """
+        # '' is the explicit CLEAR (latest-wins un-classification), not a bad value.
+        fora_da_escala = [
+            (r.source, r.code, r.industrialization_level)
+            for r in bq.query(nivel_sql).result()
+            if r.industrialization_level not in CUR_LEVELS
+        ]
+
+        problemas = []
+        if pendentes:
+            ids = sorted({g for _, _, g in pendentes})
+            problemas.append(
+                f"{len(pendentes)} catalog entr(ies) name {len(ids)} unregistered "
+                f"agrupamento(s) ({', '.join(ids[:5])}) — those produtos disappear from "
+                "every grouped view; register the group (its name must slug to this id) "
+                "or re-point the entries"
+            )
+        if fora_da_escala:
+            niveis = sorted({n for _, _, n in fora_da_escala})
+            problemas.append(
+                f"{len(fora_da_escala)} classification(s) use {len(niveis)} level(s) "
+                f"outside the scale ({', '.join(niveis[:5])}) — invisible to every level "
+                "filter and absent from 'sem classificação'"
+            )
+        if problemas:
+            return CheckResult("Curation referential integrity", False, "; ".join(problemas))
+        return CheckResult(
+            "Curation referential integrity",
+            True,
+            "every agrupamento_id registered, every level within the scale",
+        )
+    except Exception as exc:  # cold install / no perms — never a red check without data
+        return CheckResult("Curation referential integrity", True, f"skipped: {str(exc)[:100]}")
+
+
 _POSTCHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
     ("bronze", _check_bronze_tables),
     ("serving", _check_serving_marts),
     ("catalog-parity", _check_catalog_resolver_parity),
+    ("curation-integrity", _check_curation_referential_integrity),
     ("orphans", _check_orphan_lifecycle),
     ("catalog-arrival", _check_catalog_data_arrival),
     ("backup", _check_backup_freshness),

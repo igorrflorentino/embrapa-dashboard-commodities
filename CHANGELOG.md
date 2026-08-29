@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.35.3] - 2026-08-29
+
+### Adicionado
+
+- **`embrapa doctor` agora verifica a integridade referencial da curadoria.** As duas
+  escritas que um pesquisador faz todo dia apontam para um vocabulário definido em outro
+  lugar, e nenhuma das duas conferia o alvo: uma entrada de catálogo nomeia um
+  `agrupamento_id`, e uma classificação nomeia um nível de industrialização. O check
+  `curation-integrity` cruza cada uma com o seu registro e **falha** (não é advisory:
+  nenhuma das duas condições é legítima). Lê só os dois logs pequenos — sem varredura de
+  Gold, custo zero. Instalação fria degrada para `skipped`.
+- **Paridade da escala de industrialização entre frontend e backend**
+  (`tests/test_enrichment_scale_parity.py`). `CUR_LEVELS` e `window.ENRICH_LEVELS` são um
+  vocabulário escrito em dois arquivos; nada ligava os dois. Compara **ordem**, não só
+  composição — a posição é o ordinal que desenha o gradiente do valor agregado, então uma
+  lista reordenada mantém todos os ids e ainda redesenha a análise errada.
+
+### Corrigido
+
+- **A escala de níveis estava declarada três vezes.** `routes._ALLOWED_NIVEIS` era cópia
+  literal de `seam_attribute_engineering.CUR_LEVELS`, criada junto com o filtro de nível
+  em v1.35.1. Agora é **derivada** (`(*CUR_LEVELS, UNCLASSIFIED_NIVEL)`) — a divergência
+  deixa de ser possível em vez de ser vigiada. Sem mudança de comportamento: os mesmos 9
+  valores, a sentinela ao fim.
+
+**Por que isso importa.** O defeito de 2026-08-29 — 37 produtos apontando para
+agrupamentos que nunca foram criados — não falhou em lugar nenhum: a escrita deu certo, o
+log ficou consistente consigo mesmo, e os produtos apenas sumiram de toda visão agrupada,
+aparecendo só no título "Sem agrupamento registrado (38)" que um humano leu por acaso. O
+escritor passou a recusar isso em v1.35.2; este check fecha o caminho de quem **não passa
+pelo escritor** (insert direto, backup restaurado, grupo removido depois). O nível de
+industrialização tinha o mesmo buraco uma dimensão ao lado: vocabulário aberto na escrita,
+então um nível com typo fica invisível a todo filtro **e** ausente de "sem classificação".
+Medido hoje: 308 classificações em 5 níveis, todas válidas — o invariante valia e nada o
+sustentava.
+
+---
+
 ## [1.35.2] - 2026-08-29
 
 ### Corrigido
