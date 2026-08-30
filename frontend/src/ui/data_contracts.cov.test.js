@@ -216,12 +216,10 @@ describe('chipFmt.js — chipFmt object', () => {
     expect(window.chipFmt.period(1986, 2024)).toBe('1986–2024');
   });
 
-  it('valueRange covers all four bound combinations', () => {
-    const c = window.chipFmt;
-    expect(c.valueRange(null, null)).toBe('Sem limite');
-    expect(c.valueRange(1e6, 5e6)).toBe('R$ 1,0 mi – R$ 5,0 mi');
-    expect(c.valueRange(2e6, null)).toBe('≥ R$ 2,0 mi');
-    expect(c.valueRange(null, 3e6, 'US$')).toBe('≤ US$ 3,0 mi');
+  it('não formata mais uma faixa de valor — a dimensão foi removida', () => {
+    // Formatava um campo que nada preenchia; o único leitor era a citação ABNT, que
+    // declararia um recorte nunca aplicado aos dados se os campos voltassem a existir.
+    expect(window.chipFmt.valueRange).toBeUndefined();
   });
 
   it('quality: null=all, empty=none, full=all, head-of-2 (+overflow)', () => {

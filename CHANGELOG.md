@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.45.0] - 2026-08-30
+
+Auditoria completa do projeto (`docs/audits/full_audit_2026-08-30.md`) e a correção dos
+quatro achados que ela levantou. Nenhum era **crítico** — os 64 módulos Python são grau A
+de manutenibilidade e não há importação circular —, mas os dois primeiros ficam no caminho
+de escrita do catálogo, onde uma regra duplicada já se escondeu uma vez.
+
+### Alterado
+
+- **`record_produto_catalog` saiu de complexidade E(38) para C(18).** Era a pior função do
+  projeto, e o número não era acadêmico: ela guardava uma cópia literal da regra do
+  `sidra_tabela`, e generalizar o validador compartilhado deixou toda escrita PEVS recusada
+  com mensagem velha. Foram extraídos `_validate_agrupamento`,
+  `_validate_group_registered` e `_preserve_omitted_fields` — este último nomeia a política
+  de "preservar o que foi omitido" que a docstring já descrevia como uma regra só. O portão
+  que **recusa** ficou de propósito no fluxo principal: uma recusa tem de ser legível onde
+  a escrita acontece.
+
+- **`record_group` saiu de D(24) para C(15)**, com `_validate_group_name` e
+  `_validate_group_uniqueness`. O plano falava em reusar os predicados do item anterior; na
+  inspeção isso estaria errado — um guarda os campos de uma **entrada** do catálogo, o
+  outro a identidade do **registro** de grupos. Compartilham só o teto de caracteres, que
+  já era a mesma constante.
+
+### Adicionado
+
+- **`tests/test_change_id_readback.py`** — 12 testes sobre as quatro funções que releem uma
+  linha pelo `change_id`. São elas que fazem uma escrita repetida **ecoar** em vez de
+  duplicar, e a auditoria mostrou que executavam em **zero** testes: todo teste que as
+  alcança as substitui por um stub. Um nome de coluna errado no `SELECT` passaria a suíte
+  inteira e falharia em produção, no caminho de retry, onde ninguém está olhando.
+  `serving/attribute_engineering` foi de **86,93% para 96,08%**; o total do repositório, de
+  99,06% para **99,31%**.
+
+### Removido
+
+- **A dimensão "Faixa de valor", de ponta a ponta.** `valueMin`/`valueMax` nunca eram
+  escritos — nenhum controle de UI, nenhum deep link —, `VALUE_PRESETS` alimentava só
+  `valueShareForRange`, que alimentava só um contador que sempre lia 1,00 dela, e
+  `chipFmt.valueRange` formatava um campo que ninguém preenchia. Um laço fechado de código
+  morto, do qual só a citação ABNT ainda declararia algo. Saíram junto quatro testes que
+  afirmavam que uma constante valia 1,00 — guardavam código morto, não comportamento.
+
+  A dimensão continua **documentada** em `filtersSchema` com `backed: false`, que é onde
+  dizer "a fonte tem a coluna, o dashboard não filtra por ela" é honesto em vez de enganoso.
+
+### Corrigido
+
+- **Dois testes que guardavam o layout do arquivo, não a regra.** `test_chave_produto.py`
+  procurava trechos do fonte **dentro de `record_produto_catalog`**; a extração acima moveu
+  a lógica de casa e eles reprovaram com o comportamento intacto. Passaram a verificar
+  comportamento (`_preserve_omitted_fields` devolvendo a tag guardada) e a varrer o módulo
+  inteiro em vez de uma função. A varredura de texto também ganhou um instrumento melhor:
+  filtrava só linhas iniciadas por `#` e deixava passar um literal dentro de um docstring —
+  agora usa `tokenize`, que separa código de prosa de verdade.
+
+---
+
 ## [1.44.1] - 2026-08-30
 
 ### Corrigido

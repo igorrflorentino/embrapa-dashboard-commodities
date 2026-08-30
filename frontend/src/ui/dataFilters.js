@@ -10,7 +10,6 @@
 //   , nations, regions     // cascade parents; their effect reaches the data
 //                          //   through `states` (deselecting prunes states)
 //   , startDate, endDate   // 'YYYY-MM-01'
-//   , valueMin, valueMax   // row-level value filter (banco base currency)
 //   }
 //
 // Output: { ts, productTS, ufData, regionData, topMunis, topProducts,
@@ -19,21 +18,6 @@
 
 (function () {
   const yearOf = (iso) => iso ? parseInt(iso.slice(0, 4), 10) : null;
-
-  // Heuristic share of rows that pass the row-level value filter.
-  // Used only to scale the "Linhas" provenance counter; not data display.
-  // The thresholds + shares come from the shared window.VALUE_PRESETS
-  // (filtersSchema.js). There is no real backend COUNT for a value threshold yet,
-  // so rather than assert a fabricated filtered count we leave the "Linhas" counter
-  // at the unfiltered total (share 1.00) for every value-threshold — presets AND a
-  // custom range alike — until a real /api count exists.
-  function valueShareForRange(min, max) {
-    if (min == null && max == null) return 1.00;
-    if (min === 0 && max == null)   return 1.00;
-    const preset = (window.VALUE_PRESETS || []).find(p => p.min === min && p.max === max);
-    if (preset) return preset.rowShare;
-    return 1.00; // custom range — no fabricated share (was 0.66)
-  }
 
   // ── Sub-UF / município geography facets (the IBGE mesh cascade) ─────────────
   // The FilterMenu emits five CODE arrays — mesos/micros (classic division) +
@@ -501,7 +485,6 @@
     const qualityTs = QUALITY_TS_T.filter(d => d.y >= yearStart && d.y <= yearEnd);
 
     // ── Row counter (for hero "SELEÇÃO ATIVA · Linhas") ────────────────
-    const valueShare = valueShareForRange(summary.valueMin, summary.valueMax);
     const flagShare  = flagSet
       ? filteredFlags.reduce((s, f) => s + f.share, 0)
       : 1;
@@ -581,7 +564,7 @@
       // it profiles a place the filter excluded, which is the no-invisible-filtering
       // violation in its purest form.
       scopedCityCodes: narrowedCities,
-      _shares: { productShare, valueShare, flagShare, yearShare, stateShare },
+      _shares: { productShare, flagShare, yearShare, stateShare },
     };
   };
 })();

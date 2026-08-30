@@ -251,18 +251,38 @@ def test_a_regra_da_tag_nao_nomeia_um_banco() -> None:
     provar) e um update parcial DERRUBAVA a tag, movendo o produto para a sentinela.
 
     É o padrão "condicional que nomeia UM banco" — ela codifica um censo do mundo, e o
-    mundo cresceu quando a silvicultura entrou. A âncora é a constante, não o literal."""
+    mundo cresceu quando a silvicultura entrou. A âncora é a constante, não o literal.
+
+    Varre o MÓDULO INTEIRO, não uma função. A primeira versão deste teste lia o fonte de
+    `record_produto_catalog`, e reprovou quando a preservação foi extraída para
+    `_preserve_omitted_fields` na v1.45.0 — comportamento idêntico, teste vermelho. Um teste
+    que só sabe onde a regra mora hoje não guarda a regra, guarda o layout do arquivo."""
     from embrapa_dashboard.serving import curation
 
-    fonte = inspect.getsource(curation.record_produto_catalog)
-    assert "_BANCOS_MULTI_TABELA" in fonte, "a regra voltou a nomear um banco"
-    # A forma do CÓDIGO, não a prosa: os comentários citam `banco == "ppm"` de propósito,
-    # para explicar o que quebrou. Uma asserção cega ao comentário reprovaria a explicação.
-    codigo = "\n".join(linha for linha in fonte.split("\n") if not linha.strip().startswith("#"))
-    assert 'if banco == "ppm"' not in codigo, "a regra voltou a nomear um banco"
+    assert 'banco == "ppm"' not in _so_o_codigo(inspect.getsource(curation)), (
+        "a regra voltou a nomear um banco"
+    )
     assert set(curation._BANCOS_MULTI_TABELA) == set(
         curation._tabelas_validas_por_banco(_cfg_falsa())
     ), "a constante e o vocabulário de tabelas divergiram"
+
+
+def _so_o_codigo(fonte: str) -> str:
+    """O fonte sem comentários NEM docstrings.
+
+    Comentários e docstrings citam `banco == "ppm"` de propósito, para explicar o que
+    quebrou; uma varredura cega a eles reprovaria a própria explicação. Filtrar por
+    `startswith("#")` cobria só metade — a primeira versão deste teste passava despercebida
+    por um docstring que continha o literal. `tokenize` separa código de texto de verdade,
+    em vez de adivinhar pela indentação da linha."""
+    import io as _io
+    import tokenize as _tok
+
+    pedacos = []
+    for t in _tok.generate_tokens(_io.StringIO(fonte).readline):
+        if t.type not in (_tok.COMMENT, _tok.STRING):
+            pedacos.append(t.string)
+    return " ".join(pedacos)
 
 
 def _cfg_falsa():
@@ -285,14 +305,52 @@ def test_entrada_nova_exige_a_tag_em_todo_banco_multi_tabela(banco: str) -> None
 
 
 @pytest.mark.parametrize("banco", ["ppm", "pevs"])
-def test_update_sem_a_tag_e_legitimo_porque_o_chamador_preserva(banco: str) -> None:
-    """A ausência num UPDATE é legítima só porque `record_produto_catalog` resolve a tag
-    guardada antes de validar. As duas coisas andam juntas — se a preservação sumir, esta
-    permissão vira o buraco."""
+def test_update_sem_a_tag_e_legitimo_porque_o_chamador_preserva(
+    banco: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ausência num UPDATE é legítima só porque o chamador resolve a tag guardada antes de
+    validar. As duas coisas andam juntas — se a preservação sumir, esta permissão vira o
+    buraco: a escrita append-only grava a tag vazia e o produto vai para a sentinela
+    `sql.SEM_TABELA`, sumindo das duas metades do banco.
+
+    Verifica o COMPORTAMENTO, não o texto-fonte. A versão anterior procurava a chamada a
+    `_current_sidra_tabela` dentro de `record_produto_catalog` e reprovou quando ela foi
+    extraída na v1.45.0 — a preservação continuava lá, só tinha mudado de casa."""
     from embrapa_dashboard.serving import curation
 
+    # A permissão: sem tag, num update, o validador não recusa.
     curation._validate_sidra_tabela(banco, None, _cfg_falsa(), require_for_ppm=False)
-    fonte = inspect.getsource(curation.record_produto_catalog)
-    assert "_current_sidra_tabela(bq, table_fqn, codigo_produto, banco)" in fonte, (
-        "o update deixou de preservar a tag guardada"
+
+    # E a contrapartida que a torna segura: a tag guardada é recuperada quando omitida.
+    guardada = "3939" if banco == "ppm" else "291"
+    monkeypatch.setattr(curation, "_current_sidra_tabela", lambda *a, **k: guardada)
+    monkeypatch.setattr(curation, "_current_descricao", lambda *a, **k: None)
+    monkeypatch.setattr(curation, "_current_lifecycle", lambda *a, **k: (None, None))
+    tag, _desc, _ing, _vis = curation._preserve_omitted_fields(
+        object(),
+        "t",
+        "4403",
+        banco,
+        is_active=True,  # UPDATE de uma entrada existente
+        sidra_tabela=None,  # que NÃO reenvia a tag
+        descricao_produto=None,
+        ingestao=None,
+        visibilidade=None,
     )
+    assert tag == guardada, "o update deixou de preservar a tag guardada"
+
+    # E numa entrada NOVA não há o que preservar — a tag continua ausente, e é o portão
+    # (require_for_ppm=True) que recusa. Sem esta metade, "preservou" e "inventou" ficam
+    # indistinguíveis.
+    tag_nova, _d, _i, _v = curation._preserve_omitted_fields(
+        object(),
+        "t",
+        "4403",
+        banco,
+        is_active=False,
+        sidra_tabela=None,
+        descricao_produto=None,
+        ingestao=None,
+        visibilidade=None,
+    )
+    assert tag_nova is None
