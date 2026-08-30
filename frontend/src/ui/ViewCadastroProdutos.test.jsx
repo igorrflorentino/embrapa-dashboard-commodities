@@ -788,3 +788,101 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(container.querySelector('.cc-busca-saldo').textContent).toContain('0 produto');
   });
 });
+
+describe('rolagem horizontal sincronizada entre cartões', () => {
+  /**
+   * jsdom não faz layout: `scrollLeft` é sempre 0 e o setter não guarda nada. Sem esta
+   * prótese o teste passaria verde com o handler vazio — mediria a limitação do jsdom, não
+   * o código. Cada elemento ganha um `scrollLeft` de verdade.
+   */
+  function comScrollLeftReal(elementos) {
+    for (const el of elementos) {
+      let v = 0;
+      Object.defineProperty(el, 'scrollLeft', {
+        get: () => v,
+        set: (x) => { v = x; },
+        configurable: true,
+      });
+    }
+  }
+
+  /**
+   * O fixture padrão tem DOIS agrupamentos, mas o segundo é vazio — e grupo vazio não
+   * renderiza tabela, então sobra um `.cc-dt-wrap` só e não há o que sincronizar. Aqui os
+   * dois precisam ter membro.
+   */
+  function doisCartoesPovoados() {
+    return {
+      entries: {
+        entries: [
+          ...ENTRIES.entries,
+          {
+            codigo_produto: '0801', banco: 'comex', agrupamento: 'Castanha',
+            ingestao: 'ativa', visibilidade: 'visivel', agrupamento_id: 'castanha',
+            descricao_fonte: 'Castanha-do-pará',
+          },
+        ],
+        total: 3,
+      },
+      groups: {
+        groups: [
+          { group_id: 'madeira', group_name: 'Madeira', n_members: 2 },
+          { group_id: 'castanha', group_name: 'Castanha', n_members: 1 },
+        ],
+        total: 2,
+      },
+    };
+  }
+
+  it('rolar um cartão move os outros para o mesmo x', async () => {
+    mockFetch(doisCartoesPovoados());
+    const { container } = render(<ViewCadastroProdutos />);
+    await abrirAgrupamentos(container);
+
+    const wraps = [...document.querySelectorAll('.cc-dt-wrap')];
+    expect(wraps.length).toBeGreaterThan(1); // sem dois cartões não há o que sincronizar
+    comScrollLeftReal(wraps);
+
+    wraps[0].scrollLeft = 137;
+    fireEvent.scroll(wraps[0]);
+
+    // Todos os outros seguem — é isso que preserva a grade de colunas compartilhada, o
+    // motivo pelo qual as larguras são fixas em primeiro lugar.
+    for (const el of wraps.slice(1)) expect(el.scrollLeft).toBe(137);
+  });
+
+  /**
+   * ⚠ O que este teste NÃO prende, dito na cara: o guarda `sincronizandoRef` do handler. Ele
+   * existe porque num navegador de verdade atribuir `scrollLeft` DISPARA `scroll` nos
+   * outros cartões, e sem o flag cada um reagiria ao vizinho. O jsdom não emite `scroll`
+   * em atribuição programática, então esse laço não é reproduzível aqui — removi o flag
+   * numa injeção e a suíte ficou verde. Registrar isso vale mais que um teste que parece
+   * cobrir e não cobre.
+   *
+   * O que ele prende de verdade: a origem não é reescrita. Hoje quem garante isso é a
+   * comparação `el.scrollLeft !== x` (o alvo já está em `x`), não o flag — e essa é
+   * justamente a propriedade que sobreviveria a alguém "simplificar" a condição.
+   */
+  it('a origem da rolagem não é reescrita', async () => {
+    mockFetch(doisCartoesPovoados());
+    const { container } = render(<ViewCadastroProdutos />);
+    await abrirAgrupamentos(container);
+
+    const wraps = [...document.querySelectorAll('.cc-dt-wrap')];
+    comScrollLeftReal(wraps);
+    let escritas = 0;
+    const original = Object.getOwnPropertyDescriptor(wraps[0], 'scrollLeft');
+    Object.defineProperty(wraps[0], 'scrollLeft', {
+      get: original.get,
+      set: (x) => { escritas += 1; original.set(x); },
+      configurable: true,
+    });
+
+    wraps[0].scrollLeft = 90;   // a rolagem do usuário
+    fireEvent.scroll(wraps[0]);
+
+    // Só a escrita do próprio usuário. Propagar de volta para a origem realimentaria o
+    // laço que o guarda `sincronizando` existe para cortar.
+    expect(escritas).toBe(1);
+  });
+});

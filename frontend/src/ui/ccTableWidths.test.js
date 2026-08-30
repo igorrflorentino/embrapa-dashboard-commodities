@@ -56,3 +56,51 @@ describe('larguras da tabela do Cadastro', () => {
     expect(larguras().length).toBe(noJsx.length);
   });
 });
+
+/**
+ * A rolagem horizontal (v1.46.9): a tabela para de apertar num piso MEDIDO e o cartão rola.
+ *
+ * O piso não pode ser um número solto — ele é a soma das necessidades das 11 colunas. Se
+ * alguém reequilibrar as porcentagens sem mexer no `min-width`, a tabela volta a apertar
+ * (piso baixo demais) ou passa a rolar numa tela em que cabia (piso alto demais). A âncora
+ * aqui é a largura disponível declarada no próprio comentário do CSS — medida na tela real,
+ * mantida por outro motivo.
+ */
+describe('rolagem horizontal da tabela do Cadastro', () => {
+  const pisoDeclarado = () => {
+    const m = CSS.match(/\.cc-table\s*\{[^}]*min-width:\s*(\d+)px/);
+    return m ? Number(m[1]) : null;
+  };
+
+  it('o varredor acha as regras (guarda os testes abaixo)', () => {
+    expect(pisoDeclarado()).not.toBeNull();
+    expect(CSS).toMatch(/\.cc-dt-wrap\s*\{[^}]*overflow-x:\s*auto/);
+  });
+
+  it('o cartão rola em vez de esconder o transbordo', () => {
+    // `overflow: hidden` era o valor anterior: a tabela apertava e nada rolava.
+    const regra = CSS.match(/\.cc-dt-wrap\s*\{([^}]*)\}/)[1];
+    expect(regra).toMatch(/overflow-x:\s*auto/);
+    expect(regra).not.toMatch(/overflow:\s*hidden/);
+  });
+
+  it('sem `max-height`, para nenhuma barra VERTICAL nascer e roubar largura', () => {
+    // O defeito que isto evita já aconteceu: uma barra vertical de 15px em 7 dos 31
+    // cartões os media 1074px contra 1089px, desalinhando a grade que as larguras criam.
+    expect(CSS.match(/\.cc-dt-wrap\s*\{([^}]*)\}/)[1]).toMatch(/max-height:\s*none/);
+  });
+
+  it('o piso cabe na largura disponível — senão rolaria numa tela onde cabia', () => {
+    const disponivel = Number(CSS.match(/come to \d+px against (\d+)px available/)[1]);
+    expect(pisoDeclarado()).toBeLessThanOrEqual(disponivel);
+  });
+
+  it('o piso é a soma medida das colunas, não um número redondo', () => {
+    const somaMedida = Number(CSS.match(/they come to (\d+)px against/)[1]);
+    expect(pisoDeclarado()).toBe(somaMedida);
+  });
+
+  // A sincronização entre cartões é COMPORTAMENTO, e está em ViewCadastroProdutos.test.jsx
+  // ('rolar um cartão move os outros'). Afirmá-la aqui só daria para procurar o texto-fonte
+  // do handler — que passa verde com o corpo da função esvaziado.
+});

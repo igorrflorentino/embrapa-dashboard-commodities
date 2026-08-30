@@ -3588,8 +3588,17 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
      fixed` abaixo existe para igualar, e apertava "Ingestã/o" e o pill "OCUL/TO" só nos
      cartões grandes. A página inteira já rola; um scroll aninhado dentro dela não pagava
      esse preço. `overflow: hidden` fica para preservar o border-radius. */
-  .cc-dt-wrap { overflow: hidden; max-height: none; }
-  .cc-table { table-layout: fixed; width: 100%; }
+  /* `overflow-x: auto` + o `min-width` medido abaixo: a tabela para de encolher no piso
+     em que as colunas ainda cabem, e a barra aparece SÓ a partir dali. Acima disso não há
+     transbordo, então não há barra e o layout é o de sempre. `overflow-y` vira `auto` por
+     tabela (o CSS não deixa combinar `auto` com `hidden`), mas sem `max-height` não há
+     transbordo vertical e nenhuma barra vertical nasce — que era o defeito antigo, uma
+     barra de 15px roubando largura só dos cartões grandes e desalinhando a grade. */
+  .cc-dt-wrap { overflow-x: auto; max-height: none; }
+  /* 1024px é a SOMA MEDIDA das necessidades das 11 colunas (ver o bloco de larguras
+     abaixo), não um número redondo: abaixo disso alguma coluna começa a apertar. Acima,
+     `width: 100%` manda e as porcentagens distribuem a folga como sempre. */
+  .cc-table { table-layout: fixed; width: 100%; min-width: 1024px; }
   .cc-table thead th, .cc-table tbody td {
     /* `overflow-wrap: anywhere` só na coluna de PROSA (4). Aplicado a todas as células, era
        ele que partia "251.7/77", "COMTRAD/E" e "Ex/ib/iç/ão" no meio quando faltava largura
@@ -3613,9 +3622,12 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
      break on screen: canvas measureText ignores letter-spacing (understating every floor),
      and a <select> was being sized to its longest MENU option rather than its selected
      value. Re-measure with a Range over the text node if these ever need revisiting.
-     Below ~1089px of table width the columns squeeze proportionally again — that is the
-     pre-existing behavior on narrow desktops, deliberately kept: one horizontal scrollbar
-     PER agrupamento card would break the shared column grid these widths exist to create. */
+     Abaixo de ~1024px de largura de tabela as colunas NÃO apertam mais: o `min-width`
+     acima segura o piso e o `.cc-dt-wrap` rola na horizontal. A versão anterior deixava
+     apertar de propósito, com o receio de que uma barra POR cartão quebrasse a grade
+     compartilhada que estas larguras existem para criar — o receio é legítimo e está
+     resolvido pela sincronização de rolagem em `useSyncedTableScroll` (ViewCadastroProdutos):
+     todos os cartões rolam juntos, então a mesma coluna continua no mesmo x em todos. */
   /* ⚠ Estas larguras são posicionais: inserir uma coluna desloca TODAS as seguintes, e a
      largura de cada uma passa a valer para a vizinha. Foi o que aconteceu ao acrescentar
      "Tabela" — "Código" herdou os 16% de "Descrição" e "Exibição" caiu para 42px, com o

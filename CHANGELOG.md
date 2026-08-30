@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.46.9] - 2026-08-30
+
+### Modificado
+
+- **A tabela do Cadastro rola na horizontal quando falta largura, em vez de apertar as
+  colunas.** Até aqui ela comprimia proporcionalmente abaixo de ~1089px de largura de
+  tabela — o comportamento era deliberado, com um receio declarado no CSS: *"uma barra
+  horizontal POR cartão de agrupamento quebraria a grade de colunas compartilhada que
+  estas larguras existem para criar"*.
+
+  O receio é legítimo, e a correção honra os dois lados. A tabela ganha
+  `min-width: 1024px` — **a soma medida das necessidades das 11 colunas**, o mesmo número
+  que o comentário do bloco de larguras já registrava contra os 1089px disponíveis a
+  1440px, não um valor redondo — e o cartão ganha `overflow-x: auto`. Acima do piso não há
+  transbordo, logo não há barra e o layout é exatamente o de antes.
+
+  A grade sobrevive à rolagem porque **os cartões rolam juntos**: `useSyncedTableScroll`
+  propaga o `scrollLeft` para todos os outros. Medido em navegador real a 1280px: rolar um
+  cartão levou os **31** para `scrollLeft: 95` — um único valor distinto.
+
+  Verificado em três larguras: a **1600px** os 31 cartões medem 1249px, nenhum rola, e as
+  larguras são idênticas (`[1249]`, um valor só); a **1280px** a tabela para em 1024px em
+  vez de comprimir para 929, todos rolam, larguras idênticas e **zero barras verticais**
+  (a barra vertical de 15px roubando largura só dos cartões grandes foi um defeito real
+  desta tela); a **375px** nada muda — `table-layout: auto`, `min-width: 0`, sem transbordo
+  lateral na página, porque o bloco é escopado a `min-width: 769px`.
+
+- **O aviso do mesh municipal pergunta o que importa: o município é filtrável?** Os
+  `not_null` (warn) em `meso_code` / `micro_code` saíram do seed, substituídos pelo teste
+  singular `assert_municipio_filterable_at_some_sub_uf_level`.
+
+  Motivo (v1.46.7 documentou, esta versão aplica): meso/micro são a divisão **congelada de
+  1990**, que o IBGE substituiu em 2017 pelas regiões intermediária/imediata — e as duas
+  **não se aninham**, como a descrição do próprio seed registra. Um município criado depois
+  nunca recebe a clássica, então os avisos disparavam para sempre sobre `5101837 · Boa
+  Esperança do Norte (MT)`, que tem a divisão moderna completa e é plenamente filtrável.
+  Ruído permanente tratado como pendência treina a ignorar avisos — o defeito que a
+  v1.46.4 corrigiu no `doctor`.
+
+  A pergunta certa não é "tem meso?" e sim "dá para filtrar este município?". Um município
+  que perdesse **as duas** divisões sumiria da cascata sub-UF sem nada quebrar, e nenhum
+  `not_null` por coluna alcançava esse caso: cada um olhava a sua coluna, e a condição é
+  sobre a combinação. `intermediaria_code` / `imediata_code` seguem com `not_null` (warn) —
+  a divisão viva deve cobrir todo município, e um nulo lá é acionável de verdade.
+
+  A build do mesh passa de `WARN=2` para `WARN=0`. Injeção: tirando também a divisão
+  moderna de 5101837, o teste novo acusa `WARN 1`.
+
+### Notas
+
+- A ref do handler chama-se `sincronizandoRef` porque a regra `react-hooks/immutability`
+  do ESLint só reconhece uma ref por esse sufixo — sem ele, escrever em `.current` é lido
+  como mutação de valor devolvido por hook. O CI acusou; o `eslint` local também acusaria,
+  e eu tinha lido o rodapé da saída (só ruído do npm) em vez do resultado.
+- Um dos testes novos da sincronização **não prende o que o nome dele prometia**, e isso
+  está escrito no próprio teste: o guarda anti-laço do handler só é exercitável num
+  navegador de verdade (o jsdom não emite `scroll` em atribuição programática de
+  `scrollLeft`). Removi o guarda numa injeção e a suíte ficou verde. O teste foi renomeado
+  para o que ele de fato prende — a origem não é reescrita — e a lacuna ficou registrada em
+  vez de mascarada por um nome otimista.
+
+---
+
 ## [1.46.8] - 2026-08-30
 
 ### Corrigido

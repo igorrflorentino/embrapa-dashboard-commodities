@@ -290,12 +290,45 @@ function CcConfirmModal({ spec, onClose }) {
   );
 }
 
+// Rola TODOS os cartões de agrupamento juntos na horizontal.
+//
+// As larguras fixas da `.cc-table` existem para uma coisa só: a mesma coluna no mesmo x em
+// todos os cartões, para o olho não ziguezaguear entre caixas. Quando a tela fica estreita
+// demais a tabela passa a rolar (v1.46.9) — e uma barra POR cartão desfaz justamente essa
+// grade, porque cada tabela mostraria uma janela diferente. Era o motivo declarado para a
+// versão anterior preferir apertar as colunas a rolar.
+//
+// Sincronizar resolve os dois lados: rola, e continua alinhado. Consulta o DOM em vez de
+// manter um registro de refs porque `.cc-dt-wrap` só existe nesta tela e os cartões
+// montam/desmontam ao abrir e fechar o toggle — um registro teria de acertar esse ciclo de
+// vida, e acertar errado deixa nós desmontados no conjunto.
+function useSyncedTableScroll() {
+    const sincronizandoRef = useCcRef(false);
+
+    return (ev) => {
+        // Atribuir `scrollLeft` dispara `scroll` nos outros; sem o guarda, cada um
+        // reagiria ao vizinho num laço.
+        if (sincronizandoRef.current) return;
+        sincronizandoRef.current = true;
+        const alvo = ev.currentTarget;
+        const x = alvo.scrollLeft;
+        for (const el of document.querySelectorAll('.cc-dt-wrap')) {
+            if (el !== alvo && el.scrollLeft !== x) el.scrollLeft = x;
+        }
+        requestAnimationFrame(() => {
+            sincronizandoRef.current = false;
+        });
+    };
+}
+
 function ViewCadastroProdutos() {
   const [data, setData] = useCcState({ entries: [], groups: [], loading: true, error: null, canEdit: true,
     // Bancos cuja INGESTÃO um cadastro realmente dirige (/api/catalog/entries →
     // catalog_driven_bancos). Vazio até resolver: preferimos NÃO prometer ingestão a
     // prometer uma que talvez não venha.
     catalogDriven: [] });
+  // Uma barra horizontal por cartão, todas movendo juntas — ver useSyncedTableScroll.
+  const sincronizarRolagem = useSyncedTableScroll();
   const [statusMap, setStatusMap] = useCcState({}); // "banco:code" -> {n_rows, year_start, year_end, has_data}
   const [statusErr, setStatusErr] = useCcState(false); // the (cheap, lazy) Gold-state read FAILED — distinct from "sem dados"
   const [status, setStatus] = useCcState(null); // { kind: 'ok' | 'err', msg }
@@ -651,7 +684,7 @@ function ViewCadastroProdutos() {
   const todosAbertos = groupsSorted.length > 0 && groupsSorted.every((g) => abertos.has(g.group_id));
 
   const memberRows = (members) => (
-    <div className="dt-wrap cc-dt-wrap">
+    <div className="dt-wrap cc-dt-wrap" onScroll={sincronizarRolagem}>
       <table className="dt-table cc-table">
         <thead>
           <tr>
