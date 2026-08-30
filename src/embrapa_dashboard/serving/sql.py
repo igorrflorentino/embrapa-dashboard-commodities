@@ -115,6 +115,36 @@ BANCO_TO_SOURCE: Mapping[str, str] = MappingProxyType(
     }
 )
 
+
+def tabela_com_padrao(settings, tabela_col: str = "tabela", banco_col: str = "banco") -> str:
+    """A TABELA de uma linha do log de curadoria, com o padrão do banco quando ela é nula.
+
+    Espelha a macro dbt ``tabela_com_padrao``, e pelo mesmo motivo: os logs em
+    ``research_inputs`` são APPEND-ONLY e guardam linhas escritas antes de a tabela existir
+    como conceito para aquele banco — comex (303), comtrade (519) e pam (29) têm a coluna
+    nula em TODAS as linhas (medido 2026-08-30). Nunca houve outro valor possível para elas:
+    cada um desses bancos tem uma tabela só.
+
+    Os leitores Python do log cru precisam disto tanto quanto as dims: `fetch_produto_catalog`
+    reimplementa o latest-wins em SQL em vez de ler `dim_produto_catalog`, então sem esta
+    função a tabela chegava NULA ao editor do Cadastro — e a chave do estado saía
+    ``comtrade:nan:440724``. Foi assim que o defeito apareceu na verificação da v1.47.0.
+
+    O mapa NÃO é redigitado: sai de `Settings`, as MESMAS fontes que alimentam as vars do
+    dbt. Bancos multi-tabela não têm padrão — adivinhar a metade seria inventar dado.
+    """
+    padroes = {
+        "pam": settings.pam_table_id,
+        "ibge_pam": settings.pam_table_id,
+        "comex": settings.comex_table_id,
+        "mdic_comex": settings.comex_table_id,
+        "comtrade": settings.comtrade_table_id,
+        "un_comtrade": settings.comtrade_table_id,
+    }
+    ramos = " ".join(f"when '{b}' then '{t}'" for b, t in padroes.items())
+    return f"coalesce({tabela_col}, case {banco_col} {ramos} end)"
+
+
 # A inversa. Derivada, nunca redigitada: uma bijeção escrita duas vezes à mão é duas vezes
 # a chance de errar, e o erro só aparece no sentido que ninguém testou.
 SOURCE_TO_BANCO: Mapping[str, str] = MappingProxyType(

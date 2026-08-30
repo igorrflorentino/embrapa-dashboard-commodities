@@ -128,3 +128,40 @@ def test_o_gate_de_visibilidade_casa_o_trio_nos_dois_lados() -> None:
     cfg = Settings(_env_file=None, gcp_project_id="p")  # type: ignore[call-arg]
     clause = sqlbuild.visibility_clause(cfg, "pevs", "product_code")
     assert "_vis_tabela" in clause
+
+
+def test_o_padrao_por_banco_concorda_entre_dbt_e_python() -> None:
+    """A macro `tabela_com_padrao` e o espelho `sql.tabela_com_padrao` completam a MESMA
+    ausência, em arquivos e linguagens diferentes: a macro para as dims, o Python para os
+    leitores que reimplementam o latest-wins sobre o log cru.
+
+    Divergirem é sempre defeito — foi assim que a v1.47.0 nasceu com a tabela chegando NULA
+    ao editor do Cadastro (chave `comtrade:nan:440724`): a dim aplicava o padrão e o
+    `fetch_produto_catalog` não. Nenhum dos dois DERIVA do outro; ambos derivam dos ids de
+    tabela, e por isso o teste compara o conjunto de pares que cada lado produz."""
+    from embrapa_dashboard.config import Settings
+    from embrapa_dashboard.serving import sql as sqlbuild
+
+    cfg = Settings(_env_file=None, gcp_project_id="p")  # type: ignore[call-arg]
+    # Compara o CONJUNTO DE BANCOS que recebe padrão. A macro escreve `{{ var(...) }}` e o
+    # Python escreve o valor já resolvido, então comparar os valores exigiria resolver as
+    # vars aqui — e a paridade var↔config já é guardada por `embrapa doctor`. O que ESTE
+    # teste protege é o que aquele não vê: um banco ganhar padrão de um lado só.
+    ramo = re.compile(r"when\s+'([a-z_]+)'\s+then")
+
+    macro = (_RAIZ / "dbt" / "macros" / "tabela_com_padrao.sql").read_text(encoding="utf-8")
+    do_dbt = set(ramo.findall(_sem_comentarios(macro).split("{% macro")[1]))
+    do_python = set(ramo.findall(sqlbuild.tabela_com_padrao(cfg)))
+
+    assert do_dbt, "o extrator não achou os ramos da macro — conserte o extrator"
+    assert do_dbt == do_python, (
+        f"bancos com padrão divergem.\n  dbt:    {sorted(do_dbt)}\n  python: {sorted(do_python)}"
+    )
+
+    # E nenhum banco MULTI-tabela pode ter padrão: adivinhar a metade seria inventar dado.
+    from embrapa_dashboard.serving.curation import _BANCOS_MULTI_TABELA
+
+    com_padrao = do_python
+    assert not (com_padrao & set(_BANCOS_MULTI_TABELA)), (
+        f"banco multi-tabela com padrão: {sorted(com_padrao & set(_BANCOS_MULTI_TABELA))}"
+    )

@@ -973,7 +973,12 @@ def fetch_produto_catalog(banco: str | None = None):
     where = "where banco = @banco" if banco else ""
     sql = f"""
         select codigo_produto, banco, agrupamento, descricao_produto,
-               ciclo_de_vida, ingestao, visibilidade, agrupamento_id, tabela
+               ciclo_de_vida, ingestao, visibilidade, agrupamento_id,
+               -- Padrão do banco para as linhas históricas sem tabela. Este leitor
+               -- reimplementa o latest-wins em vez de ler `dim_produto_catalog`, então
+               -- precisa aplicar o MESMO tratamento que a dim — sem ele a tabela chegava
+               -- nula ao editor e a chave do estado saía `comtrade:nan:440724`.
+               {sqlbuild.tabela_com_padrao(settings)} as tabela
         from (
           select *, row_number() over (
             partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
