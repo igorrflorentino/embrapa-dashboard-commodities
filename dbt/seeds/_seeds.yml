@@ -379,9 +379,29 @@ seeds:
           - accepted_values:
               arguments:
                 values: ["N", "NE", "CO", "SE", "S"]
-      # Sub-UF codes are WARN (not error): an occasional IBGE API gap for a newly
-      # created município must not hard-fail the build — it degrades to "not
-      # filterable at that level", and the warn surfaces it for a seed refresh.
+      # Sub-UF codes are WARN (not error): a município missing one level must not
+      # hard-fail the build — it degrades to "not filterable at that level".
+      #
+      # ⚠ Os dois PARES têm naturezas opostas, e só um deles é acionável.
+      #
+      # `meso_code` / `micro_code` são a divisão CONGELADA de 1990, que o IBGE substituiu
+      # em 2017 pelas regiões intermediária/imediata. Um município criado depois disso
+      # NUNCA recebe meso/micro, e nenhum refresh do seed vai preencher — a versão
+      # anterior deste comentário dizia que o aviso existia "for a seed refresh",
+      # mandando o operador atrás de uma ação impossível. Hoje vale para exatamente UM
+      # município (medido 2026-08-30): 5101837 · Boa Esperança do Norte (MT), que tem
+      # `intermediaria_code=5103` e `imediata_code=510008` e portanto É plenamente
+      # filtrável nos níveis modernos. Estes dois avisos são PERMANENTES por natureza;
+      # tratá-los como pendência treina a ignorar avisos.
+      #
+      # `intermediaria_code` / `imediata_code` são a divisão VIVA. Um nulo aqui é
+      # acionável de verdade: o município não seria filtrável em nível sub-UF nenhum.
+      # Nenhum dispara hoje.
+      #
+      # Se o ruído permanente incomodar, a forma estrita é avisar sobre meso/micro apenas
+      # quando intermediária/imediata TAMBÉM forem nulas — aí o aviso volta a significar
+      # "não filtrável em nível nenhum". Não aplicado aqui porque muda o comportamento do
+      # teste, não só o texto.
       - name: meso_code
         tests:
           - not_null:

@@ -1,12 +1,25 @@
 -- Curation surface (WARN, not error): quantity readings that carry a value but
 -- could NOT be normalised to a family base unit (qty_base IS NULL while a
--- qty_native exists). Two legitimate causes, both needing human action:
---   1. family = 'desconhecida' — the source unit isn't in the 5 families; add a
---      row to unit_family_conversions (or decide it's genuinely out of scope).
---   2. a commodity unit (saca/@/bushel/barril) without a product_unit_factors
---      row — supply the per-product to_base.
--- We never invent a conversion, so these rows ship with qty_base NULL; this
--- test keeps them visible instead of letting them vanish silently.
+-- qty_native exists). We never invent a conversion, so these rows ship with
+-- qty_base NULL; este teste as mantém visíveis em vez de deixá-las sumir.
+--
+-- TRÊS causas, e só as duas primeiras são acionáveis:
+--   1. family = 'desconhecida' COM `unit_native` preenchida — a unidade da fonte não
+--      está nas 5 famílias; acrescente uma linha em unit_family_conversions (ou decida
+--      que está genuinamente fora de escopo).
+--   2. uma unidade de commodity (saca/@/bushel/barril) sem linha em
+--      product_unit_factors — forneça o to_base por produto.
+--   3. ⚠ `unit_native` NULA — a fonte informou um número de quantidade e NENHUMA
+--      unidade. Não é unidade não mapeada, é unidade AUSENTE: nenhuma tabela de
+--      conversão resolve, e inventar uma seria inventar o dado. O tratamento correto é
+--      o que já acontece (qty_base nulo, então a linha nunca entra num agregado).
+--      É o ÚNICO caso que dispara hoje: 871 linhas de gold_comtrade_flows com
+--      family='desconhecida' e unit_native nula (medido 2026-08-30, 0,04% do banco).
+--      Uma versão anterior deste comentário listava só as duas primeiras causas e
+--      mandava o operador atrás de uma linha de conversão que não existiria.
+--
+-- Ao ler o resultado: separe pelas colunas. `unit_native` preenchida = trabalho de
+-- curadoria; `unit_native` nula = limitação da fonte, nada a fazer.
 {{ config(severity='warn') }}
 
 select 'gold_pevs_production' as model, family, unit_native, count(*) as n
