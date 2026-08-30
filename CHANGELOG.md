@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.46.8] - 2026-08-30
+
+### Corrigido
+
+- **`CLAUDE.md` e `ARCHITECTURE.md` descreviam o gate de visibilidade pela chave antiga.**
+  A v1.46.5 acrescentou `sidra_tabela` à `dim_produto_visibility` e ao predicado que a
+  consome, e atualizou o spec em `PLANS/` no mesmo PR — mas os dois arquivos que **semeiam
+  o contexto de toda sessão futura** ficaram dizendo `(source, code)` por duas versões.
+  Uma linha errada no `CLAUDE.md` não fica parada: ela se propaga para decisões.
+
+  Duas afirmações, ambas falsas desde a v1.46.5:
+
+  - a chave da view (`(source, code)` → `(source, code, sidra_tabela)`, nos dois arquivos);
+  - **"NO-OP until something is hidden"** — o gate filtra 3 códigos comex, 6.688 linhas de
+    Gold (medido 2026-08-30). Era no-op nas primeiras releases, e a documentação continuou
+    dizendo isso muito depois de deixar de ser verdade.
+
+  O verbete do `CLAUDE.md` passa a registrar também o que a v1.46.5 decidiu e não estava
+  em lugar nenhum de topo: o casamento da tabela nos bancos multi-tabela, o **coringa** de
+  uma linha sem tabela, e por que os dois lados renomeiam a coluna do gate para
+  `_vis_sidra_tabela` (sem isso, um `sidra_tabela` sem qualificação resolve para o escopo
+  interno do `NOT EXISTS` e a comparação vira tautologia).
+
+### Adicionado
+
+- `tests/test_docs_visibility_gate_key.py` — a chave que a documentação descreve tem de
+  bater com a que o dbt impõe. A âncora é o `unique_combination_of_columns` do próprio
+  modelo em `_core.yml`, mantido para impor o grão da view e não para este teste. Segue o
+  padrão de `test_claude_md_ingest_batch.py`, que guarda outra afirmação do `CLAUDE.md`
+  contra o registro que a decide.
+
+  Vem com o irmão que guarda o varredor (`test_o_extrator_enxerga_a_chave`): um extrator
+  que devolvesse lista vazia faria a asserção de substring passar para sempre — o modo de
+  falha que este repositório já viu cinco vezes em varreduras minhas. Validado por três
+  injeções: a doc voltar à chave antiga, o dbt mudar a chave sem a doc acompanhar, e o
+  extrator ficar cego; cada uma reprova o teste certo.
+
+---
+
 ## [1.46.7] - 2026-08-30
 
 ### Corrigido (documentação que mandava o operador atrás de ação impossível)
