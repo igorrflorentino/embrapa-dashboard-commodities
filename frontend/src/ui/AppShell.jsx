@@ -618,7 +618,7 @@ function AppShell({
               a mesma. */}
           {canExport && (
             <>
-              <button className="util-action util-action-export" onClick={onExport}
+              <button className="util-action" onClick={onExport}
                       title="Conferir e baixar em CSV os dados desta tela, com filtros e convenções aplicados">
                 <window.Icon name="download" size={16}/>
                 <span>Exportar CSV</span>

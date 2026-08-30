@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.44.1] - 2026-08-30
+
+### Corrigido
+
+- **O nome do arquivo CSV passa a trazer o período dos dados.** Saía
+  `..._completo.csv` sempre que ninguém tinha mexido no filtro de período, ao lado de um
+  chip dizendo "1986–2024". Era coerente ("completo" = sem recorte), mas a janela de
+  confirmação passou a mostrar as duas coisas juntas, e juntas elas leem como contradição.
+  Agora sai `ibge_pevs_serie_agregada_1986-2024.csv`.
+
+  A fonte do período é a **coluna `ano` do próprio arquivo**, não o filtro: é a única que
+  não pode discordar do conteúdo. A diferença aparece quando as duas divergem — filtro
+  2005–2021 sobre dados que só cobrem 2020–2021 nomeia o arquivo `2020-2021`, porque
+  nomeá-lo `2005-2021` prometeria uma cobertura que o arquivo não entrega. O filtro
+  descreve a intenção; o arquivo é o que o pesquisador vai abrir seis meses depois.
+
+  Um ano só não vira `2024-2024`. Um assunto sem coluna `ano` (qualidade) cai no período
+  do filtro e, na falta dele, no chip da tela — com o travessão normalizado, que não é
+  caractere para nome de arquivo. `completo` fica só para quando não existe fonte nenhuma.
+
+- Removida a classe `util-action-export`, aplicada ao botão e sem regra de CSS
+  correspondente — achada na varredura final de classes declaradas × usadas.
+
+---
+
 ## [1.44.0] - 2026-08-30
 
 ### Adicionado

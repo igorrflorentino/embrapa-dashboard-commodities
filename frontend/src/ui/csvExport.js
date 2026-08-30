@@ -203,6 +203,34 @@
   };
 
   /**
+   * O período que vai no NOME do arquivo, lido dos próprios dados.
+   *
+   * Antes vinha de `summary.startDate`, que é vazio enquanto ninguém mexe no filtro de
+   * período — então o arquivo saía "…_completo.csv" ao lado de um chip dizendo "1986–2024".
+   * Coerente ("completo" = sem recorte de período), mas a janela de confirmação passou a
+   * mostrar as duas coisas juntas, e juntas elas leem como contradição.
+   *
+   * A coluna `ano` do arquivo é a fonte certa porque é a única que NÃO pode discordar do
+   * conteúdo: qualquer outra (o filtro, o chip) descreve a intenção, não o que saiu. Em
+   * `geo` o ano vem como "2024 (parcial)", daí extrair os 4 dígitos em vez de converter a
+   * célula inteira. Um assunto sem coluna `ano` (qualidade) cai nos fallbacks abaixo.
+   */
+  function periodoDosDados(headers, rows) {
+    const i = headers.indexOf('ano');
+    if (i < 0) return null;
+    let min = Infinity, max = -Infinity;
+    for (const r of rows) {                       // laço, não Math.min(...anos): a versão
+      const m = /\d{4}/.exec(String(r[i] ?? ''));  // espalhada estoura a pilha em arquivos
+      if (!m) continue;                            // grandes (município pode passar de 10k)
+      const y = Number(m[0]);
+      if (y < min) min = y;
+      if (y > max) max = y;
+    }
+    if (!isFinite(min)) return null;
+    return min === max ? String(min) : `${min}-${max}`;
+  }
+
+  /**
    * MONTA o arquivo e devolve um descritor — sem baixar nada.
    *
    * O `baixar()` que volta aqui escreve o CSV JÁ MONTADO, byte a byte. É de propósito: a
@@ -225,9 +253,17 @@
       console.warn('[csv] nothing to export for view', ctx.view);
       return { erro: true, motivo: 'sem-linhas', banco: banco.short };
     }
-    const period = (ctx.summary && ctx.summary.startDate)
-      ? `${ctx.summary.startDate.slice(0,4)}-${(ctx.summary.endDate||'').slice(0,4)}`
-      : 'completo';
+    // Ordem de preferência: o que o arquivo REALMENTE contém; depois as datas do filtro;
+    // depois o chip de período já formatado na tela (normalizando o travessão, que não é
+    // um caractere para nome de arquivo); e só então "completo".
+    const doChip = (ctx.summary && ctx.summary.period || '')
+      .replace(/[–—]/g, '-').replace(/\s+/g, '');
+    const period = periodoDosDados(built.headers, built.rows)
+      || ((ctx.summary && ctx.summary.startDate)
+            ? `${ctx.summary.startDate.slice(0,4)}-${(ctx.summary.endDate||'').slice(0,4)}`
+            : null)
+      || (/^\d{4}(-\d{4})?$/.test(doChip) ? doChip : null)
+      || 'completo';
     const fname = `${banco.short.replace(/\s+/g,'_').toLowerCase()}_${built.subject}_${period}.csv`;
     const csv = toCSV(built.headers, built.rows);
     return {
