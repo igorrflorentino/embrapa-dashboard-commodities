@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // The REAL recorte formatter, registered on window exactly as main.jsx loads it —
 // stubbing it would let the test and the product disagree about what the file says.
 import './geoDrill.js';
+import './filtersSchema.js';
 
 // ── Capture harness for the download() side-effect ───────────────────────────
 let lastCsv;
@@ -364,7 +365,7 @@ describe('exportActiveTableCSV — geo snapshot', () => {
     });
     window.exportActiveTableCSV({ view: 'geo', summary: {}, database: 'ibge_pevs' });
     const lines = lastCsv.replace('﻿', '').split('\n');
-    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto;recorte_geografico');
+    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto;recorte_geografico;tabela_sidra');
     // partial-year string contains a space but no delimiter → not quoted
     expect(lines[1]).toContain('2022 (parcial)');
     // a value containing a comma AND a double-quote must be CSV-escaped
@@ -419,8 +420,8 @@ describe('exportActiveTableCSV — geo snapshot', () => {
     window.geoExportScope = 'region';
     window.exportActiveTableCSV({ view: 'geo', summary: {}, database: 'ibge_pevs' });
     const lines = lastCsv.replace('﻿', '').split('\n');
-    expect(lines[0]).toBe('ano;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto;recorte_geografico');
-    expect(lines[1]).toBe('2021;Norte;6000000;1000;2000000;3000000;cesta selecionada;sem recorte sub-UF');
+    expect(lines[0]).toBe('ano;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto;recorte_geografico;tabela_sidra');
+    expect(lines[1]).toBe('2021;Norte;6000000;1000;2000000;3000000;cesta selecionada;sem recorte sub-UF;ambas as metades');
     expect(lines.length).toBe(3); // header + 2 regions, NOT the per-UF table
   });
 
@@ -439,9 +440,9 @@ describe('exportActiveTableCSV — geo snapshot', () => {
     ];
     window.exportActiveTableCSV({ view: 'geo', summary: {}, database: 'ibge_pevs' });
     const lines = lastCsv.replace('﻿', '').split('\n');
-    expect(lines[0]).toBe('ano;municipio;uf;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto;recorte_geografico');
-    expect(lines[1]).toBe('2021;Belém;PA;4000000;1000;0;0;cesta selecionada;sem recorte sub-UF');
-    expect(lines[2]).toBe('2021;Santos;SP;1000000;0;200000;0;cesta selecionada;sem recorte sub-UF');
+    expect(lines[0]).toBe('ano;municipio;uf;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto;recorte_geografico;tabela_sidra');
+    expect(lines[1]).toBe('2021;Belém;PA;4000000;1000;0;0;cesta selecionada;sem recorte sub-UF;ambas as metades');
+    expect(lines[2]).toBe('2021;Santos;SP;1000000;0;200000;0;cesta selecionada;sem recorte sub-UF;ambas as metades');
   });
 
   it('falls back to the per-UF table when geoExportScope is absent (unchanged default)', () => {
@@ -455,7 +456,7 @@ describe('exportActiveTableCSV — geo snapshot', () => {
     // no window.geoExportScope set — export triggered before Geografia ever mounted.
     window.exportActiveTableCSV({ view: 'geo', summary: {}, database: 'ibge_pevs' });
     const lines = lastCsv.replace('﻿', '').split('\n');
-    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto;recorte_geografico');
+    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_massa_t;qtd_volume_m3;qtd_contagem_un;escopo_produto;recorte_geografico;tabela_sidra');
     expect(lines[1].startsWith('2021;PA;')).toBe(true);
   });
 });
@@ -475,7 +476,7 @@ describe('exportActiveTableCSV — concentration (sorted desc by value)', () => 
     });
     window.exportActiveTableCSV({ view: 'concentration', summary: {}, database: 'ibge_pevs' });
     const lines = lastCsv.replace('﻿', '').split('\n');
-    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_contagem_un;escopo_produto;recorte_geografico');
+    expect(lines[0]).toBe('ano;uf;nome;regiao;valor_BRL;qtd_contagem_un;escopo_produto;recorte_geografico;tabela_sidra');
     // PA (9) must come before AM (1) after the descending sort
     expect(lines[1]).toContain(';PA;');
     expect(lines[2]).toContain(';AM;');
@@ -533,14 +534,16 @@ describe('exportActiveTableCSV — conventions default', () => {
 // A metade da pesquisa que o arquivo cobre. Um CSV sai do produto para sempre: sem
 // chip nem permalink ao lado, um número que soma floresta nativa com plantada (5:1 a
 // favor da plantada) tem de dizer isso na própria tabela.
-describe('exportActiveTableCSV — a origem viaja junto com o arquivo', () => {
+describe('exportActiveTableCSV — a tabela SIDRA viaja junto com o arquivo', () => {
   const UF_ROW = [{ uf: 'SP', name: 'São Paulo', region: 'Sudeste', value: 5, q_mass: 1, q_vol: 2, q_count: 3 }];
-  const OPTS = [{ value: 'all', label: 'Ambas' },
-                { value: 'extrativa', label: 'Extração vegetal (nativa)' },
-                { value: 'silvicultura', label: 'Silvicultura (plantada)' }];
-
-  beforeEach(() => { window.origemOptionsFor = (id) => (id === 'ibge_pevs' ? OPTS : null); });
-  afterEach(() => { delete window.origemOptionsFor; });
+  // O registro REAL (filtersSchema.js, importado no topo). Dublá-lo com valores próprios
+  // deixaria o CSV concordar com um vocabulário de tabelas que o produto não tem — foi
+  // assim que este teste seguiu verde com 'extrativa'/'silvicultura' depois que o dado
+  // passou a carregar o id da tabela.
+  // RESTAURA em vez de apagar: `delete` removia o resolvedor que o próprio
+  // `filtersSchema.js` registra, e os testes seguintes deste arquivo perdiam a coluna.
+  const _real = window.sidraTabelaOptionsFor;
+  afterEach(() => { window.sidraTabelaOptionsFor = _real; });
 
   const run = (summary) => {
     stubRegistry({ products: PRODUCTS, ufData: UF_ROW, ufLatestYear: 2024, notFilteredByBasket: true });
@@ -549,8 +552,8 @@ describe('exportActiveTableCSV — a origem viaja junto com o arquivo', () => {
   };
 
   it('nomeia a metade escolhida', () => {
-    const lines = run({ origem: 'silvicultura' });
-    expect(lines[0]).toContain('origem');
+    const lines = run({ sidraTabela: '291' });
+    expect(lines[0]).toContain('tabela_sidra');
     expect(lines[1]).toContain('Silvicultura (plantada)');
   });
 
@@ -561,8 +564,8 @@ describe('exportActiveTableCSV — a origem viaja junto com o arquivo', () => {
   });
 
   it('não acrescenta a coluna num banco sem a dimensão', () => {
-    window.origemOptionsFor = () => null;
-    expect(run({ origem: 'silvicultura' })[0]).not.toContain('origem');
+    window.sidraTabelaOptionsFor = () => null;
+    expect(run({ sidraTabela: '291' })[0]).not.toContain('tabela_sidra');
   });
 });
 

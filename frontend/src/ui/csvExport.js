@@ -64,9 +64,10 @@
       return sel.map((v) => (opts.find((o) => o.value === v) || {}).label || v).join(' + ');
     })();
     const origem = (() => {
-      const opts = (window.origemOptionsFor && window.origemOptionsFor(database)) || null;
+      const opts =
+        (window.sidraTabelaOptionsFor && window.sidraTabelaOptionsFor(database)) || null;
       if (!opts) return null;                       // banco has no origem column
-      const raw = (summary || {}).origem;
+      const raw = (summary || {}).sidraTabela;
       if (!raw || raw === 'all') return 'ambas as metades';
       return (opts.find((o) => o.value === raw) || {}).label || raw;
     })();
@@ -135,7 +136,7 @@
         // falls back to the per-UF table — the original, always-available shape.
         const geoScope = window.geoExportScope || 'uf';
         if (geoScope === 'region') {
-          const headers = ['ano', 'regiao', `valor_${conv.currency}`, 'qtd_massa_t', 'qtd_volume_m3', 'qtd_contagem_un', 'escopo_produto', 'recorte_geografico'].concat(origem ? ['origem'] : []).concat(nivel ? ['nivel_industrializacao'] : []);
+          const headers = ['ano', 'regiao', `valor_${conv.currency}`, 'qtd_massa_t', 'qtd_volume_m3', 'qtd_contagem_un', 'escopo_produto', 'recorte_geografico'].concat(origem ? ['tabela_sidra'] : []).concat(nivel ? ['nivel_industrializacao'] : []);
           const rows = (f.regionData || []).map(r => [
             ano, r.label || r.id,
             Math.round(dispV(r.value * 1e6)),
@@ -148,7 +149,7 @@
         }
         if (geoScope === 'municipio') {
           const munis = Array.isArray(window.geoExportMunis) ? window.geoExportMunis : [];
-          const headers = ['ano', 'municipio', 'uf', `valor_${conv.currency}`, 'qtd_massa_t', 'qtd_volume_m3', 'qtd_contagem_un', 'escopo_produto', 'recorte_geografico'].concat(origem ? ['origem'] : []).concat(nivel ? ['nivel_industrializacao'] : []);
+          const headers = ['ano', 'municipio', 'uf', `valor_${conv.currency}`, 'qtd_massa_t', 'qtd_volume_m3', 'qtd_contagem_un', 'escopo_produto', 'recorte_geografico'].concat(origem ? ['tabela_sidra'] : []).concat(nivel ? ['nivel_industrializacao'] : []);
           const rows = munis.map(m => [
             ano, m.city, m.uf,
             Math.round(dispV((m.value || 0) * 1e6)),
@@ -159,7 +160,7 @@
           ]);
           return { headers, rows, subject: 'distribuicao_por_municipio' };
         }
-        const headers = ['ano', 'uf', 'nome', 'regiao', `valor_${conv.currency}`, 'qtd_massa_t', 'qtd_volume_m3', 'qtd_contagem_un', 'escopo_produto', 'recorte_geografico'].concat(origem ? ['origem'] : []).concat(nivel ? ['nivel_industrializacao'] : []);
+        const headers = ['ano', 'uf', 'nome', 'regiao', `valor_${conv.currency}`, 'qtd_massa_t', 'qtd_volume_m3', 'qtd_contagem_un', 'escopo_produto', 'recorte_geografico'].concat(origem ? ['tabela_sidra'] : []).concat(nivel ? ['nivel_industrializacao'] : []);
         const rows = f.ufData.map(u => [
           ano, u.uf, u.name, u.region,
           Math.round(dispV(u.value * 1e6)),
@@ -173,7 +174,7 @@
       case 'concentration': {
         const ano = f.ufYearPartial ? `${f.ufLatestYear} (parcial)` : (f.ufLatestYear ?? '');
         const escopo = f.notFilteredByBasket ? 'todos os produtos' : 'cesta selecionada';
-        const headers = ['ano', 'uf', 'nome', 'regiao', `valor_${conv.currency}`, 'qtd_contagem_un', 'escopo_produto', 'recorte_geografico'].concat(origem ? ['origem'] : []).concat(nivel ? ['nivel_industrializacao'] : []);
+        const headers = ['ano', 'uf', 'nome', 'regiao', `valor_${conv.currency}`, 'qtd_contagem_un', 'escopo_produto', 'recorte_geografico'].concat(origem ? ['tabela_sidra'] : []).concat(nivel ? ['nivel_industrializacao'] : []);
         const rows = f.ufData.slice().sort((a, b) => b.value - a.value)
           .map(u => [ano, u.uf, u.name, u.region, Math.round(dispV(u.value * 1e6)), Math.round((u.q_count || 0) * 1e6), escopo, recorte, ...(origem ? [origem] : []), ...(nivel ? [nivel] : [])]);
         return { headers, rows, subject: 'concentracao' };

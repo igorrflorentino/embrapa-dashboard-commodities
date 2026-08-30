@@ -65,7 +65,7 @@ describe('filter-axis wiring — producers', () => {
     // exactly what this test did until an injection exposed it.)
     const helper = SRC.slice(SRC.indexOf('function activeAxisParams'), SRC.indexOf('function axisKey'));
     const retorno = helper.slice(helper.indexOf('return {'), helper.lastIndexOf('};'));
-    for (const eixo of ['flow', 'customs', 'market', 'origem', 'niveis']) {
+    for (const eixo of ['flow', 'customs', 'market', 'sidraTabela', 'niveis']) {
       expect(retorno, `o helper nao devolve ${eixo}`).toMatch(new RegExp(`\\b${eixo}\\s*:`));
     }
   });
@@ -76,7 +76,7 @@ describe('filter-axis wiring — producers', () => {
     // axisKey does. An axis sent but not keyed serves the previous selection from cache.
     const corpo = SRC.slice(SRC.indexOf('function axisKey'), SRC.indexOf('window.', SRC.indexOf('function axisKey')));
     expect(corpo).toContain('Object.keys(ax)');
-    for (const eixo of ['flow', 'customs', 'market', 'origem', 'niveis']) {
+    for (const eixo of ['flow', 'customs', 'market', 'sidraTabela', 'niveis']) {
       expect(corpo, `axisKey nomeia ${eixo} — deveria derivar, nao listar`).not.toContain(eixo);
     }
   });

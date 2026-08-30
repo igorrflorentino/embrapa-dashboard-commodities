@@ -477,6 +477,51 @@ def test_comex_seasonality_filters_flow_and_ncm():
     assert by_name["ncm_codes"].values == ["08012100"]
 
 
+@pytest.mark.parametrize(
+    "builder, table, code_col, name_col, escopo",
+    [
+        (
+            sql.products_by_uf,
+            "p.serving.serving_pevs_annual",
+            "product_code",
+            "product_description",
+            {"uf_codes": ("MG",)},
+        ),
+        (
+            sql.products_by_municipio,
+            "p.serving.gold_pevs_production",
+            "product_code",
+            "product_description",
+            {"city_codes": ("3136702",)},
+        ),
+    ],
+    ids=["por_uf", "por_municipio"],
+)
+def test_products_readers_carry_the_pevs_half_only_when_asked(
+    builder, table, code_col, name_col, escopo
+):
+    """``include_sidra_tabela`` faz a metade do PEVS viajar junto com cada linha — e só quando
+    pedida, porque o COMEX não tem a coluna e um select fixo quebraria o banco inteiro.
+
+    Quem exibe precisa dela: madeira, lenha e carvão existem nas DUAS metades com o MESMO
+    nome, e uma tela que rotule as linhas pelo nome funde duas linhas legítimas (o Plotly
+    junta categorias homônimas). Sem esta asserção, remover a coluna do select passava a
+    suíte inteira — a tela voltaria a borrar os rótulos sem nenhum teste vermelho."""
+    comum = dict(code_column=code_col, name_column=name_col, **escopo)
+
+    ligada, _ = builder(table, include_sidra_tabela=True, **comum)
+    assert "any_value(sidra_tabela) as sidra_tabela" in ligada.lower()
+
+    desligada, _ = builder(table, **comum)
+    assert "sidra_tabela" not in desligada.lower().split("from")[0], (
+        "sem include_sidra_tabela o select não pode citar a tabela — o COMEX não tem a coluna"
+    )
+    # E o sinalizador mexe SÓ no select: o agrupamento continua por produto nos dois casos,
+    # senão a linha extra viria de um grão diferente.
+    for q in (ligada, desligada):
+        assert f"group by {code_col}" in q.lower()
+
+
 def test_products_by_uf_groups_by_product_and_filters_state():
     """The inverse of *_by_uf: GROUP BY product, constrain state_acronym to the
     selected UFs, carry value + family-split q_mass/q_vol (COMEX export form)."""

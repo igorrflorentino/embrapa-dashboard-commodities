@@ -41,7 +41,6 @@ with pevs as (
         state_acronym,
         product_code,
         sidra_tabela,
-        origem,
         family,
         any_value(product_description)  as product_description,
         any_value(base_unit)            as base_unit,
@@ -75,7 +74,7 @@ with pevs as (
         max(last_refresh)               as last_refresh
     from {{ ref('gold_pevs_production') }}
     where {{ hidden_code_predicate('pevs', 'product_code') }}
-    group by reference_year, state_acronym, product_code, sidra_tabela, origem, family
+    group by reference_year, state_acronym, product_code, sidra_tabela, family
 
 )
 
@@ -91,7 +90,6 @@ select
     p.product_code,
     p.product_description,
     p.sidra_tabela,
-    p.origem,   -- ⚠ transitória: derivada da tabela, sai no PR dos consumidores
     p.family,
     p.base_unit,
     p.unit_native,

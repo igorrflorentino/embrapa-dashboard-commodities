@@ -42,16 +42,31 @@
 // the menu offers exactly the directions the source declares. `value` is the
 // canonical Gold `flow` token the serving query filters on; `label` is pt-BR.
 // `all` (no filter) sums the directions the snapshot defaults to.
-// Which half of the PEVS survey a row belongs to. `all` sums BOTH, which is the survey's
-// own total — the two halves are DISJOINT (no row is in both), so unlike the trade
-// sub-flows there is nothing to double-count. What it must never be is silent: a total
-// mixing native extraction with planted forest has to say so, which is why this reaches
-// the chip, the ABNT citation and the CSV. See PLANS/silvicultura_source.md.
-window.ORIGEM_OPTIONS = {
+// A TABELA SIDRA de um banco multi-tabela — o terceiro componente da identidade de um
+// produto, `(banco, tabela, código)`. O `value` é o ID DA TABELA, não uma palavra sobre
+// ela: até v1.46.0 o dado guardava a prosa ('extrativa'/'silvicultura') numa coluna
+// paralela, e o id existia só como NOME de tabela no Bronze — de modo que uma tela que
+// precisasse distinguir duas metades não alcançava a identidade, e fundia dois produtos
+// legítimos numa barra só.
+//
+// `label`/`short` são o NOME HUMANO daquela tabela, derivado do id — é o que o pesquisador
+// lê, e vive aqui, num lugar só, para não nascer um segundo vocabulário em outro arquivo.
+// `short` serve onde o espaço é do tamanho de uma categoria de gráfico. Sem `short` para
+// 'all': "ambas" nunca rotula uma linha, só o filtro.
+//
+// `all` soma TODAS as tabelas do banco, que no PEVS é o total da própria pesquisa — as
+// metades são DISJUNTAS (nenhuma linha está nas duas), então não há o que contar em dobro.
+// O que nunca pode ser é silencioso: um total que mistura extração nativa com floresta
+// plantada tem de dizer isso, e é por isso que a tabela chega ao chip, à citação ABNT e ao
+// CSV. Ver PLANS/silvicultura_source.md.
+//
+// ⚠ Os ids têm de bater com config.py (ibge_table_id / silvicultura_table_id / ppm_*) e
+// com as vars do dbt_project.yml — `embrapa doctor` valida a paridade.
+window.SIDRA_TABELA_OPTIONS = {
   ibge_pevs: [
-    { value: 'all',          label: 'Ambas' },
-    { value: 'extrativa',    label: 'Extração vegetal (nativa)' },
-    { value: 'silvicultura', label: 'Silvicultura (plantada)' },
+    { value: 'all', label: 'Ambas' },
+    { value: '289', label: 'Extração vegetal (nativa)', short: 'extração' },
+    { value: '291', label: 'Silvicultura (plantada)',   short: 'silvicultura' },
   ],
 };
 
@@ -115,10 +130,11 @@ window.FILTER_SCHEMAS = {
         requires: 'product', backed: true, serverParam: 'niveis',
         label: 'Nível de industrialização', column: 'industrialization_level',
         hint: 'Do bruto ao manufaturado, pela classificação curada de cada código.' },
-      { id: 'origem',    tier: 'specific',  type: 'segment',
-        requires: null, backed: true, serverParam: 'origem',
-        label: 'Origem da produção',       column: 'origem',
-        hint: 'Metade da pesquisa: extração de floresta nativa ou silvicultura (plantada).' },
+      { id: 'sidraTabela', tier: 'specific', type: 'segment',
+        requires: null, backed: true, serverParam: 'sidraTabela',
+        label: 'Origem da produção',       column: 'sidra_tabela',
+        hint: 'Metade da pesquisa, pela tabela SIDRA: t289 extração de floresta nativa · '
+              + 't291 silvicultura (plantada).' },
       { id: 'periodo',   tier: 'universal', type: 'period-value',
         requires: null, backed: true,
         label: 'Período & faixa de valor', column: 'ano · val_real_ipca',
@@ -339,9 +355,44 @@ window.bancoFilterDims = (bancoId) => {
 // flow dimension (its snapshot isn't flow-separated → no fluxo control).
 window.flowOptionsFor = (bancoId) => window.FLOW_OPTIONS[bancoId] || null;
 
-// Origem (extração vs silvicultura) options for a banco, or null when the banco has no
-// `origem` column (only PEVS carries it). Mirrors flowOptionsFor.
-window.origemOptionsFor = (bancoId) => window.ORIGEM_OPTIONS[bancoId] || null;
+// As tabelas SIDRA de um banco, ou null quando o banco tem uma só (nada a distinguir).
+// Espelha flowOptionsFor.
+window.sidraTabelaOptionsFor = (bancoId) => window.SIDRA_TABELA_OPTIONS[bancoId] || null;
+
+/**
+ * Nomeia as linhas de um ranking de produtos, desambiguando SÓ quando é preciso.
+ *
+ * Madeira em tora, lenha e carvão vegetal existem nas DUAS metades do PEVS com o MESMO
+ * nome e códigos diferentes (3457/3435, 3456/3434, 3455/3433). Um gráfico que use o nome
+ * como categoria funde as duas: o Plotly junta categorias homônimas numa posição só, então
+ * aparecia UMA barra (a maior) com os DOIS rótulos impressos por cima um do outro — o que
+ * o pesquisador via como "números borrados" em "O que <lugar> produz".
+ *
+ * Somar as duas seria pior que borrar: a metade plantada é ~5x a nativa, e o CLAUDE.md diz
+ * que um total que as mistura em silêncio é "um número errado vestindo um rótulo certo".
+ *
+ * O sufixo entra apenas quando o nome APARECE MAIS DE UMA VEZ no conjunto exibido. Com o
+ * filtro em uma metade só, cada nome é único e o rótulo fica limpo — e o chip de Origem já
+ * diz qual metade é. Uma linha sem `origem` (bancos sem metades, como o COMEX) nunca ganha
+ * sufixo, mesmo que houvesse homônimos, porque não há o que dizer sobre ela.
+ */
+window.labelProductRows = (rows, bancoId) => {
+  const lista = rows || [];
+  const curto = Object.fromEntries(
+    ((window.SIDRA_TABELA_OPTIONS || {})[bancoId] || [])
+      .map((o) => [o.value, o.short]).filter((p) => p[1]),
+  );
+  const vezes = {};
+  for (const r of lista) {
+    const n = r.name || r.code;
+    vezes[n] = (vezes[n] || 0) + 1;
+  }
+  return lista.map((r) => {
+    const n = r.name || r.code;
+    const sufixo = curto[r.sidra_tabela];
+    return vezes[n] > 1 && sufixo ? { ...r, name: `${n} · ${sufixo}` } : r;
+  });
+};
 
 // Nível de industrialização — a CURATED per-code axis (Engenharia de Atributos), offered
 // wherever codes have been classified. The 8 levels themselves live in ENRICH_LEVELS

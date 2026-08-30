@@ -242,10 +242,15 @@ function ViewTerritoryProfile({ summary, database, conventions }) {
   const scaled = window.scaleSeries(
     series, Math.max(...series.map((d) => d.v), 0), conv, 'v', fx.symbol,
   );
-  // BarChart labels each row from `d.uf || d.name` — the product name is the category.
-  const prodRows = (breakdown.products || []).slice()
-    .sort((a, b) => (b.value || 0) - (a.value || 0)).slice(0, 12)
-    .map((p) => ({ name: p.name || p.code, value: (p.value || 0) * 1e6 * cvf }));
+  // BarChart labels each row from `d.uf || d.name` — the product name is the category, e
+  // categorias homônimas o Plotly funde numa posição só. Madeira, lenha e carvão existem
+  // nas DUAS metades do PEVS com o mesmo nome: sem `labelProductRows` aparecia UMA barra
+  // com os DOIS rótulos impressos por cima um do outro.
+  const prodRows = window.labelProductRows(
+    (breakdown.products || []).slice()
+      .sort((a, b) => (b.value || 0) - (a.value || 0)).slice(0, 12),
+    database,
+  ).map((p) => ({ name: p.name || p.code, value: (p.value || 0) * 1e6 * cvf }));
   const prodScaled = window.scaleSeries(
     prodRows, Math.max(...prodRows.map((p) => p.value), 0), conv, 'value', fx.symbol,
   );

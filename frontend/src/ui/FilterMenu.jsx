@@ -529,9 +529,11 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
   const marketOptions = window.marketOptionsFor ? window.marketOptionsFor(banco) : null;
   const hasMarket     = !!marketOptions;
   // Origem da produção (extração nativa vs silvicultura plantada) — a server-side filter
-  // gated on the banco carrying the `origem` column (only PEVS → origemOptionsFor
+  // gated on the banco spanning two SIDRA tables (only PEVS → sidraTabelaOptionsFor
   // non-null), not on a capability flag. Mirrors the flow/regime/market controls.
-  const origemOptions = window.origemOptionsFor ? window.origemOptionsFor(banco) : null;
+  const origemOptions = window.sidraTabelaOptionsFor
+    ? window.sidraTabelaOptionsFor(banco)
+    : null;
   const hasOrigem     = !!origemOptions;
   // Nível de industrialização — a CURATED multi-select over the 8-level scale plus an
   // explicit "sem classificação". Gated on the banco having classified codes, like the
@@ -721,7 +723,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
   const [customs, setCustoms] = useState((value && value.customs) || 'all');
   // Tipo de mercado (server-side, COMTRADE only). 'all' = every purpose.
   const [market, setMarket] = useState((value && value.market) || 'all');
-  const [origem, setOrigem] = useState((value && value.origem) || 'all');
+  const [origem, setOrigem] = useState((value && value.sidraTabela) || 'all');
   const [niveis, setNiveis] = useState(
     new Set((value && value.niveis) || (nivelOptions || []).map((o) => o.value)),
   );
@@ -772,7 +774,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
       setFlow(v.flow || 'all');
       setCustoms(v.customs || 'all');
       setMarket(v.market || 'all');
-      setOrigem(v.origem || 'all');
+      setOrigem(v.sidraTabela || 'all');
       setNiveis(new Set(v.niveis || (nivelOptions || []).map((o) => o.value)));
       geoSeeded.current = false; // let the geo effect (re)seed once the mesh is ready
       countriesSeeded.current = false; // ditto for the country universe (COMTRADE)
@@ -1001,7 +1003,7 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
         customs: customs !== 'all' ? customs : undefined,
         // Tipo de mercado (server-side, COMTRADE): omitted when 'all' = every purpose.
         market: market !== 'all' ? market : undefined,
-        origem: origem !== 'all' ? origem : undefined,
+        sidraTabela: origem !== 'all' ? origem : undefined,
         // Todos selecionados = nenhum recorte: enviar a lista completa faria o BFF
         // resolver códigos à toa e mudaria a chave de cache sem mudar o resultado.
         niveis:

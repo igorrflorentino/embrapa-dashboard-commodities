@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.46.1] - 2026-08-30
+
+Passo 2 de 2. Os consumidores passam a ler a **tabela SIDRA**, e a `origem` sai da Gold.
+O passo anterior (v1.46.0) já pôs a coluna no dado, então este deploy não tem janela de
+quebra: o que o código novo precisa já está em produção.
+
+### Corrigido
+
+- **Rótulos sobrepostos no gráfico "O que ‹lugar› produz"** (*Perfil do território*, e o
+  mesmo gráfico em *Geografia*). Madeira em tora, lenha e carvão vegetal existem nas duas
+  tabelas do PEVS com o **mesmo nome** e códigos diferentes (3457/3435, 3456/3434,
+  3455/3433). O gráfico usa o nome como categoria do eixo e o Plotly funde categorias
+  homônimas numa posição só: aparecia **uma** barra (a maior) com os **dois** rótulos
+  impressos por cima um do outro. Em Minas Gerais, "Carvão vegetal" desenhava 115 bi e
+  imprimia junto "14 bi" — daí o eixo ir a 121 bi com o rótulo dizendo 14.
+
+  A desambiguação usa a **tabela**, que é o terceiro componente da identidade do produto,
+  e só entra quando o nome se repete no conjunto exibido:
+
+  | filtro | rótulos |
+  |---|---|
+  | Ambas | `Carvão vegetal · silvicultura`, `Carvão vegetal · extração`, `Açaí (fruto)` |
+  | Silvicultura | `Carvão vegetal`, `Madeira em tora`, `Lenha` |
+
+  O nome humano de cada tabela vem de **um registro só** (`SIDRA_TABELA_OPTIONS`), para
+  não nascer um segundo vocabulário em outro arquivo.
+
+### Alterado
+
+- **`origem` foi aposentada.** O eixo agora é a tabela de ponta a ponta: coluna
+  `sidra_tabela` na Gold, predicado `sidra_tabela = @sidra_tabela` no SQL, parâmetro de API
+  `sidraTabela` (com allowlist **derivada** do `config.py`, não uma lista fixa), parâmetro
+  de URL `tb`, e coluna `tabela_sidra` no CSV. O nome humano ("Extração vegetal (nativa)",
+  "Silvicultura (plantada)") continua idêntico na tela — ele passou a ser derivado do id
+  em vez de guardado ao lado dele.
+
+- **Links antigos continuam funcionando.** O decodificador aceita o `or=extrativa|silvicultura`
+  dos permalinks já compartilhados e o traduz para a tabela, lendo o mesmo registro que
+  desenha o filtro — então renomear uma metade lá continua valendo aqui.
+
+---
+
 ## [1.46.0] - 2026-08-30
 
 Primeiro de dois passos: a **tabela SIDRA passa a viajar no dado**. Este PR só mexe em

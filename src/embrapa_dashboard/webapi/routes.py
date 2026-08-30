@@ -20,7 +20,10 @@ from werkzeug.exceptions import BadRequest, HTTPException
 
 from embrapa_dashboard.config import get_settings
 from embrapa_dashboard.serving.cache import cache
-from embrapa_dashboard.serving.curation import ensure_catalog_editors_table
+from embrapa_dashboard.serving.curation import (
+    _tabelas_validas_por_banco,
+    ensure_catalog_editors_table,
+)
 from embrapa_dashboard.serving.feedback import FeedbackValidationError, record_feedback
 from embrapa_dashboard.serving.iap import InvalidIapAssertionError
 from embrapa_dashboard.serving.research_inputs import (
@@ -127,19 +130,26 @@ def _niveis_or_400(raw: str | None):
     return niveis, None
 
 
-_ALLOWED_ORIGENS = ("extrativa", "silvicultura")
+def _sidra_tabela_or_400(tabela: str | None):
+    """Validate the optional SIDRA-table param — WHICH TABLE of a multi-table banco.
 
+    A produto's identity is ``(banco, tabela, código)``, so this is the axis that tells
+    PEVS t289 (extração vegetal) from t291 (silvicultura). Until v1.46.0 it filtered on a
+    prose column (``origem``) that Gold stamped alongside the fact.
 
-def _origem_or_400(origem: str | None):
-    """Validate the optional PEVS origem param (which half of the survey).
+    The allowlist is DERIVED from the settings (``_tabelas_validas_por_banco``), the same
+    place the curation writer validates against — a hardcoded tuple here would be a second
+    census of the world, and the world grew once already when silviculture arrived.
 
-    'all'/absent passes through and sums both — the survey's own total. Anything else
-    400s rather than binding verbatim and matching zero rows: a typo'd half would render
-    an empty dashboard that looks like "no data for this selection" instead of a bad
-    request (mirrors _flow_or_400)."""
-    if origem and origem != "all" and origem not in _ALLOWED_ORIGENS:
-        return None, (jsonify(error=f"origem inválida: {origem!r}"), 400)
-    return origem, None
+    'all'/absent passes through and sums every table — the survey's own total. Anything
+    else 400s rather than binding verbatim and matching zero rows: a typo'd id would
+    render an empty dashboard that looks like "no data for this selection" instead of a
+    bad request (mirrors _flow_or_400)."""
+    if tabela and tabela != "all":
+        validas = set().union(*_tabelas_validas_por_banco(get_settings()).values())
+        if tabela not in validas:
+            return None, (jsonify(error=f"tabela SIDRA inválida: {tabela!r}"), 400)
+    return tabela, None
 
 
 def _market_or_400(market: str | None):
@@ -711,7 +721,8 @@ def _with_filter_axes(summary: dict | None) -> tuple[dict | None, tuple | None]:
     day apart, with the same result: the view answered over a dataset the user had not
     selected while the chip named the selection.
 
-    * ``origem`` (2026-08-29) — the map, the município cube and both product rankings summed
+    * ``sidraTabela`` (introduzido em 2026-08-29 como ``origem``) — the map, the município
+      cube and both product rankings summed
       BOTH halves of PEVS. They differ ~6x in value.
     * ``niveis`` (2026-08-29) — the same readers ignored the industrialization level
       entirely: the snapshot showed 1,3 bi for commodity_pura beside a map showing the whole
@@ -731,7 +742,7 @@ def _with_filter_axes(summary: dict | None) -> tuple[dict | None, tuple | None]:
     market, err = _market_or_400(request.args.get("market"))
     if err:
         return None, err
-    origem, err = _origem_or_400(request.args.get("origem"))
+    sidra_tabela, err = _sidra_tabela_or_400(request.args.get("sidraTabela"))
     if err:
         return None, err
     niveis, err = _niveis_or_400(request.args.get("niveis"))
@@ -746,8 +757,8 @@ def _with_filter_axes(summary: dict | None) -> tuple[dict | None, tuple | None]:
         extra["customs"] = customs
     if market and market != "all":
         extra["market"] = market
-    if origem and origem != "all":
-        extra["origem"] = origem
+    if sidra_tabela and sidra_tabela != "all":
+        extra["sidraTabela"] = sidra_tabela
     if niveis:
         extra["niveis"] = niveis
     if extra:

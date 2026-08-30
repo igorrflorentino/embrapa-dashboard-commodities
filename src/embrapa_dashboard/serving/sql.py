@@ -222,28 +222,32 @@ def _flow(
         params.append(bigquery.ArrayQueryParameter("__sum_flows", "STRING", list(sum_flows)))
 
 
-def _origem(
+def _sidra_tabela(
     conditions: list[str],
     params: list[bigquery.ScalarQueryParameter],
-    origem: str | None,
+    sidra_tabela: str | None,
 ) -> None:
-    """Optional ``origem = @origem`` predicate — which half of the PEVS survey.
+    """Optional ``sidra_tabela = @sidra_tabela`` predicate — WHICH SIDRA TABLE.
 
-    ``extrativa`` (native forest, SIDRA t289) | ``silvicultura`` (planted, t291).
+    A produto's identity is ``(banco, tabela, código)``, so the table is the thing that
+    tells two halves of a multi-table banco apart: PEVS t289 (native forest, extração
+    vegetal) vs t291 (planted, silvicultura). Until v1.46.0 this filtered on a prose
+    column (``origem``) that Gold stamped alongside — a second name for the same fact,
+    which is how the display side ended up unable to reach the identity at all.
 
-    ``None`` sums both, which is the survey's own total and what "Produção da Extração
-    Vegetal e da Silvicultura" names. It is also what keeps every OTHER production mart
-    unchanged: PAM and PPM have no ``origem`` column, so a reader that never receives the
-    param emits a byte-identical query to the one it emitted before the axis existed.
+    ``None`` sums every table of the banco, which for PEVS is the survey's own total and
+    what "Produção da Extração Vegetal e da Silvicultura" names. It is also what keeps
+    every OTHER mart unchanged: a reader that never receives the param emits a
+    byte-identical query to the one it emitted before the axis existed.
 
-    Unlike COMTRADE's flow, the two halves are DISJOINT — no row belongs to both — so the
+    Unlike COMTRADE's flow, the tables are DISJOINT — no row belongs to two — so the
     unfiltered sum is a clean total with nothing double-counted. What it must never be is
-    silent: `origem` reaches the chip, the ABNT citation and the CSV precisely because a
+    silent: the table reaches the chip, the ABNT citation and the CSV precisely because a
     number that mixes native and planted has to say so.
     """
-    if origem is not None:
-        conditions.append("origem = @origem")
-        params.append(bigquery.ScalarQueryParameter("origem", "STRING", origem))
+    if sidra_tabela is not None:
+        conditions.append("sidra_tabela = @sidra_tabela")
+        params.append(bigquery.ScalarQueryParameter("sidra_tabela", "STRING", sidra_tabela))
 
 
 def _customs(
@@ -324,7 +328,7 @@ def production_overview(
     value_column: str = "val_real_ipca_brl",
     uf_codes: Sequence[str] = (),
     has_measure_kind: bool = False,
-    origem: str | None = None,
+    sidra_tabela: str | None = None,
 ) -> tuple[str, list]:
     """Annual production total from ``serving_pevs_annual`` (backs overviewTS).
 
@@ -335,7 +339,7 @@ def production_overview(
     conditions: list[str] = []
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
-    _origem(conditions, params, origem)
+    _sidra_tabela(conditions, params, sidra_tabela)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
     _in_array(conditions, params, "state_acronym", "uf_codes", uf_codes)
     sql = f"""
@@ -361,7 +365,7 @@ def production_by_uf(
     value_column: str = "val_real_ipca_brl",
     latest_year_only: bool = True,
     has_measure_kind: bool = False,
-    origem: str | None = None,
+    sidra_tabela: str | None = None,
 ) -> tuple[str, list]:
     """Production aggregated by UF from ``serving_pevs_annual`` (backs ufData).
 
@@ -384,7 +388,7 @@ def production_by_uf(
     conditions: list[str] = []
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
-    _origem(conditions, params, origem)
+    _sidra_tabela(conditions, params, sidra_tabela)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
     # `uf_codes` narrows to the researcher's selected states. It is applied BEFORE the
     # latest-year pin below, deliberately: with a UF filter active the reference year
@@ -422,7 +426,7 @@ def production_by_uf_yearly(
     product_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     has_measure_kind: bool = False,
-    origem: str | None = None,
+    sidra_tabela: str | None = None,
 ) -> tuple[str, list]:
     """Production by (UF, year) from ``serving_pevs_annual`` (backs the ano × UF heatmap).
 
@@ -437,7 +441,7 @@ def production_by_uf_yearly(
     conditions: list[str] = []
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
-    _origem(conditions, params, origem)
+    _sidra_tabela(conditions, params, sidra_tabela)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
     sql = f"""
         select
@@ -484,7 +488,7 @@ def production_by_municipio_yearly(
     city_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     visibility_predicate: str = "",
-    origem: str | None = None,
+    sidra_tabela: str | None = None,
 ) -> tuple[str, list]:
     """Production by (município, year) straight from ``gold_<source>_production``,
     which is ALREADY município-grained — backs the sub-UF + live-município geography
@@ -504,7 +508,7 @@ def production_by_municipio_yearly(
     conditions: list[str] = []
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
-    _origem(conditions, params, origem)
+    _sidra_tabela(conditions, params, sidra_tabela)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
     _in_array(conditions, params, "city_code", "city_codes", city_codes)
     if visibility_predicate:
@@ -537,7 +541,8 @@ def products_by_municipio(
     city_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     visibility_predicate: str = "",
-    origem: str | None = None,
+    sidra_tabela: str | None = None,
+    include_sidra_tabela: bool = False,
 ) -> tuple[str, list]:
     """Per-PRODUCT ranking WITHIN a município selection — what the território profile
     needs to answer "o que este município produz".
@@ -550,6 +555,14 @@ def products_by_municipio(
     mart), and carries the SAME cost control: ``city_codes`` is required by the caller,
     so this only ever scans the selected cities. Quantities stay split by ``family`` —
     they are only summable WITHIN a family.
+
+    ``include_sidra_tabela`` faz a TABELA viajar junto com cada linha. Ela é constante
+    por ``product_code`` (um código pertence a uma tabela SIDRA só), então o ``any_value``
+    é exato, não uma escolha arbitrária. Serve a quem EXIBE: madeira, lenha e carvão
+    existem nas duas metades com o MESMO nome, e uma tela que rotule as linhas pelo nome
+    funde as duas — foi o que aconteceu no gráfico "O que <lugar> produz", que desenhava
+    uma barra só e dois rótulos sobrepostos. Fora do PEVS a coluna não existe (COMEX não
+    tem metades), daí o sinalizador em vez de sempre selecionar.
     """
     code_column = _validate_column(code_column, ALLOWED_PRODUCT_COLUMNS, "product column")
     name_column = _validate_column(name_column, ALLOWED_PRODUCT_COLUMNS, "product column")
@@ -562,13 +575,15 @@ def products_by_municipio(
     # The PEVS half — see products_by_uf. This reader names the produtos behind a place,
     # and madeira/lenha/carvão exist in BOTH halves, so without it a território profile
     # filtered to one half lists the other's produtos alongside.
-    _origem(conditions, params, origem)
+    _sidra_tabela(conditions, params, sidra_tabela)
     if visibility_predicate:
         conditions.append(visibility_predicate)
+    tabela_select = "any_value(sidra_tabela) as sidra_tabela," if include_sidra_tabela else ""
     sql = f"""
         select
             {code_column}                                        as product_code,
             any_value({name_column})                             as product_name,
+            {tabela_select}
             sum({value_column})                                  as total_value,
             sum(case when family = 'massa'    then qty_base end) as q_mass,
             sum(case when family = 'volume'   then qty_base end) as q_vol,
@@ -661,7 +676,8 @@ def products_by_uf(
     uf_codes: Sequence[str] = (),
     value_column: str = "val_yearfx_usd",
     flow: str | None = None,
-    origem: str | None = None,
+    sidra_tabela: str | None = None,
+    include_sidra_tabela: bool = False,
 ) -> tuple[str, list]:
     """Per-PRODUCT ranking WITHIN a UF selection (backs the "Base de dados" per-UF
     product breakdown). This is the INVERSE of production_by_uf / comex_by_uf (which
@@ -672,6 +688,14 @@ def products_by_uf(
     export (``flow='export'``, code_column=ncm_code). Each row carries value plus the
     family-split ``q_mass`` (t) / ``q_vol`` (m³) so the view can rank by Capital,
     Volume(massa) or Volume(volume) — quantities only ever sum WITHIN a family.
+
+    ``include_sidra_tabela`` faz a TABELA viajar junto com cada linha. Ela é constante
+    por ``product_code`` (um código pertence a uma tabela SIDRA só), então o ``any_value``
+    é exato, não uma escolha arbitrária. Serve a quem EXIBE: madeira, lenha e carvão
+    existem nas duas metades com o MESMO nome, e uma tela que rotule as linhas pelo nome
+    funde as duas — foi o que aconteceu no gráfico "O que <lugar> produz", que desenhava
+    uma barra só e dois rótulos sobrepostos. Fora do PEVS a coluna não existe (COMEX não
+    tem metades), daí o sinalizador em vez de sempre selecionar.
     """
     code_column = _validate_column(code_column, ALLOWED_PRODUCT_COLUMNS, "product column")
     name_column = _validate_column(name_column, ALLOWED_PRODUCT_COLUMNS, "product column")
@@ -687,11 +711,13 @@ def products_by_uf(
     # computed over both while the chip says one half is a wrong number under a right label.
     # Left off on 2026-08-29 when the axis was introduced — the aggregate path honoured it
     # and this one silently did not.
-    _origem(conditions, params, origem)
+    _sidra_tabela(conditions, params, sidra_tabela)
+    tabela_select = "any_value(sidra_tabela) as sidra_tabela," if include_sidra_tabela else ""
     sql = f"""
         select
             {code_column}                                      as product_code,
             any_value({name_column})                           as product_name,
+            {tabela_select}
             sum({value_column})                                as total_value,
             sum(case when family = 'massa'  then qty_base end) as q_mass,
             sum(case when family = 'volume' then qty_base end) as q_vol,

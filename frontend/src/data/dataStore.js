@@ -52,7 +52,7 @@ let activeMarket = 'all';
 // activeFlow — part of the snapshot's CACHE KEY and its request. 'all' (default) sums
 // both, the survey's own total. Being in the cache key is what makes switching halves
 // refetch instead of re-rendering the same numbers under a new chip.
-let activeOrigem = 'all';
+let activeSidraTabela = 'all';
 // Nível de industrialização — a LIST (multi-select), server-side like the others: the
 // level lives in its own curated dim, so the BFF resolves it to codes. Empty = no filter.
 let activeNiveis = [];
@@ -73,7 +73,7 @@ const _sameSel = (a, b) =>
 const convKey = () => {
   const rep = activeReporters == null ? 'BR' : activeReporters === '__all__' ? 'ALL' : activeReporters.join('~');
   const par = activePartners == null ? 'ALL' : activePartners.join('~');
-  return `${activeConv.currency}|${activeConv.correction}|${activeFlow}|${activeCustoms}|${activeMarket}|${activeOrigem}|${activeNiveis.join('+') || 'all'}|${rep}|${par}`;
+  return `${activeConv.currency}|${activeConv.correction}|${activeFlow}|${activeCustoms}|${activeMarket}|${activeSidraTabela}|${activeNiveis.join('+') || 'all'}|${rep}|${par}`;
 };
 const cacheKey = (id) => `${id}|${convKey()}`;
 
@@ -226,7 +226,7 @@ async function fetchSnapshot(id) {
   if (activeMarket && activeMarket !== 'all') qs.set('market', activeMarket);
   // Server-side PEVS origem filter: only sent when narrowing → the BFF sums both halves
   // otherwise, byte-identical to before the axis existed.
-  if (activeOrigem && activeOrigem !== 'all') qs.set('origem', activeOrigem);
+  if (activeSidraTabela && activeSidraTabela !== 'all') qs.set('sidraTabela', activeSidraTabela);
   // Server-side industrialization filter: only sent when narrowing → the BFF serves every
   // level otherwise, byte-identical to before the axis existed.
   if (activeNiveis.length) qs.set('niveis', activeNiveis.join(','));
@@ -272,7 +272,7 @@ window.dataStore = {
 
   // The active tipo de mercado (consumo/processamento), same role as flow()/customs().
   market: () => activeMarket,
-  origem: () => activeOrigem,
+  sidraTabela: () => activeSidraTabela,
   niveis: () => activeNiveis,
 
   // Live provenance for a banco. The numeric coverage (rows, products, UFs, year
@@ -486,11 +486,11 @@ window.dataStore = {
   // Origem bridge: same contract as setFlow/setCustoms/setMarket — which half of the PEVS
   // survey is a server-side filter, so a new half is a DIFFERENT cache key → re-fetch every
   // loaded banco. 'all'/absent → sum both (the survey's own total).
-  setOrigem(origem) {
-    const next = origem || 'all';
-    if (next === activeOrigem) return;
+  setSidraTabela(sidraTabela) {
+    const next = sidraTabela || 'all';
+    if (next === activeSidraTabela) return;
     const loadedBancos = [...new Set(Object.keys(store).map((k) => k.split('|')[0]))];
-    activeOrigem = next;
+    activeSidraTabela = next;
     notify();
     loadedBancos.forEach((id) => this.load(id));
   },
