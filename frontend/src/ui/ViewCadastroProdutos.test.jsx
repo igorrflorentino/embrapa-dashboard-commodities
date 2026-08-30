@@ -852,7 +852,7 @@ describe('rolagem horizontal sincronizada entre cartões', () => {
   });
 
   /**
-   * ⚠ O que este teste NÃO prende, dito na cara: o guarda `sincronizando` do handler. Ele
+   * ⚠ O que este teste NÃO prende, dito na cara: o guarda `sincronizandoRef` do handler. Ele
    * existe porque num navegador de verdade atribuir `scrollLeft` DISPARA `scroll` nos
    * outros cartões, e sem o flag cada um reagiria ao vizinho. O jsdom não emite `scroll`
    * em atribuição programática, então esse laço não é reproduzível aqui — removi o flag

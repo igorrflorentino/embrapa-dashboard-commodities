@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ### Notas
 
+- A ref do handler chama-se `sincronizandoRef` porque a regra `react-hooks/immutability`
+  do ESLint só reconhece uma ref por esse sufixo — sem ele, escrever em `.current` é lido
+  como mutação de valor devolvido por hook. O CI acusou; o `eslint` local também acusaria,
+  e eu tinha lido o rodapé da saída (só ruído do npm) em vez do resultado.
 - Um dos testes novos da sincronização **não prende o que o nome dele prometia**, e isso
   está escrito no próprio teste: o guarda anti-laço do handler só é exercitável num
   navegador de verdade (o jsdom não emite `scroll` em atribuição programática de

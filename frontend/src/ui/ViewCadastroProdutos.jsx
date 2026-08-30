@@ -303,20 +303,20 @@ function CcConfirmModal({ spec, onClose }) {
 // montam/desmontam ao abrir e fechar o toggle — um registro teria de acertar esse ciclo de
 // vida, e acertar errado deixa nós desmontados no conjunto.
 function useSyncedTableScroll() {
-    const sincronizando = useCcRef(false);
+    const sincronizandoRef = useCcRef(false);
 
     return (ev) => {
         // Atribuir `scrollLeft` dispara `scroll` nos outros; sem o guarda, cada um
         // reagiria ao vizinho num laço.
-        if (sincronizando.current) return;
-        sincronizando.current = true;
+        if (sincronizandoRef.current) return;
+        sincronizandoRef.current = true;
         const alvo = ev.currentTarget;
         const x = alvo.scrollLeft;
         for (const el of document.querySelectorAll('.cc-dt-wrap')) {
             if (el !== alvo && el.scrollLeft !== x) el.scrollLeft = x;
         }
         requestAnimationFrame(() => {
-            sincronizando.current = false;
+            sincronizandoRef.current = false;
         });
     };
 }
