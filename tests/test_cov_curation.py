@@ -507,6 +507,12 @@ def test_remove_produto_catalog_dedupes_on_seen_change_id(monkeypatch):
 def test_remove_produto_catalog_change_id_conflict_active_flip(monkeypatch):
     """A record's change_id (its stored row is active=True) reused for a REMOVE → 409, not a
     silent replay that echoes the active row as if it were a tombstone."""
+    # Desde v1.39.2 o tombstone resolve a tabela SIDRA da entrada (ela faz parte da
+    # chave que decide se um change_id repetido é replay do MESMO produto). Este teste
+    # exercita o conflito, não a resolução — então ela é dublada.
+    monkeypatch.setattr(
+        "embrapa_dashboard.serving.curation._current_sidra_tabela", lambda *a, **k: "289"
+    )
     pytest.importorskip("flask_caching")
     from embrapa_dashboard.serving import curation
     from embrapa_dashboard.serving.research_inputs import ChangeIdConflictError

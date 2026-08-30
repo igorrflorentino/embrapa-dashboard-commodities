@@ -314,8 +314,11 @@ function ViewCadastroProdutos() {
   // the server records (agrupamento, ciclo de vida, descrição). Two edits that change different
   // attributes of the same product therefore get distinct change_ids and both apply; re-issuing
   // the identical edit reuses one and dedupes.
+  // A TABELA entra na chave junto com banco+código: um produto é (banco, tabela, código)
+  // desde v1.39.0. Sem ela, editar as duas metades de um código compartilhado com os mesmos
+  // atributos geraria o MESMO change_id, e a segunda edição seria descartada como replay.
   const _saveKey = (e) =>
-    `save:${e.banco}:${e.codigo_produto}:` +
+    `save:${e.banco}:${e.sidra_tabela ?? '-'}:${e.codigo_produto}:` +
     JSON.stringify([e.agrupamento_id ?? null, e.ingestao ?? null, e.visibilidade ?? null, e.descricao_produto ?? null]);
 
   // Server-authoritative edit permission (from /api/catalog/entries' can_edit). The UI
@@ -447,8 +450,8 @@ function ViewCadastroProdutos() {
       body: 'Os dados já baixados ficam órfãos (não são apagados automaticamente).',
       confirmLabel: 'Remover', danger: true,
       onConfirm: () => {
-        const key = `rm:${e.banco}:${e.codigo_produto}`;
-        run(() => post('/api/catalog/entry/remove', { codigo_produto: e.codigo_produto, banco: e.banco, change_id: cidFor(key) }),
+        const key = `rm:${e.banco}:${e.sidra_tabela ?? '-'}:${e.codigo_produto}`;
+        run(() => post('/api/catalog/entry/remove', { codigo_produto: e.codigo_produto, banco: e.banco, sidra_tabela: e.sidra_tabela ?? null, change_id: cidFor(key) }),
           `Produto ${e.codigo_produto} marcado como descontinuado.`, key);
       },
     });

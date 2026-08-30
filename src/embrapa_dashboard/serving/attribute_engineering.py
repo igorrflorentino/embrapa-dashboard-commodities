@@ -166,17 +166,27 @@ def record_code_industrialization(
     # Self-heal the log table on a fresh project (house auto-create pattern).
     ensure_code_industrialization_log_table(cfg, bq)
 
+    # A tabela SIDRA faz parte da CHAVE de um produto. Sem ela, a classificação cai na
+    # sentinela `sql.SEM_TABELA` — uma identidade à parte — e a dim SCD2, que particiona
+    # pela chave de 3 colunas, abriria uma linhagem paralela: as versões anteriores do
+    # MESMO produto ficariam órfãs das novas, sem erro nenhum. O catálogo é a fonte de
+    # verdade da identidade, então a tag vem dele.
+    from embrapa_dashboard.serving.curation import tabela_do_produto
+
+    sidra_tabela = tabela_do_produto(source, code, settings=cfg, client=bq)
+
     if supplied and _change_id_seen(bq, table_fqn, change_id):
         logger.info(
             "Curation(code): duplicate change_id %s ignored (%s:%s)", change_id, source, code
         )
         stored = _code_row_for_change_id(bq, table_fqn, change_id)
-        # A change_id reused for a DIFFERENT (source, code) is not a safe replay → 409, not
+        # A change_id reused for a DIFFERENT produto — (source, code, TABELA) — is not um
+        # replay seguro → 409, not
         # the wrong prior row. An attribute-only divergence (level/note) stays a benign no-op.
         ensure_no_change_id_conflict(
             stored,
-            {"source": source, "code": code},
-            ("source", "code"),
+            {"source": source, "code": code, "sidra_tabela": sidra_tabela},
+            ("source", "code", "sidra_tabela"),
             entity="código",
         )
         # Return the STORED row (read-after-write), not the retried request body.
@@ -192,14 +202,6 @@ def record_code_industrialization(
             "deduped": True,
         }
 
-    # A tabela SIDRA faz parte da CHAVE de um produto. Sem ela, a classificação cai na
-    # sentinela `sql.SEM_TABELA` — uma identidade à parte — e a dim SCD2, que particiona
-    # pela chave de 3 colunas, abriria uma linhagem paralela: as versões anteriores do
-    # MESMO produto ficariam órfãs das novas, sem erro nenhum. O catálogo é a fonte de
-    # verdade da identidade, então a tag vem dele.
-    from embrapa_dashboard.serving.curation import tabela_do_produto
-
-    sidra_tabela = tabela_do_produto(source, code, settings=cfg, client=bq)
     sql = f"""
         insert into `{table_fqn}`
             (source, code, industrialization_level, note, edited_by, edited_at, change_id,

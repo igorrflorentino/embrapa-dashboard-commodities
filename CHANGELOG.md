@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.39.3] - 2026-08-30
+
+Varredura das camadas restantes da troca de chave — **6 sítios em 3 camadas**, todos
+latentes (não há código compartilhado hoje) e todos da mesma forma: identificar um produto
+sem a tabela.
+
+### Corrigido
+
+- **Três guardas de idempotência comparavam a chave pela metade** (`(codigo_produto,
+  banco, active)` ×2 e `(source, code)`). Um `change_id` reusado entre as DUAS metades de
+  um código compartilhado passaria por **replay**, e a segunda edição sumiria — sem erro,
+  sem log. Passaram a comparar a chave inteira. No escritor de nível, a resolução da tabela
+  subiu para **antes** do guarda, já que ela faz parte do que decide se é replay.
+- **As duas chaves de idempotência do frontend** (`_saveKey` e `rm:`) não incluíam a
+  tabela: editar as duas metades com os mesmos atributos geraria o **mesmo** change_id.
+- **O delete não enviava a tabela.** O backend a resolve quando omitida, mas resolver é
+  escolher a última escrita — ambíguo com duas metades. A linha da tela já a tem (é dela
+  que sai o selo azul).
+- **A mensagem de erro das rotas** ainda chamava `(codigo_produto, banco)` de "a chave do
+  catálogo".
+
+### Adicionado
+
+- Guardas em `tests/test_chave_produto.py` para a camada de idempotência, com escopo por
+  **conteúdo da tupla** e não por arquivo — o guarda do eixo (aduana × fluxo) fica de fora
+  sozinho, porque não fala de produto, e um guarda novo entra na varredura sem ninguém
+  lembrar.
+
+---
+
 ## [1.39.2] - 2026-08-30
 
 ### Corrigido

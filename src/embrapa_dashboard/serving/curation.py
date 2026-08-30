@@ -748,13 +748,21 @@ def record_produto_catalog(
         )
         # Return the STORED row (read-after-write consistency), not the retried request body.
         stored = _row_for_change_id(bq, table_fqn, change_id)
-        # A change_id reused for a DIFFERENT (codigo_produto, banco) or a record/remove flip is
-        # not a safe replay → 409 (not the wrong prior row). An attribute-only divergence under
-        # the same key stays a benign no-op (seed_catalog_from_env relies on that).
+        # A change_id reused for a DIFFERENT produto — a chave INTEIRA, tabela SIDRA
+        # inclusa — ou um flip record/remove não é replay seguro → 409 (não a linha
+        # anterior errada). Sem a tabela, o mesmo change_id nas DUAS metades de um banco
+        # multi-tabela passaria por replay e a segunda edição sumiria em silêncio. Uma
+        # divergência só de atributos sob a mesma chave segue sendo no-op benigno
+        # (seed_catalog_from_env depende disso).
         ensure_no_change_id_conflict(
             stored,
-            {"codigo_produto": codigo_produto, "banco": banco, "active": True},
-            ("codigo_produto", "banco", "active"),
+            {
+                "codigo_produto": codigo_produto,
+                "banco": banco,
+                "sidra_tabela": sidra_tabela,
+                "active": True,
+            },
+            ("codigo_produto", "banco", "sidra_tabela", "active"),
             entity="produto do catálogo",
         )
         if stored is not None:
@@ -850,8 +858,13 @@ def remove_produto_catalog(
         # replay → 409 instead of echoing an unrelated row (mirrors record_produto_catalog).
         ensure_no_change_id_conflict(
             stored,
-            {"codigo_produto": codigo_produto, "banco": banco, "active": False},
-            ("codigo_produto", "banco", "active"),
+            {
+                "codigo_produto": codigo_produto,
+                "banco": banco,
+                "sidra_tabela": _current_sidra_tabela(bq, table_fqn, codigo_produto, banco),
+                "active": False,
+            },
+            ("codigo_produto", "banco", "sidra_tabela", "active"),
             entity="produto do catálogo",
         )
         if stored is not None:
