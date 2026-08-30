@@ -238,6 +238,56 @@ def test_serialize_snapshot_empty_is_safe():
     assert out["ufData"] == [] and out["quality"] == []
 
 
+def test_products_emit_the_sidra_table_only_when_present():
+    """A tabela SIDRA viaja na lista de produtos quando o mart a carrega.
+
+    É ela que permite distinguir dois produtos que dividem o NOME — madeira, lenha e carvão
+    existem nas duas tabelas do PEVS. Um mart de tabela única omite a chave, mantendo o
+    payload daqueles bancos byte-idêntico."""
+    snap = {
+        "products": pd.DataFrame(
+            [
+                {
+                    "code": "3457",
+                    "name": "Madeira em tora",
+                    "unit": "m³",
+                    "unit_native": "Metros cúbicos",
+                    "family": "volume",
+                    "sidra_tabela": "291",
+                },
+                {
+                    "code": "3435",
+                    "name": "Madeira em tora",
+                    "unit": "m³",
+                    "unit_native": "Metros cúbicos",
+                    "family": "volume",
+                    "sidra_tabela": "289",
+                },
+                # sem a coluna (banco de tabela única) → chave ausente
+                {
+                    "code": "4403",
+                    "name": "Madeira em toras (NCM)",
+                    "unit": "t",
+                    "unit_native": "kg",
+                    "family": "massa",
+                    "sidra_tabela": float("nan"),
+                },
+            ]
+        ),
+        "product_ts": None,
+        "overview_ts": None,
+        "uf_data": None,
+        "quality": None,
+        "value_label": "",
+    }
+    prods = {p["code"]: p for p in s.serialize_snapshot(snap)["products"]}
+    # Dois códigos, o MESMO nome, tabelas diferentes: é isso que a tela precisa receber.
+    assert prods["3457"]["name"] == prods["3435"]["name"] == "Madeira em tora"
+    assert prods["3457"]["sidra_tabela"] == "291"
+    assert prods["3435"]["sidra_tabela"] == "289"
+    assert "sidra_tabela" not in prods["4403"]
+
+
 def test_products_emit_measure_kind_only_when_present():
     """measure_kind (stock|flow) rides along ONLY for livestock (PPM selects it in the
     gateway). A herd code carries 'stock'; a code from a mart without the column omits

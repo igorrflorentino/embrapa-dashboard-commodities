@@ -13,6 +13,10 @@
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
+// O registro REAL de tabelas + `labelProductRows` (filtersSchema.js). A chamada na view é
+// DELIBERADAMENTE incondicional: um helper ausente tem de estourar, não voltar a rotular
+// duas metades do PEVS com o mesmo nome em silêncio.
+import './filtersSchema.js';
 
 let multiLineProps;
 
@@ -118,6 +122,41 @@ describe('ViewProductCompare — smoke + default top-3 selection', () => {
     // Correlation matrix rendered (≥2 products) — diagonal dashes.
     expect(container.querySelector('.pc-corr')).toBeTruthy();
     expect(container.textContent).toContain('—'); // diagonal cell
+  });
+
+  it('desambigua duas metades do PEVS que dividem o nome, nos TRÊS lugares que o exibem', () => {
+    // Escolher as duas metades do mesmo produto é possível — o seletor de cesta mostra os
+    // códigos —, e a legenda, a tabela de métricas e o nome da série exibiam "Carvão
+    // vegetal" duas vezes, sem dizer qual é qual. (A matriz de correlação já mostrava o
+    // CÓDIGO e por isso nunca teve o problema.) A desambiguação vem da tabela, o terceiro
+    // componente da identidade do produto.
+    const fx = flowFixture();
+    fx.products = [
+      { code: 'P1', name: 'Carvão vegetal', family: 'mass', sidra_tabela: '291' },
+      { code: 'P2', name: 'Carvão vegetal', family: 'mass', sidra_tabela: '289' },
+      { code: 'P3', name: 'Açaí (fruto)', family: 'mass', sidra_tabela: '289' },
+    ];
+    stubGlobals(fx);
+    const { container } = render(
+      <ViewProductCompare summary={{}} conventions={{}} database="ibge_pevs" />
+    );
+
+    const legenda = [...container.querySelectorAll('.pc-legend-item')].map((n) => n.textContent.trim());
+    expect(new Set(legenda).size, `legenda repetida: ${legenda}`).toBe(legenda.length);
+    expect(legenda).toEqual([
+      'Carvão vegetal · silvicultura',
+      'Carvão vegetal · extração',
+      'Açaí (fruto)',   // nome único → sem sufixo
+    ]);
+
+    // A tabela de MÉTRICAS usa o mesmo rótulo — três superfícies, um cálculo só. Escopada
+    // à primeira tabela: a matriz de correlação logo abaixo é outra, e ela sempre mostrou
+    // o CÓDIGO (por isso nunca teve o defeito).
+    const metricas = container.querySelectorAll('table')[0];
+    const primeiraColuna = [...metricas.querySelectorAll('tbody tr')]
+      .map((r) => r.cells[0]?.textContent.trim()).filter(Boolean);
+    expect(primeiraColuna).toEqual(legenda);
+    expect(new Set(primeiraColuna).size).toBe(primeiraColuna.length);
   });
 
   it('flags a mixed-family basket with the honest indexing caveat', () => {

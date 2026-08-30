@@ -297,6 +297,12 @@ def _products(df: pd.DataFrame | None) -> list[dict]:
         # measure_kind (stock | flow) rides along ONLY for the livestock survey (the
         # gateway selects it just for PPM). It lets the UI separate the herd (stock,
         # value-less) from animal-product flows (eggs/milk) that share 'contagem'.
+        # A TABELA SIDRA — só nos bancos multi-tabela (o gateway a seleciona para eles).
+        # Sem ela a tela não distingue dois produtos que dividem o nome, e o Donut de
+        # "Participação por produto" mostrava duas fatias rotuladas "Madeira em tora".
+        st = getattr(r, "sidra_tabela", None)
+        if isinstance(st, str) and st:
+            row["sidra_tabela"] = st
         mk = getattr(r, "measure_kind", None)
         if isinstance(mk, str) and mk:
             row["measure_kind"] = mk

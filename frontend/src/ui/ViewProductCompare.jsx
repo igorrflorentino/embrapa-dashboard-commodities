@@ -57,10 +57,18 @@ function ViewProductCompare({ summary, conventions, database }) {
     };
   });
 
+  // O rótulo de exibição, desambiguado UMA vez e reusado nos três lugares que o mostram
+  // (legenda, tabela de métricas, nome da série). Escolher as DUAS metades do mesmo produto
+  // é possível — o seletor de cesta mostra os códigos —, e sem isto as três superfícies
+  // exibiriam "Carvão vegetal" duas vezes, sem dizer qual é qual. A matriz de correlação
+  // logo abaixo já mostrava o CÓDIGO e por isso nunca teve o problema.
+  const rotulos = window.labelProductRows(items.map((it) => it.prod), database);
+  items.forEach((it, i) => { it.label = rotulos[i].name; });
+
   // Normalized series (base 100 at yearStart) — on each product's own measure, so a
   // value-less herd traces real growth instead of a flat-zero line.
   const normSeries = items.map(it => ({
-    name: it.prod.name,
+    name: it.label,
     color: it.color,
     data: it.win.map(d => ({ y: d.y, v: it.m0 ? ((d[it.mkey] || 0) / it.m0) * 100 : 0 })),
   }));
@@ -118,7 +126,7 @@ function ViewProductCompare({ summary, conventions, database }) {
           {items.map(it => (
             <span key={it.code} className="pc-legend-item">
               <span className="pc-legend-dot" style={{ background: it.color }}></span>
-              {it.prod.name}
+              {it.label}
             </span>
           ))}
         </div>
@@ -152,7 +160,7 @@ function ViewProductCompare({ summary, conventions, database }) {
                 <tr key={it.code}>
                   <td>
                     <span className="pc-row-dot" style={{ background: it.color }}></span>
-                    {it.prod.name}
+                    {it.label}
                   </td>
                   <td className="num tnum">{it.isStock ? window.formatCountQty(it.qT, conv) : window.formatValue(it.vT * 1e6, conv)}</td>
                   <td className="num tnum" style={{ color: it.accum >= 0 ? 'var(--ok)' : 'var(--err)' }}>

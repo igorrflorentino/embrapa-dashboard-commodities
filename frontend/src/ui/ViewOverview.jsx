@@ -222,7 +222,12 @@ function ViewOverview({ families, summary, database, conventions }) {
               Nenhum produto selecionado nos filtros.
             </p>
           ) : (
-            <window.Donut data={filtered.topProducts} size={180} valueKey="share" />
+            // O Donut rotula cada fatia por `name`. Sem desambiguar, duas metades do
+            // PEVS que dividem o nome viram duas fatias com o MESMO rótulo — "Madeira em
+            // tora 57%" e "Madeira em tora 7%" — e o leitor não sabe qual é qual. Não
+            // funde nada (a chave é o índice), mas informa igualmente mal.
+            <window.Donut data={window.labelProductRows(filtered.topProducts, database)}
+                          size={180} valueKey="share" />
           )}
         </div>
       </div>

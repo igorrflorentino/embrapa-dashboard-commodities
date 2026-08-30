@@ -950,6 +950,30 @@ def test_products_lists_distinct_codes_with_unit_and_family():
     assert params == []
 
 
+def test_products_adds_the_sidra_table_only_when_requested():
+    """A TABELA SIDRA — o terceiro componente da identidade `(banco, tabela, código)` — só
+    entra quando pedida, porque só os marts de bancos multi-tabela a carregam.
+
+    Quem exibe precisa dela: madeira, lenha e carvão existem nas DUAS tabelas do PEVS com o
+    MESMO nome, e uma tela que rotule as linhas pelo nome mostra duas entradas idênticas —
+    foi o que restou no Donut "Participação por produto" e no comparativo entre produtos.
+    Sem esta asserção, remover a coluna do select passava a suíte inteira."""
+    ligada, _ = sql.products(
+        "p.serving.serving_pevs_annual",
+        code_column="product_code",
+        name_column="product_description",
+        with_sidra_tabela=True,
+    )
+    assert "any_value(sidra_tabela) as sidra_tabela" in ligada
+
+    # E desligada por padrão: um mart de tabela única não tem a coluna, e um select fixo
+    # quebraria o banco inteiro.
+    desligada, _ = sql.products(
+        "p.serving.serving_comex_annual", code_column="ncm_code", name_column="ncm_description"
+    )
+    assert "sidra_tabela" not in desligada
+
+
 def test_products_adds_measure_kind_only_when_requested():
     """The livestock mart (serving_ppm_annual) carries measure_kind (stock|flow); the
     seam opts in so the UI can tell the value-less herd from animal-product flows."""
@@ -2411,6 +2435,42 @@ def test_fetch_products_requests_measure_kind_for_livestock(monkeypatch):
 
     assert "p.serving.serving_ppm_annual" in recorded["query"]
     assert "any_value(measure_kind) as measure_kind" in recorded["query"]
+
+
+@pytest.mark.parametrize(
+    "source, mart, pede_tabela",
+    [
+        ("ibge_pevs", "serving_pevs_annual", True),
+        ("ibge_ppm", "serving_ppm_annual", True),
+        ("ibge_pam", "serving_pam_annual", False),
+        ("mdic_comex", "serving_comex_annual", False),
+    ],
+)
+def test_fetch_products_requests_the_sidra_table_for_multi_table_bancos(
+    monkeypatch, source, mart, pede_tabela
+):
+    """A TABELA viaja na lista de produtos dos bancos MULTI-TABELA, e só neles.
+
+    É o elo que faltava: madeira, lenha e carvão existem nas duas tabelas do PEVS com o
+    mesmo nome, e sem a coluna o Donut "Participação por produto" e o comparativo entre
+    produtos mostram duas entradas idênticas. Num banco de tabela única a coluna não existe
+    no mart, e pedi-la quebraria a consulta — daí a varredura cobrir os dois lados."""
+    pytest.importorskip("flask_caching")
+    from embrapa_dashboard.serving import gateway
+
+    recorded = {}
+    monkeypatch.setattr(
+        gateway, "run_query", lambda query, params, **kw: recorded.update(query=query) or "df"
+    )
+    monkeypatch.setattr(gateway, "get_settings", lambda: _isolated_settings())
+    app, cache = _bind_simplecache()
+    with app.app_context():
+        cache.clear()
+        gateway.fetch_products(source)
+
+    assert f"p.serving.{mart}" in recorded["query"]
+    tem = "any_value(sidra_tabela) as sidra_tabela" in recorded["query"]
+    assert tem is pede_tabela, f"{source}: pediu a tabela={tem}, esperado={pede_tabela}"
 
 
 def test_fetch_product_timeseries_uses_source_default_value_column(monkeypatch):
