@@ -22,7 +22,7 @@
 -- Each "Aplicar" in the Curadoria panel appends ONE immutable row to
 -- research_inputs.code_industrialization_log (written by the Python data-access
 -- layer, never by dbt) — the Gold tables are NEVER overwritten. This view derives
--- the timeline per (source, code):
+-- the timeline per (source, code, sidra_tabela):
 --   valid_from = edited_at of this version
 --   valid_to   = LEAD(edited_at) — when the next edit superseded it (NULL = open)
 --   is_current = valid_to IS NULL
@@ -30,10 +30,11 @@
 -- Materialized as a VIEW on purpose: the log is small, and a view means a fresh
 -- INSERT from the curation panel is visible to the UI immediately, with no dbt
 -- rebuild. The dashboard LEFT JOINs the Gold code universe (DISTINCT codes) to
--- this live dim on (source, code) filtered to is_current — an unclassified code
+-- this live dim on (source, code, sidra_tabela) filtered to is_current — an unclassified code
 -- surfaces as "a classificar" (the dynamic worklist).
 --
--- Grain: one row per (source, code, version).
+-- Grain: one row per (source, code, sidra_tabela, version). A tabela entra na chave
+-- porque PEVS e PPM unem duas tabelas SIDRA sob um token de fonte só.
 -- ────────────────────────────────────────────────────────────────────────────
 
 with log as (
@@ -76,6 +77,8 @@ versioned as (
 select
     source,
     code,
+    -- Ver dim_produto_catalog: parte da identidade do produto.
+    sidra_tabela,
     version,
     industrialization_level,
     note,
