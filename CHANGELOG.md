@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.46.4] - 2026-08-30
+
+### Corrigido
+
+- **O guarda do invariante desta migração estava morto, e reportava verde.** O check
+  `Shared code across SIDRA tables` do `embrapa doctor` — que pergunta se um código existe
+  nas DUAS tabelas SIDRA de um banco — consultava a coluna `origem`, removida do Gold na
+  v1.46.1. O BigQuery devolvia `400 Unrecognized name`, o `except Exception` engolia, e o
+  doctor imprimia `✓ Shared code across SIDRA tables │ skipped: 400 Unrecognized name`.
+  Ficou assim por três versões: o guarda do invariante da própria migração, cegado por ela.
+  Num relatório de 27 ✓, um `skipped:` não se lê.
+
+  Três defeitos empilhados, todos corrigidos:
+
+  - **A consulta.** O discriminador deixou de ser um campo por banco (`origem` para o PEVS,
+    `measure_kind` para o PPM — prosa nos dois casos) e passou a ser a constante
+    `_COLUNA_DISCRIMINADORA = "sidra_tabela"`. A identidade de um produto é
+    `(banco, tabela, código)`; um campo por banco tornava representável exatamente o erro
+    que a v1.46.x foi corrigir. Como o `try` envolvia o laço inteiro e o PEVS vinha
+    primeiro, **as duas metades do check estavam mortas**, não só a dele.
+  - **A política de degradação, nos SEIS checks que a usavam.** `_skip_ou_quebra` separa o
+    que o `except Exception` confundia: ausência de dado (`NotFound`, `Forbidden`, sem ADC,
+    credencial expirada) continua verde com `skipped:`; qualquer outra exceção — consulta
+    que não compila, `TypeError`, `KeyError` — vira **vermelho** com `CHECK QUEBRADO` e o
+    nome do tipo. Vale também para os checks *advisory*: "advisory" governa o que o check
+    faz quando *consegue* julgar.
+  - **O teste que devia ter pego.** `test_shared_code_query_groups_by_the_discriminator`
+    percorria `_BANCOS_MULTI_TABELA` e afirmava que o SQL continha o discriminador tirado
+    *dessa mesma constante* — uma tautologia que passava verde com qualquer nome, inclusive
+    um inexistente. A âncora agora é externa ao doctor: o próprio `.sql` do modelo Gold,
+    mantido pelo pipeline e não pelo teste, com os comentários removidos antes da busca
+    (a palavra `origem` sobrevive na prosa de vários modelos e um grep cru passaria).
+
+- **`IBGE silvicultura variable codes`** nomeava `origem='silvicultura'` na mensagem de
+  falha — texto que um operador lê justamente no momento de confusão. Agora diz
+  `sidra_tabela='291' (silvicultura)`.
+
+### Adicionado
+
+- **Varredura por AST contra o atalho voltar.** `test_no_check_returns_a_literal_green_from_a_broad_except`
+  percorre o módulo inteiro e reprova qualquer `CheckResult(..., True, ...)` devolvido de
+  dentro de um `except Exception`. Um check NOVO com o mesmo atalho falha no CI em vez de
+  morrer em silêncio. Verde vindo de um `except` **estreito** continua permitido — o check
+  `GCS bucket` responde `except NotFound` com um veredito real ("será criado na primeira
+  ingestão"), que é julgar, não engolir.
+- Seção **"Um ✓ verde do `doctor` que diz `skipped:`"** no runbook de operações,
+  explicando as duas cores e por que a distinção existe.
+
+### Notas
+
+- **Achado latente, não corrigido aqui** (registrado na docstring do check e apontado pela
+  sua mensagem de falha): a view `dim_produto_visibility` é única em
+  `(source, code, sidra_tabela)`, mas o predicado que a consome casa só `source` e `code` —
+  nos dois lados, a macro `hidden_code_predicate` e o espelho Python
+  `serving/sql.visibility_clause`. Se um dia um código existir nas duas tabelas de um banco,
+  esconder uma metade esconderá as duas, sem aviso. Hoje é inofensivo (os códigos são
+  disjuntos, medido em 2026-08-30) e o check agora avisa no instante em que deixar de ser.
+  Fechar isso exige tratamento por banco — `comex`/`comtrade`/`pam` não têm `sidra_tabela` —
+  e é decisão de escopo próprio.
+
+---
+
 ## [1.46.3] - 2026-08-30
 
 ### Corrigido
