@@ -1034,3 +1034,55 @@ def test_an_absent_group_registry_does_not_block_the_first_product(monkeypatch):
         invalidate_cache=False,
     )
     client.query.assert_called()
+
+
+# ── tabela_do_produto: o catálogo é a fonte de verdade da identidade ──────────
+def test_tabela_do_produto_aceita_token_de_banco_e_de_fonte(monkeypatch):
+    """Os registros por-código falam `ibge_pevs` (fonte); o catálogo fala `pevs` (banco).
+    Sem a normalização a busca não acha nada, devolve None e a escrita cai na sentinela —
+    silenciosamente, que é o modo de falha que este helper existe para evitar."""
+    from embrapa_dashboard.serving import curation
+
+    vistos = []
+
+    def _fake(bq, table_fqn, codigo_produto, banco):
+        vistos.append(banco)
+        return "291"
+
+    monkeypatch.setattr(curation, "_current_sidra_tabela", _fake)
+    monkeypatch.setattr(curation, "_bq_client", lambda cfg: object())
+
+    for token in ("pevs", "ibge_pevs"):
+        assert curation.tabela_do_produto(token, "3457", settings=_settings()) == "291"
+    assert vistos == ["pevs", "pevs"], f"token de fonte não normalizado: {vistos}"
+
+
+def test_tabela_do_produto_devolve_none_sem_entrada(monkeypatch):
+    """Banco de uma tabela só (ou código sem catálogo): None é o certo — o `ifnull` da
+    chave colapsa na sentinela, e para esses bancos a coluna não carrega informação."""
+    from embrapa_dashboard.serving import curation
+
+    monkeypatch.setattr(curation, "_current_sidra_tabela", lambda *a, **k: None)
+    monkeypatch.setattr(curation, "_bq_client", lambda cfg: object())
+
+    assert curation.tabela_do_produto("comex", "44011000", settings=_settings()) is None
+
+
+def test_tabela_do_produto_reusa_o_cliente_recebido(monkeypatch):
+    """Os escritores já têm um cliente; abrir outro por escrita seria desperdício e,
+    nos testes, exigiria dublar duas vezes o mesmo BigQuery."""
+    from embrapa_dashboard.serving import curation
+
+    sentinela = object()
+    recebidos = []
+    monkeypatch.setattr(
+        curation, "_current_sidra_tabela", lambda bq, *a: recebidos.append(bq) or "289"
+    )
+
+    def _nao_chamar(cfg):
+        raise AssertionError("abriu um cliente novo tendo recebido um")
+
+    monkeypatch.setattr(curation, "_bq_client", _nao_chamar)
+
+    curation.tabela_do_produto("pevs", "3405", settings=_settings(), client=sentinela)
+    assert recebidos == [sentinela]

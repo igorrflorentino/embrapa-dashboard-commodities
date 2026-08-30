@@ -115,8 +115,7 @@ def _e_log_de_produto(stmt: str) -> bool:
 def _inserts(texto: str) -> list[str]:
     """Cada `insert into ... (colunas)` do arquivo, achatado."""
     return [
-        " ".join(m.split())
-        for m in re.findall(r"insert into[^)]*\([^)]*\)", texto, re.I | re.S)
+        " ".join(m.split()) for m in re.findall(r"insert into[^)]*\([^)]*\)", texto, re.I | re.S)
     ]
 
 
@@ -145,11 +144,31 @@ def test_o_tombstone_preserva_a_tabela_da_entrada() -> None:
     assert "_current_sidra_tabela" in fonte, "o tombstone não preserva a tabela da entrada"
 
 
-def test_os_registros_por_codigo_resolvem_a_tabela_pelo_catalogo() -> None:
-    """Nível e ciclo de vida não guardam a identidade — o catálogo guarda. Os dois têm de
-    perguntar a ele, senão gravam na sentinela."""
-    from embrapa_dashboard.serving import attribute_engineering, catalog_lifecycle
+def test_o_ciclo_de_vida_grava_a_tabela_que_o_catalogo_resolveu(monkeypatch) -> None:
+    """Comportamental de propósito: a versão anterior deste teste procurava o NOME
+    `tabela_do_produto` no texto do módulo, e a linha de `import` sobrevivia — trocar a
+    chamada por `None` passava verde. O que prende é o parâmetro que chega ao BigQuery.
 
-    for mod in (attribute_engineering, catalog_lifecycle):
-        fonte = inspect.getsource(mod)
-        assert "tabela_do_produto" in fonte, f"{mod.__name__} não resolve a tabela pelo catálogo"
+    Nível e ciclo de vida não guardam a identidade; o catálogo guarda. Os dois têm de
+    perguntar a ele, senão gravam na sentinela e o evento marca outro produto.
+    """
+    from unittest.mock import MagicMock
+
+    from embrapa_dashboard.serving import catalog_lifecycle, curation
+
+    monkeypatch.setattr(curation, "tabela_do_produto", lambda *a, **k: "291")
+    bq = MagicMock()
+    catalog_lifecycle._insert_lifecycle_event(
+        bq,
+        "proj.ds.log",
+        element_kind="commodity",
+        banco="pevs",
+        code="3457",
+        status="descontinuado",
+        reason=None,
+        purge_note=None,
+        edited_by="a@x",
+        change_id="c1",
+    )
+    params = {p.name: p.value for p in bq.query.call_args.kwargs["job_config"].query_parameters}
+    assert params["sidra_tabela"] == "291", "o evento não levou a tabela resolvida"

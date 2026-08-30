@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.39.1] - 2026-08-29
+
+### Corrigido
+
+- **A troca de chave da v1.39.0 varreu as LEITURAS e deixou CINCO caminhos de escrita para
+  trás.** Todos gravavam sem a tabela, então cairiam na sentinela — uma identidade à parte
+  que não corresponde a dado nenhum, e nenhum deles daria erro:
+  - `remove_produto_catalog` — o tombstone marcaria a sentinela e **a entrada real seguiria
+    ativa**, com o delete reportando sucesso;
+  - `record_code_industrialization` — a classificação abriria uma **linhagem SCD2 paralela**,
+    órfã das versões anteriores do mesmo produto;
+  - os três escritores de ciclo de vida (via o funil `_insert_lifecycle_event`) — o evento
+    marcaria outro produto.
+
+  Nada corrompeu: as leituras estavam certas e a falha só apareceria na próxima edição de
+  curadoria. Os três agora resolvem a tabela pelo catálogo, que é a fonte de verdade da
+  identidade (`curation.tabela_do_produto`, aceitando token de banco ou de fonte).
+
+### Adicionado
+
+- **Varredura do lado da ESCRITA** em `tests/test_chave_produto.py`: todo `insert` num log
+  de produto tem de nomear `sidra_tabela`, o tombstone tem de preservar a tag guardada, e o
+  evento de ciclo de vida tem de levar a tabela que o catálogo resolveu. Ficam de fora, por
+  critério de coluna e não de arquivo: a allowlist de editores, o log de agrupamentos (um
+  grupo não é produto) e o de aduana × fluxo.
+
+### Verificação
+
+Prova de ponta a ponta em produção: regravar a classificação do `3457` com o **mesmo** nível
+(latest-wins, nenhuma decisão muda) gravou `sidra_tabela='291'` — antes teria ido para a
+sentinela.
+
+Uma injeção passou verde e o defeito era o teste — **quinta vez no mesmo dia**: ele
+procurava o nome `tabela_do_produto` no TEXTO do módulo, e a linha de `import` sobrevivia a
+trocar a chamada por `None`. Virou teste de comportamento, sobre o parâmetro que chega ao
+BigQuery.
+
+---
+
 ## [1.39.0] - 2026-08-29
 
 ### Alterado

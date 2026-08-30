@@ -304,8 +304,13 @@ def _registered_group_ids(cfg: Settings, bq: bigquery.Client) -> set[str]:
 
 # `ibge_pevs` (o token de FONTE, usado pelos registros por-código) → `pevs` (o token de
 # BANCO, usado pelo catálogo). Espelha webapi.seam_curation._BANCO_TO_SOURCE ao contrário.
-_SOURCE_PARA_BANCO = {"ibge_pevs": "pevs", "ibge_pam": "pam", "ibge_ppm": "ppm",
-                      "mdic_comex": "comex", "un_comtrade": "comtrade"}
+_SOURCE_PARA_BANCO = {
+    "ibge_pevs": "pevs",
+    "ibge_pam": "pam",
+    "ibge_ppm": "ppm",
+    "mdic_comex": "comex",
+    "un_comtrade": "comtrade",
+}
 
 
 def tabela_do_produto(
