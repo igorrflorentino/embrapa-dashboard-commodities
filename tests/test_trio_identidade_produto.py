@@ -115,12 +115,16 @@ def test_o_join_do_agrupamento_casa_o_trio() -> None:
 def test_o_gate_de_visibilidade_casa_o_trio_nos_dois_lados() -> None:
     """A macro dbt e o espelho Python compõem o MESMO predicado. Um lado casar a tabela e o
     outro não deixaria metade do dashboard aplicando a regra nova e metade a velha."""
-    from embrapa_dashboard.config import get_settings
+    from embrapa_dashboard.config import Settings
     from embrapa_dashboard.serving import sql as sqlbuild
 
     macro = _sem_comentarios(
         (_RAIZ / "dbt" / "macros" / "hidden_code_predicate.sql").read_text(encoding="utf-8")
     )
     assert "_vis_tabela" in macro
-    clause = sqlbuild.visibility_clause(get_settings(), "pevs", "product_code")
+    # `_env_file=None`: o CI não tem `.env`, e `get_settings()` levantaria ValidationError —
+    # o teste mediria a ausência do arquivo, não o predicado. Mesmo padrão do
+    # `_isolated_settings` em test_serving.py.
+    cfg = Settings(_env_file=None, gcp_project_id="p")  # type: ignore[call-arg]
+    clause = sqlbuild.visibility_clause(cfg, "pevs", "product_code")
     assert "_vis_tabela" in clause
