@@ -35,8 +35,16 @@ with ppm as (
         state_acronym,
         product_code,
         family,
+        -- A TABELA entra no GRÃO, não é levantada com `any_value`. Ela era — e `any_value`
+        -- sobre um discriminador é a assinatura do defeito: declara "sei que isto varia e
+        -- estou colapsando". Com um código nas duas tabelas do PPM as linhas seriam SOMADAS
+        -- e a metade exibida seria arbitrária. O irmão `serving_pevs_annual` já agrupava
+        -- certo; era a mesma regra aplicada a um e não ao outro.
+        tabela,
         any_value(product_description)  as product_description,
-        any_value(sidra_tabela)         as sidra_tabela,
+        -- `measure_kind` CONTINUA levantado, e isso é correto: ele é DERIVADO da tabela
+        -- (silver_ibge_ppm) e portanto constante dentro do grupo agora que a tabela está no
+        -- grão. Guardado por `assert_ppm_measure_kind_matches_tabela`.
         any_value(measure_kind)         as measure_kind,
         any_value(base_unit)            as base_unit,
         any_value(unit_native)          as unit_native,
@@ -60,7 +68,7 @@ with ppm as (
         max(last_refresh)               as last_refresh
     from {{ ref('gold_ppm_production') }}
     where {{ hidden_code_predicate('ppm', 'product_code') }}
-    group by reference_year, state_acronym, product_code, family
+    group by reference_year, state_acronym, product_code, tabela, family
 
 ),
 
@@ -68,7 +76,7 @@ ppm_codes as (
 
     -- A tabela entra no distinct porque o join abaixo passou a usá-la: sem ela a CTE
     -- colapsaria as duas metades num código só e o join perderia a chave que veio buscar.
-    select distinct product_code, sidra_tabela
+    select distinct product_code, tabela
     from ppm
 
 ),
@@ -96,7 +104,7 @@ ppm_xwalk as (
     join {{ ref('dim_produto_catalog') }} x
         on x.source = 'ppm'
         and c.product_code = x.codigo_produto
-        and c.sidra_tabela = x.sidra_tabela
+        and c.tabela = x.tabela
 
 )
 
@@ -111,7 +119,7 @@ select
     x.agrupamento_nome,
     p.product_code,
     p.product_description,
-    p.sidra_tabela,
+    p.tabela,
     p.measure_kind,
     p.family,
     p.base_unit,

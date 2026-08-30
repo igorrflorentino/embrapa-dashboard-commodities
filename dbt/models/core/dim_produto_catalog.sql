@@ -9,7 +9,7 @@
 -- source code (`codigo_produto`; no prefixes). Written append-only by the
 -- dashboard's admin editor (the Python data-access layer, never dbt) to
 -- research_inputs.produto_catalog_log; this view derives the CURRENT catalog = the
--- latest row per (codigo_produto, banco, sidra_tabela), keeping only active rows (a row with
+-- latest row per (codigo_produto, banco, tabela), keeping only active rows (a row with
 -- active=false is a tombstone — the entry has LEFT the catalog, so its Gold data
 -- becomes an orphan, handled non-destructively downstream).
 --
@@ -25,7 +25,7 @@
 -- the first write / the cutover backfill; a fresh project must backfill it (fail loud
 -- if absent — never silently fall back to the retired seed).
 --
--- ⚠ Grain: one row per (codigo_produto, banco, sidra_tabela) — a TABELA entra na chave
+-- ⚠ Grain: one row per (codigo_produto, banco, tabela) — a TABELA entra na chave
 -- porque PEVS e PPM unem duas tabelas SIDRA sob um token de banco só. Because every code is exact (no
 -- prefixes), a Gold code resolves to AT MOST one commodity, so the cross-source join
 -- cannot fan out — guarded at build time by the unique_combination_of_columns(source,
@@ -50,7 +50,10 @@ with log as (
         -- Parte da identidade do produto (banco + TABELA + código): PEVS e PPM unem duas
         -- tabelas SIDRA sob um token só. Precisa chegar até aqui porque o latest-wins
         -- particiona por ela — ver o macro chave_produto.
-        sidra_tabela
+        -- Padrão do banco quando o log histórico não traz tabela (comex/comtrade/pam
+        -- nasceram sem ela). ÚNICO ponto do projeto que trata a ausência; daqui para
+        -- baixo o trio é NÃO-NULO em todas as camadas.
+        {{ tabela_com_padrao('tabela', 'banco') }} as tabela
     from {{ source('research_inputs', 'produto_catalog_log') }}
 
 ),
@@ -81,7 +84,7 @@ select
     banco           as source,
     codigo_produto,
     -- Parte da identidade: (banco, TABELA, código).
-    sidra_tabela,
+    tabela,
     descricao_produto,
     -- The lifecycle, as the two EFFECTIVE coded axes (legacy prose already translated by
     -- the catalog_lifecycle macros). ciclo_de_vida is kept for history/audit only.

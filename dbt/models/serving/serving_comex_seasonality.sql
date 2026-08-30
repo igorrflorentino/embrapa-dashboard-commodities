@@ -30,6 +30,10 @@ with comex as (
         reference_month,
         flow,
         ncm_code,
+        -- A TABELA no grão, como em todos os bancos. Constante aqui (banco de UMA tabela
+        -- só), e é justamente por isso que precisa estar: com o trio valendo nos cinco, a
+        -- mart tem a MESMA forma em todos e o consumidor não ramifica por banco.
+        tabela,
         state_acronym,
         any_value(ncm_description)  as ncm_description,
         sum(val_yearfx_usd)         as val_yearfx_usd,
@@ -38,7 +42,7 @@ with comex as (
         max(last_refresh)           as last_refresh
     from {{ ref('gold_comex_flows') }}
     where {{ hidden_code_predicate('comex', 'ncm_code') }}
-    group by reference_year, reference_month, flow, ncm_code, state_acronym
+    group by reference_year, reference_month, flow, ncm_code, tabela, state_acronym
 
 )
 
@@ -50,6 +54,7 @@ select
     d.quarter,
     c.flow,
     c.ncm_code,
+    c.tabela,
     c.state_acronym,
     c.ncm_description,
     c.val_yearfx_usd,

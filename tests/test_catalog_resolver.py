@@ -64,7 +64,7 @@ def test_catalog_codes_returned_when_flag_on(settings_factory):
     # anterior ("not in sql") protegia contra uma instalação onde a coluna não existisse;
     # essa garantia migrou para o ESQUEMA, e foi este teste que expôs o furo quando a
     # coluna foi adicionada às tabelas vivas mas não às constantes de criação.
-    assert "ifnull(sidra_tabela" in sql
+    assert "ifnull(tabela" in sql
 
 
 class _FakeBQNoIngestaoColumn:
@@ -140,24 +140,24 @@ def test_safety_cap_falls_back_to_env(settings_factory):
     assert out == ENV
 
 
-def test_ppm_routes_by_sidra_tabela(settings_factory):
-    """PPM passes sidra_tabela → the query filters + binds the discriminator."""
+def test_ppm_routes_by_tabela(settings_factory):
+    """PPM passes tabela → the query filters + binds the discriminator."""
     settings = settings_factory(catalog_authoritative_ingestion=True)
     fake = _FakeBQ(rows=_rows("2670", "2675"))
     out = catalog_resolver.resolve_product_codes(
-        settings, "ppm", env_fallback=ENV, sidra_tabela="3939", bq_client=fake
+        settings, "ppm", env_fallback=ENV, tabela="3939", bq_client=fake
     )
     assert out == ["2670", "2675"]
     sql, job_config = fake.calls[0]
-    assert "sidra_tabela = @sidra_tabela" in sql
+    assert "tabela = @tabela" in sql
     names = {p.name for p in job_config.query_parameters}
-    assert names == {"banco", "sidra_tabela"}
+    assert names == {"banco", "tabela"}
 
 
 def test_pevs_extraction_half_also_matches_untagged_entries(settings_factory):
     """An UNTAGGED pevs entry belongs to the EXTRACTION half.
 
-    Every pevs entry predates the sidra_tabela column — the tag only became meaningful when
+    Every pevs entry predates the tabela column — the tag only became meaningful when
     silvicultura (t291) was ingested on 2026-08-29. A strict `=` would drop all of them and
     the extraction ingest would quietly resolve to nothing, which is the exact failure the
     tag exists to prevent. Extraction is both the historical meaning of an untagged entry
@@ -165,10 +165,10 @@ def test_pevs_extraction_half_also_matches_untagged_entries(settings_factory):
     settings = settings_factory(catalog_authoritative_ingestion=True)
     fake = _FakeBQ(rows=_rows("3405"))
     catalog_resolver.resolve_product_codes(
-        settings, "pevs", env_fallback=ENV, sidra_tabela="289", bq_client=fake
+        settings, "pevs", env_fallback=ENV, tabela="289", bq_client=fake
     )
     sql, _ = fake.calls[0]
-    assert "sidra_tabela = @sidra_tabela or sidra_tabela is null" in sql
+    assert "tabela = @tabela or tabela is null" in sql
 
 
 def test_pevs_silviculture_half_is_strict(settings_factory):
@@ -177,7 +177,7 @@ def test_pevs_silviculture_half_is_strict(settings_factory):
     settings = settings_factory(catalog_authoritative_ingestion=True)
     fake = _FakeBQ(rows=_rows("3457"))
     catalog_resolver.resolve_product_codes(
-        settings, "pevs", env_fallback=ENV, sidra_tabela="291", bq_client=fake
+        settings, "pevs", env_fallback=ENV, tabela="291", bq_client=fake
     )
     sql, _ = fake.calls[0]
     assert "is null" not in sql
@@ -189,7 +189,7 @@ def test_ppm_never_defaults_an_untagged_entry(settings_factory):
     settings = settings_factory(catalog_authoritative_ingestion=True)
     fake = _FakeBQ(rows=_rows("2670"))
     catalog_resolver.resolve_product_codes(
-        settings, "ppm", env_fallback=ENV, sidra_tabela="3939", bq_client=fake
+        settings, "ppm", env_fallback=ENV, tabela="3939", bq_client=fake
     )
     sql, _ = fake.calls[0]
     assert "is null" not in sql

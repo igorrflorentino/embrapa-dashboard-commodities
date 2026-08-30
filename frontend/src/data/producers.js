@@ -141,7 +141,7 @@ function activeAxisParams() {
     flow: um('flow'),
     customs: um('customs'),
     market: um('market'),
-    sidraTabela: um('sidraTabela'),
+    tabela: um('tabela'),
     niveis: niveis && niveis.length ? niveis.join(',') : undefined,
   };
 }

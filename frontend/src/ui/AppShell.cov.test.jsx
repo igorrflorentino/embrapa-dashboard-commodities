@@ -1115,18 +1115,18 @@ describe('citação — o eixo origem da PEVS', () => {
   // ('extrativa'/'silvicultura') depois que o dado passou a carregar o id da tabela.
 
   it('nomeia a metade escolhida', () => {
-    const { container } = render(<AppShell {...pevsProps({ sidraTabela: '291' })} />);
+    const { container } = render(<AppShell {...pevsProps({ tabela: '291' })} />);
     expect(openAndPick(container, 'Consulta detalhada')).toContain('Origem: Silvicultura (plantada)');
   });
 
   it('cala quando o painel cobre as duas — mas só porque "ambas" É o total da pesquisa', () => {
-    const { container } = render(<AppShell {...pevsProps({ sidraTabela: 'all' })} />);
+    const { container } = render(<AppShell {...pevsProps({ tabela: 'all' })} />);
     expect(openAndPick(container, 'Consulta detalhada')).not.toContain('Origem:');
   });
 
   it('não aparece num banco que não tem a dimensão', () => {
-    window.sidraTabelaOptionsFor = () => null;  // banco sem a dimensão
-    const { container } = render(<AppShell {...pevsProps({ sidraTabela: '291' })} />);
+    window.tabelaOptionsFor = () => null;  // banco sem a dimensão
+    const { container } = render(<AppShell {...pevsProps({ tabela: '291' })} />);
     expect(openAndPick(container, 'Consulta detalhada')).not.toContain('Origem');
   });
 });

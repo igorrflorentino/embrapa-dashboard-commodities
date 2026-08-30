@@ -126,7 +126,7 @@ models:
       immediately. NOT gated — the live SOT.
     tests:
       # The composite key (codigo_produto, source) is unique in the CURRENT catalog
-      # (latest-wins per (codigo_produto, banco, sidra_tabela)). Because codes are exact, a Gold code
+      # (latest-wins per (codigo_produto, banco, tabela)). Because codes are exact, a Gold code
       # resolves to at most one commodity — no cross-source fan-out — also guarded by the
       # unique_combination on gold_produto_agrupamento's (source, code).
       - dbt_utils.unique_combination_of_columns:
@@ -134,7 +134,7 @@ models:
             combination_of_columns:
               - codigo_produto
               - source
-              - sidra_tabela
+              - tabela
     columns:
       - name: codigo_produto
         description: "The EXACT source code the researcher registered — half the catalog key."
@@ -182,7 +182,7 @@ models:
   - name: dim_produto_visibility
     description: |
       The HIDDEN-code registry for the Ciclo de Vida visibility gate (F7). Emits the
-      (source, code, sidra_tabela) of commodities a researcher set to "Fazer Ingestão mas
+      (source, code, tabela) of commodities a researcher set to "Fazer Ingestão mas
       deixar indisponível" (latest-wins, active). The gate is a NOT EXISTS predicate over
       this view (macros/hidden_code_predicate + serving/sql.visibility_clause), applied at
       every researcher-facing Gold read (serving marts, quality donut, cross-source picker).
@@ -199,7 +199,7 @@ models:
             combination_of_columns:
               - source
               - code
-              - sidra_tabela
+              - tabela
     columns:
       - name: source
         description: "Short source token (pevs/pam/ppm/comex/comtrade) — the banco."
@@ -207,9 +207,15 @@ models:
       - name: code
         description: "The hidden commodity's exact code (matched by equality: code = v.code)."
         tests: [not_null]
-      - name: sidra_tabela
+      - name: tabela
+        # NOT NULL desde v1.47.0: `tabela_com_padrao` completa os bancos de uma tabela só
+        # (comex/comtrade/pam nasceram sem a coluna no log append-only). Para pevs/ppm NÃO
+        # há padrão — adivinhar a metade seria inventar dado —, então um nulo aqui significa
+        # uma linha VIVA de banco multi-tabela sem tabela, e tem de quebrar o build em vez
+        # de vazar como uma identidade incompleta. Medido em 2026-08-30: nenhuma existe.
+        tests: [not_null]
         description: |
-          A tabela SIDRA da metade escondida, nos bancos multi-tabela (pevs: 289 extração /
+          A tabela da metade escondida, nos bancos multi-tabela (pevs: 289 extração /
           291 silvicultura; ppm: 3939 rebanho / 74 produção animal). Parte da identidade do
           produto — (banco, tabela, código) —, e desde a v1.46.5 o predicado do gate a casa:
           esconder a metade extração deixa a silvicultura visível. NULL é CORINGA (esconde
@@ -227,9 +233,9 @@ models:
       (source, code). VIEW in the SERVING dataset so a fresh curation INSERT is
       live immediately. Disabled by default —
       `dbt build --vars 'enable_curation: true'`. The SCD2 window guarantees at
-      most one is_current row per (source, code, sidra_tabela).
+      most one is_current row per (source, code, tabela).
     tests:
-      # At most ONE current classification per (source, code, sidra_tabela) — a tabela entra
+      # At most ONE current classification per (source, code, tabela) — a tabela entra
       # na chave porque um banco pode unir duas tabelas SIDRA. The SCD2
       # invariant asserted above. Disabled with the model unless enable_curation.
       - dbt_utils.unique_combination_of_columns:
@@ -237,7 +243,7 @@ models:
             combination_of_columns:
               - source
               - code
-              - sidra_tabela
+              - tabela
           config:
             where: "is_current"
     columns:
@@ -332,38 +338,38 @@ unit_tests:
           # The append-only log never rewrites these, so the gate must keep reading them
           # correctly FOREVER — via the catalog_visibilidade macro's translation.
           # disponível → NOT hidden
-          - {codigo_produto: '11', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c1', sidra_tabela: '289'}
+          - {codigo_produto: '11', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c1', tabela: '289'}
           # active + indisponível → hidden
-          - {codigo_produto: '22', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c2', sidra_tabela: '289'}
+          - {codigo_produto: '22', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c2', tabela: '289'}
           # tombstone (active=false) → NOT hidden (left the catalog; orphan path handles it)
-          - {codigo_produto: '33', banco: 'comex', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', ingestao: null, visibilidade: null, active: false, edited_at: '2024-01-01 00:00:00', change_id: 'c3', sidra_tabela: '289'}
+          - {codigo_produto: '33', banco: 'comex', ciclo_de_vida: 'Fazer Ingestão mas deixar indisponível', ingestao: null, visibilidade: null, active: false, edited_at: '2024-01-01 00:00:00', change_id: 'c3', tabela: '289'}
           # latest-wins ACROSS the migration: a legacy 'disponível' row superseded by a
           # NEW coded 'oculto' row → hidden. This is the exact path a produto takes the
           # first time it is edited after the split.
-          - {codigo_produto: '44', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c4', sidra_tabela: '289'}
-          - {codigo_produto: '44', banco: 'pevs', ciclo_de_vida: null, ingestao: 'ativa', visibilidade: 'oculto', active: true, edited_at: '2024-06-01 00:00:00', change_id: 'c5', sidra_tabela: '289'}
+          - {codigo_produto: '44', banco: 'pevs', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c4', tabela: '289'}
+          - {codigo_produto: '44', banco: 'pevs', ciclo_de_vida: null, ingestao: 'ativa', visibilidade: 'oculto', active: true, edited_at: '2024-06-01 00:00:00', change_id: 'c5', tabela: '289'}
           # ── NEW coded rows.
           # visivel → NOT hidden
-          - {codigo_produto: '55', banco: 'pevs', ciclo_de_vida: null, ingestao: 'ativa', visibilidade: 'visivel', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c6', sidra_tabela: '289'}
+          - {codigo_produto: '55', banco: 'pevs', ciclo_de_vida: null, ingestao: 'ativa', visibilidade: 'visivel', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c6', tabela: '289'}
           # oculto → hidden
-          - {codigo_produto: '66', banco: 'comex', ciclo_de_vida: null, ingestao: 'ativa', visibilidade: 'oculto', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c7', sidra_tabela: '289'}
+          - {codigo_produto: '66', banco: 'comex', ciclo_de_vida: null, ingestao: 'ativa', visibilidade: 'oculto', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c7', tabela: '289'}
           # The AXES ARE INDEPENDENT: paused ingestion does NOT hide. A frozen series still
           # shows its history — that is the whole point of splitting the axes.
-          - {codigo_produto: '77', banco: 'comex', ciclo_de_vida: null, ingestao: 'pausada', visibilidade: 'visivel', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c8', sidra_tabela: '289'}
+          - {codigo_produto: '77', banco: 'comex', ciclo_de_vida: null, ingestao: 'pausada', visibilidade: 'visivel', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c8', tabela: '289'}
           # …and paused + oculto still hides (visibility alone decides).
-          - {codigo_produto: '88', banco: 'comex', ciclo_de_vida: null, ingestao: 'pausada', visibilidade: 'oculto', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c9', sidra_tabela: '289'}
+          - {codigo_produto: '88', banco: 'comex', ciclo_de_vida: null, ingestao: 'pausada', visibilidade: 'oculto', active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c9', tabela: '289'}
           # Everything NULL (a row that never had a stage set) → NOT hidden. The gate must
           # fail CLOSED-on-hiding: unknown never removes a produto from the dashboard.
-          - {codigo_produto: '99', banco: 'pevs', ciclo_de_vida: null, ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c10', sidra_tabela: '289'}
+          - {codigo_produto: '99', banco: 'pevs', ciclo_de_vida: null, ingestao: null, visibilidade: null, active: true, edited_at: '2024-01-01 00:00:00', change_id: 'c10', tabela: '289'}
     expect:
       rows:
-        - {source: 'pevs', code: '22', sidra_tabela: '289'}
-        - {source: 'pevs', code: '44', sidra_tabela: '289'}
-        - {source: 'comex', code: '66', sidra_tabela: '289'}
-        - {source: 'comex', code: '88', sidra_tabela: '289'}
+        - {source: 'pevs', code: '22', tabela: '289'}
+        - {source: 'pevs', code: '44', tabela: '289'}
+        - {source: 'comex', code: '66', tabela: '289'}
+        - {source: 'comex', code: '88', tabela: '289'}
 
   # Curadoria SOT: dim_produto_catalog = the CURRENT catalog (latest-wins por
-  # (codigo_produto, banco, sidra_tabela); per
+  # (codigo_produto, banco, tabela); per
   # (codigo_produto, banco), active rows only). Locks (a) the max edited_at row's
   # payload survives, (b) an edited_at tie breaks on change_id desc, (c) a latest
   # tombstone (active=false) drops the key, (d) an active edit AFTER a tombstone
@@ -376,19 +382,19 @@ unit_tests:
       - input: source('research_inputs', 'produto_catalog_log')
         rows:
           # single active row → present, unchanged
-          - {codigo_produto: '11', banco: 'pevs', agrupamento: 'Açaí', agrupamento_id: 'acai', descricao_produto: 'Açaí (fruto)', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-01-01 00:00:00', change_id: 'c11', sidra_tabela: '289'}
+          - {codigo_produto: '11', banco: 'pevs', agrupamento: 'Açaí', agrupamento_id: 'acai', descricao_produto: 'Açaí (fruto)', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-01-01 00:00:00', change_id: 'c11', tabela: '289'}
           # latest-wins: a newer edit re-groups the code → the NEW agrupamento wins
-          - {codigo_produto: '22', banco: 'pevs', agrupamento: 'Castanha (antigo)', agrupamento_id: 'castanha-old', descricao_produto: 'Castanha', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-01-01 00:00:00', change_id: 'c22a', sidra_tabela: '289'}
-          - {codigo_produto: '22', banco: 'pevs', agrupamento: 'Castanha-do-pará', agrupamento_id: 'castanha', descricao_produto: 'Castanha', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-06-01 00:00:00', change_id: 'c22b', sidra_tabela: '289'}
+          - {codigo_produto: '22', banco: 'pevs', agrupamento: 'Castanha (antigo)', agrupamento_id: 'castanha-old', descricao_produto: 'Castanha', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-01-01 00:00:00', change_id: 'c22a', tabela: '289'}
+          - {codigo_produto: '22', banco: 'pevs', agrupamento: 'Castanha-do-pará', agrupamento_id: 'castanha', descricao_produto: 'Castanha', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-06-01 00:00:00', change_id: 'c22b', tabela: '289'}
           # latest tombstone (active=false) → key drops out of the current catalog
-          - {codigo_produto: '33', banco: 'comex', agrupamento: 'Removido', agrupamento_id: 'removido', descricao_produto: 'X', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-01-01 00:00:00', change_id: 'c33a', sidra_tabela: '289'}
-          - {codigo_produto: '33', banco: 'comex', agrupamento: 'Removido', agrupamento_id: 'removido', descricao_produto: 'X', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: false, edited_by: 'a@x', edited_at: '2024-06-01 00:00:00', change_id: 'c33b', sidra_tabela: '289'}
+          - {codigo_produto: '33', banco: 'comex', agrupamento: 'Removido', agrupamento_id: 'removido', descricao_produto: 'X', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-01-01 00:00:00', change_id: 'c33a', tabela: '289'}
+          - {codigo_produto: '33', banco: 'comex', agrupamento: 'Removido', agrupamento_id: 'removido', descricao_produto: 'X', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: false, edited_by: 'a@x', edited_at: '2024-06-01 00:00:00', change_id: 'c33b', tabela: '289'}
           # re-added: an active edit AFTER a tombstone → back in the catalog (active read off the LATEST row)
-          - {codigo_produto: '44', banco: 'pevs', agrupamento: 'Antigo', agrupamento_id: 'antigo', descricao_produto: 'Y', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: false, edited_by: 'a@x', edited_at: '2024-01-01 00:00:00', change_id: 'c44a', sidra_tabela: '289'}
-          - {codigo_produto: '44', banco: 'pevs', agrupamento: 'Reativado', agrupamento_id: 'reativado', descricao_produto: 'Y', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-06-01 00:00:00', change_id: 'c44b', sidra_tabela: '289'}
+          - {codigo_produto: '44', banco: 'pevs', agrupamento: 'Antigo', agrupamento_id: 'antigo', descricao_produto: 'Y', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: false, edited_by: 'a@x', edited_at: '2024-01-01 00:00:00', change_id: 'c44a', tabela: '289'}
+          - {codigo_produto: '44', banco: 'pevs', agrupamento: 'Reativado', agrupamento_id: 'reativado', descricao_produto: 'Y', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-06-01 00:00:00', change_id: 'c44b', tabela: '289'}
           # same-timestamp tie → change_id desc decides (mirrors the ORDER BY tie-breaker)
-          - {codigo_produto: '55', banco: 'pevs', agrupamento: 'Perde', agrupamento_id: 'perde', descricao_produto: 'Z', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-03-01 00:00:00', change_id: 'a1', sidra_tabela: '289'}
-          - {codigo_produto: '55', banco: 'pevs', agrupamento: 'Vence', agrupamento_id: 'vence', descricao_produto: 'Z', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-03-01 00:00:00', change_id: 'z9', sidra_tabela: '289'}
+          - {codigo_produto: '55', banco: 'pevs', agrupamento: 'Perde', agrupamento_id: 'perde', descricao_produto: 'Z', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-03-01 00:00:00', change_id: 'a1', tabela: '289'}
+          - {codigo_produto: '55', banco: 'pevs', agrupamento: 'Vence', agrupamento_id: 'vence', descricao_produto: 'Z', ciclo_de_vida: 'Fazer Ingestão e deixar disponível', active: true, edited_by: 'a@x', edited_at: '2024-03-01 00:00:00', change_id: 'z9', tabela: '289'}
     expect:
       # Partial-column expect: assert the key + the payload proving WHICH row won.
       rows:

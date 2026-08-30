@@ -26,12 +26,12 @@
 -- linked to its commodity — column-identical with serving_pam_annual.
 --
 -- Grain: one row per (reference_year, state_acronym, product_code, family).
--- `sidra_tabela` (t289 | t291) rides along as a filterable axis AND as the third
+-- `tabela` (t289 | t291) rides along as a filterable axis AND as the third
 -- component of a produto's identity (banco, tabela, código). It does NOT split the
 -- grain: the product code determines the table (3433-3435 vs 3455-3457), so it is
 -- functionally dependent on a column already in the key and every pre-existing row
 -- count and total is unchanged by its presence. Until v1.46.0 this carried the prose
--- `sidra_tabela` instead; the human name of each half is now derived from the id.
+-- `tabela` instead; the human name of each half is now derived from the id.
 -- ────────────────────────────────────────────────────────────────────────────
 
 with pevs as (
@@ -40,7 +40,7 @@ with pevs as (
         reference_year,
         state_acronym,
         product_code,
-        sidra_tabela,
+        tabela,
         family,
         any_value(product_description)  as product_description,
         any_value(base_unit)            as base_unit,
@@ -74,7 +74,7 @@ with pevs as (
         max(last_refresh)               as last_refresh
     from {{ ref('gold_pevs_production') }}
     where {{ hidden_code_predicate('pevs', 'product_code') }}
-    group by reference_year, state_acronym, product_code, sidra_tabela, family
+    group by reference_year, state_acronym, product_code, tabela, family
 
 )
 
@@ -89,7 +89,7 @@ select
     x.agrupamento_nome,
     p.product_code,
     p.product_description,
-    p.sidra_tabela,
+    p.tabela,
     p.family,
     p.base_unit,
     p.unit_native,
@@ -113,3 +113,6 @@ left join {{ ref('dim_geo_br') }} g
     on g.state_acronym = p.state_acronym
 left join {{ ref('gold_produto_agrupamento') }} x
     on x.source = 'pevs' and x.code = p.product_code
+    -- O TRIO no join: sem a tabela, um código presente nas duas tabelas de um banco
+    -- casaria DUAS linhas do agrupamento e o LEFT JOIN dobraria as somas.
+    and x.tabela = p.tabela

@@ -61,7 +61,7 @@ def test_catalog_worklist_shapes_entries_and_groups(monkeypatch):
                     "ciclo_de_vida": "Fazer Ingestão e deixar disponível",
                     "code_prefix": 4403,
                     "agrupamento_id": "madeira",
-                    "sidra_tabela": "3939",  # round-trips to the client so a saved tag is visible
+                    "tabela": "3939",  # round-trips to the client so a saved tag is visible
                 },
                 {
                     "codigo_produto": "4407",
@@ -102,9 +102,9 @@ def test_catalog_worklist_shapes_entries_and_groups(monkeypatch):
     # str() coercion on a numeric codigo_produto; code_prefix is gone entirely.
     first = out["entries"][0]
     assert first["codigo_produto"] == "4403" and "code_prefix" not in first
-    # sidra_tabela round-trips to the client (was previously dropped at the gateway SELECT),
+    # tabela round-trips to the client (was previously dropped at the gateway SELECT),
     # so a researcher's saved PPM tag is visible on reload.
-    assert first["sidra_tabela"] == "3939"
+    assert first["tabela"] == "3939"
     # Source description: 4407 (comex) resolves; the un_comtrade 4403 + comex 9999 don't.
     by_code = {(e["banco"], e["codigo_produto"]): e for e in out["entries"]}
     assert by_code[("comex", "4407")]["descricao_fonte"] == "Madeira serrada (NCM)"
@@ -113,8 +113,8 @@ def test_catalog_worklist_shapes_entries_and_groups(monkeypatch):
     e9999 = by_code[("comex", "9999")]
     assert e9999["agrupamento"] is None
     assert e9999["ciclo_de_vida"] is None and e9999["agrupamento_id"] is None
-    # The absent sidra_tabela cell (NaN from the mixed DataFrame) normalizes to None.
-    assert e9999["sidra_tabela"] is None
+    # The absent tabela cell (NaN from the mixed DataFrame) normalizes to None.
+    assert e9999["tabela"] is None
 
     groups = {g["agrupamento"]: g for g in out["by_agrupamento"]}
     assert set(groups) == {"Madeira", "—"}
@@ -191,32 +191,64 @@ def test_catalog_status_empty_when_catalog_df_empty(monkeypatch):
 
 def test_catalog_status_joins_gold_stats_per_code(monkeypatch):
     """The happy path groups cataloged codes by banco, reads ONE Gold aggregate per banco,
-    and keys the result ``"<banco>:<code>"`` — a code with no Gold rows reports
-    n_rows=0/has_data=False (a registered-but-empty commodity)."""
+    and keys the result pelo TRIO ``"<banco>:<tabela>:<code>"`` — a code with no Gold rows
+    reports n_rows=0/has_data=False (a registered-but-empty commodity).
+
+    O fixture traz o MESMO código em duas tabelas (a condição que a chave por par colapsava)
+    e exige que os dois estados sobrevivam separados."""
 
     def _catalog(banco=None):
         return pd.DataFrame(
             [
-                {"codigo_produto": "4403", "banco": "comtrade"},
-                {"codigo_produto": "9999", "banco": "comtrade"},  # cataloged, no Gold rows
+                {"codigo_produto": "4403", "banco": "comtrade", "tabela": "comtrade_hs"},
+                # mesmo CÓDIGO, outra tabela: duas entradas legítimas do catálogo, que a
+                # chave por (banco, código) fundia numa só.
+                {"codigo_produto": "4403", "banco": "comtrade", "tabela": "outra"},
+                # cataloged, no Gold rows
+                {"codigo_produto": "9999", "banco": "comtrade", "tabela": "comtrade_hs"},
             ]
         )
 
     def _stats(banco):
         # Only 4403 has Gold rows; 9999 is absent from the aggregate.
-        return pd.DataFrame([{"code": "4403", "n_rows": 12, "year_start": 2000, "year_end": 2024}])
+        return pd.DataFrame(
+            [
+                {
+                    "code": "4403",
+                    "tabela": "comtrade_hs",
+                    "n_rows": 12,
+                    "year_start": 2000,
+                    "year_end": 2024,
+                },
+                {
+                    "code": "4403",
+                    "tabela": "outra",
+                    "n_rows": 7,
+                    "year_start": 2010,
+                    "year_end": 2020,
+                },
+            ]
+        )
 
     monkeypatch.setattr(gateway, "fetch_produto_catalog", _catalog)
     monkeypatch.setattr(gateway, "fetch_source_code_stats", _stats)
 
     status = seam_curation.catalog_status()["status"]
-    assert status["comtrade:4403"] == {
+    assert status["comtrade:comtrade_hs:4403"] == {
         "n_rows": 12,
         "year_start": 2000,
         "year_end": 2024,
         "has_data": True,
     }
-    assert status["comtrade:9999"] == {
+    # A OUTRA metade do mesmo código mantém o SEU estado — com a chave por par, uma das
+    # duas sobrescrevia a outra e as duas linhas do editor mostravam o mesmo número.
+    assert status["comtrade:outra:4403"] == {
+        "n_rows": 7,
+        "year_start": 2010,
+        "year_end": 2020,
+        "has_data": True,
+    }
+    assert status["comtrade:comtrade_hs:9999"] == {
         "n_rows": 0,
         "year_start": None,
         "year_end": None,
@@ -229,7 +261,7 @@ def test_catalog_status_skips_banco_when_stats_absent(monkeypatch):
     skipped entirely rather than aborting the whole status map."""
 
     def _catalog(banco=None):
-        return pd.DataFrame([{"codigo_produto": "1", "banco": "not_a_banco"}])
+        return pd.DataFrame([{"codigo_produto": "1", "banco": "not_a_banco", "tabela": "t"}])
 
     def _raise(banco):
         raise NotFound("no Gold table for that banco")

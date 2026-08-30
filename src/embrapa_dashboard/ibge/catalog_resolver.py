@@ -54,13 +54,13 @@ def resolve_product_codes(
     banco: str,
     *,
     env_fallback: list[str],
-    sidra_tabela: str | None = None,
+    tabela: str | None = None,
     bq_client: bigquery.Client | None = None,
 ) -> list[str]:
     """Product codes to ingest for ``banco``: the catalog's active codes, else env.
 
     ``banco`` is the catalog token (``'pevs'`` / ``'pam'`` / ``'ppm'``). For PPM,
-    pass ``sidra_tabela`` (``'3939'`` herd / ``'74'`` animal) so only the codes
+    pass ``tabela`` (``'3939'`` herd / ``'74'`` animal) so only the codes
     tagged for that SIDRA table are returned. ``env_fallback`` is the current
     ``settings.*_product_codes_list`` — returned verbatim whenever the catalog is
     not authoritative or cannot be trusted. Never raises.
@@ -70,27 +70,27 @@ def resolve_product_codes(
         return env_fallback
 
     try:
-        codes = _query_catalog_codes(settings, banco, sidra_tabela, bq_client)
+        codes = _query_catalog_codes(settings, banco, tabela, bq_client)
     except Exception as exc:
         logger.warning(
-            "Catalog resolve failed for banco=%s (sidra_tabela=%s): %s — falling back "
+            "Catalog resolve failed for banco=%s (tabela=%s): %s — falling back "
             "to env product codes.",
             banco,
-            sidra_tabela,
+            tabela,
             exc,
         )
-        _emit(banco, sidra_tabela, resolved=len(env_fallback), used="env-error")
+        _emit(banco, tabela, resolved=len(env_fallback), used="env-error")
         return env_fallback
 
     if not codes:
         # Empty/absent catalog for this banco → env fallback (cold-start / not yet
         # seeded). Informational: an intentionally-empty catalog is a normal state.
         logger.info(
-            "Catalog has no active codes for banco=%s (sidra_tabela=%s) — using env product codes.",
+            "Catalog has no active codes for banco=%s (tabela=%s) — using env product codes.",
             banco,
-            sidra_tabela,
+            tabela,
         )
-        _emit(banco, sidra_tabela, resolved=len(env_fallback), used="env")
+        _emit(banco, tabela, resolved=len(env_fallback), used="env")
         return env_fallback
 
     if len(codes) > settings.catalog_resolver_max_codes:
@@ -98,25 +98,25 @@ def resolve_product_codes(
         # implausibly large set (fat-finger / bad import) rather than fire a huge,
         # slow, expensive request — fall back to the known-good env codes.
         logger.error(
-            "Catalog resolved %d codes for banco=%s (sidra_tabela=%s), above the safety "
+            "Catalog resolved %d codes for banco=%s (tabela=%s), above the safety "
             "cap of %d — refusing and falling back to env product codes. Raise "
             "CATALOG_RESOLVER_MAX_CODES if this set is legitimate.",
             len(codes),
             banco,
-            sidra_tabela,
+            tabela,
             settings.catalog_resolver_max_codes,
         )
-        _emit(banco, sidra_tabela, resolved=len(codes), used="cap")
+        _emit(banco, tabela, resolved=len(codes), used="cap")
         return env_fallback
 
     logger.info(
-        "Catalog resolved %d codes for banco=%s (sidra_tabela=%s): %s",
+        "Catalog resolved %d codes for banco=%s (tabela=%s): %s",
         len(codes),
         banco,
-        sidra_tabela,
+        tabela,
         codes,
     )
-    _emit(banco, sidra_tabela, resolved=len(codes), used="catalog")
+    _emit(banco, tabela, resolved=len(codes), used="catalog")
     return codes
 
 
@@ -124,14 +124,14 @@ def read_catalog_codes(
     settings: Settings,
     banco: str,
     *,
-    sidra_tabela: str | None = None,
+    tabela: str | None = None,
     bq_client: bigquery.Client | None = None,
 ) -> list[str]:
     """The catalog's active codes for a banco, IGNORING ``catalog_authoritative_ingestion``
     — for DIAGNOSTICS (``embrapa doctor``'s parity check) that preview what the catalog
     WOULD drive at cutover. Returns [] on absence / any error (never raises)."""
     try:
-        return _query_catalog_codes(settings, banco, sidra_tabela, bq_client)
+        return _query_catalog_codes(settings, banco, tabela, bq_client)
     except Exception:
         return []
 
@@ -139,14 +139,14 @@ def read_catalog_codes(
 def _query_catalog_codes(
     settings: Settings,
     banco: str,
-    sidra_tabela: str | None,
+    tabela: str | None,
     bq_client: bigquery.Client | None,
 ) -> list[str]:
     """Query the raw catalog log for the active codes of ``banco`` (latest-wins).
 
     Mirrors ``serving.gateway.fetch_produto_catalog`` but reads the raw log table
     directly (no dbt view, no flask-caching) and returns just the code list. The
-    ``sidra_tabela`` column is only referenced when a value is supplied, so PEVS/PAM
+    ``tabela`` column is only referenced when a value is supplied, so PEVS/PAM
     resolution stays robust even before that column exists on the log table.
     """
     client = resolve_bq_client(settings, bq_client)
@@ -157,8 +157,8 @@ def _query_catalog_codes(
     params: list[bigquery.ScalarQueryParameter] = [
         bigquery.ScalarQueryParameter("banco", "STRING", banco)
     ]
-    if sidra_tabela is not None:
-        extra_cols = ", sidra_tabela"
+    if tabela is not None:
+        extra_cols = ", tabela"
         # An UNTAGGED pevs entry resolves to the EXTRACTION half. Every pevs entry predates
         # the column (the tag became meaningful only when silvicultura/t291 arrived on
         # 2026-08-29), and unlike ppm — whose two tables share no default — pevs has one:
@@ -167,11 +167,11 @@ def _query_catalog_codes(
         # is the failure this tag exists to prevent. ppm keeps the strict `=`: there a NULL
         # is a genuinely unanswered question, and guessing a herd/animal default would fetch
         # the wrong table.
-        if banco == "pevs" and sidra_tabela == settings.ibge_table_id:
-            extra_filter = "and (sidra_tabela = @sidra_tabela or sidra_tabela is null)"
+        if banco == "pevs" and tabela == settings.ibge_table_id:
+            extra_filter = "and (tabela = @tabela or tabela is null)"
         else:
-            extra_filter = "and sidra_tabela = @sidra_tabela"
-        params.append(bigquery.ScalarQueryParameter("sidra_tabela", "STRING", sidra_tabela))
+            extra_filter = "and tabela = @tabela"
+        params.append(bigquery.ScalarQueryParameter("tabela", "STRING", tabela))
     else:
         extra_cols = ""
         extra_filter = ""
@@ -223,12 +223,12 @@ def _query_catalog_codes(
     return [c for row in rows if (c := str(row["codigo_produto"]).strip())]
 
 
-def _emit(banco: str, sidra_tabela: str | None, *, resolved: int, used: str) -> None:
+def _emit(banco: str, tabela: str | None, *, resolved: int, used: str) -> None:
     """Observability breadcrumb so the monitor shows which source drove a run."""
     observability.emit(
         "catalog_resolve",
         banco=banco,
-        sidra_tabela=sidra_tabela,
+        tabela=tabela,
         resolved=resolved,
         used=used,
     )

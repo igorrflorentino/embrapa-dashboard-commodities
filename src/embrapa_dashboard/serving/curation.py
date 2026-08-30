@@ -81,7 +81,7 @@ PRODUTO_CATALOG_LOG_SCHEMA = [
     # '74' animal production) so catalog-driven ingestion routes it to the right
     # table. NULL for every other (single-table) banco. See catalog_resolver +
     # config.ppm_*_table_id. Added late → self-healed via ALTER on existing tables.
-    bigquery.SchemaField("sidra_tabela", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("tabela", "STRING", mode="NULLABLE"),
     # active=false is a tombstone: the entry has left the catalog (→ Gold orphan).
     bigquery.SchemaField("active", "BOOL", mode="REQUIRED"),
     bigquery.SchemaField("edited_by", "STRING", mode="REQUIRED"),
@@ -118,7 +118,7 @@ def ensure_produto_catalog_log_table(
     # Self-heal a table that predates a late-added column: create_table(exists_ok) never
     # widens an existing schema, so add them idempotently. Best-effort — a transient
     # DDL/permission fault must not block the (rare) curation write.
-    for column in ("sidra_tabela", "ingestao", "visibilidade"):
+    for column in ("tabela", "ingestao", "visibilidade"):
         try:
             bq.query(f"alter table `{table_fqn}` add column if not exists {column} STRING").result()
         except Exception as exc:
@@ -330,7 +330,7 @@ def tabela_do_produto(
     cfg = settings or get_settings()
     bq = client or _bq_client(cfg)
     banco = _SOURCE_PARA_BANCO.get(banco_ou_source, banco_ou_source)
-    return _current_sidra_tabela(bq, _catalog_log_ref(cfg), codigo_produto, banco)
+    return _current_tabela(bq, _catalog_log_ref(cfg), codigo_produto, banco)
 
 
 def _validate_catalog_edit(codigo_produto: str, banco: str, ciclo_de_vida: str | None) -> None:
@@ -406,8 +406,8 @@ def _tabelas_validas_por_banco(cfg: Settings) -> dict[str, set[str]]:
     }
 
 
-def _validate_sidra_tabela(
-    banco: str, sidra_tabela: str | None, cfg: Settings, *, require_for_ppm: bool = True
+def _validate_tabela(
+    banco: str, tabela: str | None, cfg: Settings, *, require_for_ppm: bool = True
 ) -> None:
     """Some bancos span TWO SIDRA tables under a single banco token, so their entries tag
     which table the code belongs to — the catalog-driven ingestion resolver routes by it
@@ -433,37 +433,36 @@ def _validate_sidra_tabela(
     valid_por_banco = _tabelas_validas_por_banco(cfg)
     valid = valid_por_banco.get(banco)
     if valid is None:
-        if sidra_tabela:
+        if tabela:
             raise ValueError(
-                f"sidra_tabela só se aplica aos bancos {sorted(valid_por_banco)} "
+                f"tabela só se aplica aos bancos {sorted(valid_por_banco)} "
                 f"(recebido para {banco!r})."
             )
         return
-    if not sidra_tabela:
+    if not tabela:
         if require_for_ppm:
             raise ValueError(
-                f"sidra_tabela é obrigatória para o banco {banco!r} — informe "
+                f"tabela é obrigatória para o banco {banco!r} — informe "
                 f"{sorted(valid)}. Ela faz parte da identidade do produto: sem ela a "
                 "entrada não pertence a nenhuma das duas tabelas do banco."
             )
         return  # UPDATE — o chamador preserva a tag já guardada
-    if sidra_tabela not in valid:
+    if tabela not in valid:
         raise ValueError(
-            f"sidra_tabela {sidra_tabela!r} inválida para o banco {banco!r} — "
-            f"use um de {sorted(valid)}."
+            f"tabela {tabela!r} inválida para o banco {banco!r} — use um de {sorted(valid)}."
         )
 
 
-def _current_sidra_tabela(
+def _current_tabela(
     bq: bigquery.Client, table_fqn: str, codigo_produto: str, banco: str
 ) -> str | None:
-    """The active entry's stored ``sidra_tabela`` — reused to PRESERVE it on a PPM update
+    """The active entry's stored ``tabela`` — reused to PRESERVE it on a PPM update
     that doesn't re-send it (the admin table's inline ciclo/agrupamento edits). Returns None
     when absent / the column doesn't exist yet — wrapped so a pre-migration table can't break
     the write."""
     sql = f"""
-        select sidra_tabela from (
-          select sidra_tabela, row_number() over (
+        select tabela from (
+          select tabela, row_number() over (
             partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
           ) as _rn
           from `{table_fqn}`
@@ -480,13 +479,13 @@ def _current_sidra_tabela(
         )
     except (NotFound, BadRequest):
         # ONLY the pre-migration cases are legitimately "no stored tag": the log table is
-        # absent (NotFound) or the sidra_tabela column doesn't exist yet (BadRequest,
+        # absent (NotFound) or the tabela column doesn't exist yet (BadRequest,
         # "Unrecognized name"). Any OTHER error (a transient BQ/permission fault) must
-        # PROPAGATE — swallowing it here returns None, and _validate_sidra_tabela accepts a
+        # PROPAGATE — swallowing it here returns None, and _validate_tabela accepts a
         # NULL tag on an update (require_for_ppm=False), so the append-only overwrite would
         # DROP the PPM routing tag and silently exclude the code from catalog-driven ingestion.
         return None
-    return rows[0].sidra_tabela if rows else None
+    return rows[0].tabela if rows else None
 
 
 def _current_descricao(
@@ -562,7 +561,7 @@ def _current_lifecycle(
             bq.query(sql, job_config=bigquery.QueryJobConfig(query_parameters=params)).result()
         )
     except (NotFound, BadRequest):
-        # Same narrow contract as _current_sidra_tabela: only the pre-migration shapes
+        # Same narrow contract as _current_tabela: only the pre-migration shapes
         # (absent table / absent columns) are legitimately "nothing stored".
         return None, None
     if not rows:
@@ -660,7 +659,7 @@ def _preserve_omitted_fields(
     banco: str,
     *,
     is_active: bool,
-    sidra_tabela: str | None,
+    tabela: str | None,
     descricao_produto: str | None,
     ingestao: str | None,
     visibilidade: str | None,
@@ -674,18 +673,18 @@ def _preserve_omitted_fields(
     for the note) changes it. That makes a partial write from any client safe by
     construction, and it is why the four live together instead of scattered along the flow.
 
-    Returns ``(sidra_tabela, descricao_produto, ingestao, visibilidade)``. Validation of the
+    Returns ``(tabela, descricao_produto, ingestao, visibilidade)``. Validation of the
     resulting tag stays with the CALLER: it is a gate, and a gate belongs in the main flow
     where it can be read.
 
-    ``sidra_tabela`` preservation applies to every multi-table banco, not to a named one.
+    ``tabela`` preservation applies to every multi-table banco, not to a named one.
     It was once closed over ``banco == "ppm"`` and pevs escaped: an update that did not
     re-send the tag DROPPED it, moving the entry to the ``sql.SEM_TABELA`` sentinel — a
     produto that vanishes from both halves. That is the "conditional naming ONE banco"
     pattern: it encodes a census of the world, and the world grew when silviculture
     arrived."""
-    if banco in _BANCOS_MULTI_TABELA and sidra_tabela is None and is_active:
-        sidra_tabela = _current_sidra_tabela(bq, table_fqn, codigo_produto, banco)
+    if banco in _BANCOS_MULTI_TABELA and tabela is None and is_active:
+        tabela = _current_tabela(bq, table_fqn, codigo_produto, banco)
     if descricao_produto is None and is_active:
         descricao_produto = _current_descricao(bq, table_fqn, codigo_produto, banco)
     # On an UPDATE, keeping what is stored (an unrelated edit must never un-hide a produto
@@ -703,7 +702,7 @@ def _preserve_omitted_fields(
             ingestao = stored_ingestao or INGESTAO_ATIVA
         if visibilidade is None:
             visibilidade = stored_visibilidade or VISIBILIDADE_VISIVEL
-    return sidra_tabela, descricao_produto, ingestao, visibilidade
+    return tabela, descricao_produto, ingestao, visibilidade
 
 
 def record_produto_catalog(
@@ -717,7 +716,7 @@ def record_produto_catalog(
     ingestao: str | None = None,
     visibilidade: str | None = None,
     agrupamento_id: str | None = None,
-    sidra_tabela: str | None = None,
+    tabela: str | None = None,
     change_id: str | None = None,
     settings: Settings | None = None,
     client: bigquery.Client | None = None,
@@ -726,9 +725,9 @@ def record_produto_catalog(
     """Append one commodity-catalog edit (upsert by latest-wins). IAP author capture +
     read-after-write + optional ``change_id`` idempotency, mirroring the
     attribute-engineering writers. Each commodity is registered by its EXACT source code
-    (no prefixes); ``agrupamento_id`` defaults to the agrupamento slug. ``sidra_tabela``
+    (no prefixes); ``agrupamento_id`` defaults to the agrupamento slug. ``tabela``
     (PPM only: '3939' herd / '74' animal) routes catalog-driven ingestion. Validates the
-    key (numeric code), the agrupamento, and the sidra_tabela rule; a NEW code need NOT yet
+    key (numeric code), the agrupamento, and the tabela rule; a NEW code need NOT yet
     exist in Gold — it registers as *pendente de ingestão*.
 
     The lifecycle is TWO coded axes: ``ingestao`` (ativa|pausada — keep fetching?) and
@@ -737,13 +736,13 @@ def record_produto_catalog(
     ativa/visivel. ``ciclo_de_vida`` is the RETIRED prose enum: still accepted so an old
     client keeps working (it is translated into the axes), never written going forward.
 
-    Every field a researcher OWNS is preserve-on-omit: the two axes, ``sidra_tabela`` and
+    Every field a researcher OWNS is preserve-on-omit: the two axes, ``tabela`` and
     ``descricao_produto``. The write is an append-only whole-row overwrite, so a caller that
     sends only the field it means to change would otherwise NULL the rest — omitting a field
     means "leave it alone", and only an explicit value (including ``''`` for the note) changes
     it. That makes a partial write from any client safe by construction.
 
-    Raises ValueError on a bad key / over-length / a bad sidra_tabela / an out-of-vocabulary
+    Raises ValueError on a bad key / over-length / a bad tabela / an out-of-vocabulary
     lifecycle code."""
     cfg = settings or get_settings()
     codigo_produto = (codigo_produto or "").strip()
@@ -757,14 +756,14 @@ def record_produto_catalog(
     # visibility axis rather than rejected — the value it expressed is still meaningful.
     if visibilidade is None and ciclo_de_vida:
         visibilidade = _LEGACY_CICLO_TO_VISIBILIDADE.get(ciclo_de_vida)
-    sidra_tabela = sidra_tabela.strip() if sidra_tabela else None
+    tabela = tabela.strip() if tabela else None
     # Reject a bad tag EARLY (no BQ round-trip): a single-table banco carrying one, or a
     # multi-table banco carrying a table that is not its own. Delegates to the one validator
     # rather than restating the rule — this check WAS a verbatim copy, and when pevs became
-    # multi-table on 2026-08-29 only the copy in _validate_sidra_tabela was updated, so
+    # multi-table on 2026-08-29 only the copy in _validate_tabela was updated, so
     # every pevs stamp was still rejected with the old "só se aplica ao banco 'ppm'". The
     # mandatory-for-new-ppm half is enforced below, once new-vs-update is known.
-    _validate_sidra_tabela(banco, sidra_tabela, cfg, require_for_ppm=False)
+    _validate_tabela(banco, tabela, cfg, require_for_ppm=False)
     agrupamento = agrupamento.strip() if agrupamento else agrupamento
     agrupamento_id = (agrupamento_id or _slug(agrupamento)).strip() or None
     _validate_agrupamento(agrupamento, agrupamento_id, descricao_produto)
@@ -783,22 +782,22 @@ def record_produto_catalog(
     # Validate the banco and note whether the code already has Gold data (a not-yet-
     # ingested code is accepted as *pendente de ingestão*). Read state AFTER ensure.
     _check_code_status(bq, table_fqn, codigo_produto, banco, is_active=is_active)
-    sidra_tabela, descricao_produto, ingestao, visibilidade = _preserve_omitted_fields(
+    tabela, descricao_produto, ingestao, visibilidade = _preserve_omitted_fields(
         bq,
         table_fqn,
         codigo_produto,
         banco,
         is_active=is_active,
-        sidra_tabela=sidra_tabela,
+        tabela=tabela,
         descricao_produto=descricao_produto,
         ingestao=ingestao,
         visibilidade=visibilidade,
     )
     # O portão fica AQUI, no fluxo principal, e não dentro do preservador: exigir a tag numa
     # entrada nova é uma recusa, e uma recusa tem de ser legível onde a escrita acontece.
-    # Roda para todo banco — num de tabela única `_validate_sidra_tabela` só recusa uma tag
+    # Roda para todo banco — num de tabela única `_validate_tabela` só recusa uma tag
     # indevida, que a checagem antecipada lá em cima já teria pego.
-    _validate_sidra_tabela(banco, sidra_tabela, cfg, require_for_ppm=not is_active)
+    _validate_tabela(banco, tabela, cfg, require_for_ppm=not is_active)
 
     if supplied and _change_id_seen(bq, table_fqn, change_id):
         logger.info(
@@ -817,10 +816,10 @@ def record_produto_catalog(
             {
                 "codigo_produto": codigo_produto,
                 "banco": banco,
-                "sidra_tabela": sidra_tabela,
+                "tabela": tabela,
                 "active": True,
             },
-            ("codigo_produto", "banco", "sidra_tabela", "active"),
+            ("codigo_produto", "banco", "tabela", "active"),
             entity="produto do catálogo",
         )
         if stored is not None:
@@ -835,7 +834,7 @@ def record_produto_catalog(
             True,
             edited_by,
             change_id,
-            sidra_tabela=sidra_tabela,
+            tabela=tabela,
             ingestao=ingestao,
             visibilidade=visibilidade,
             deduped=True,
@@ -855,7 +854,7 @@ def record_produto_catalog(
         True,
         edited_by,
         change_id,
-        sidra_tabela=sidra_tabela,
+        tabela=tabela,
         ingestao=ingestao,
         visibilidade=visibilidade,
     )
@@ -879,7 +878,7 @@ def record_produto_catalog(
         True,
         edited_by,
         change_id,
-        sidra_tabela=sidra_tabela,
+        tabela=tabela,
         ingestao=ingestao,
         visibilidade=visibilidade,
         deduped=False,
@@ -919,10 +918,10 @@ def remove_produto_catalog(
             {
                 "codigo_produto": codigo_produto,
                 "banco": banco,
-                "sidra_tabela": _current_sidra_tabela(bq, table_fqn, codigo_produto, banco),
+                "tabela": _current_tabela(bq, table_fqn, codigo_produto, banco),
                 "active": False,
             },
-            ("codigo_produto", "banco", "sidra_tabela", "active"),
+            ("codigo_produto", "banco", "tabela", "active"),
             entity="produto do catálogo",
         )
         if stored is not None:
@@ -962,7 +961,7 @@ def remove_produto_catalog(
         False,
         edited_by,
         change_id,
-        sidra_tabela=_current_sidra_tabela(bq, table_fqn, codigo_produto, banco),
+        tabela=_current_tabela(bq, table_fqn, codigo_produto, banco),
     )
     logger.info("Catalog: %s:%s -> removed (tombstone) by %s", banco, codigo_produto, edited_by)
     if invalidate_cache:
@@ -994,7 +993,7 @@ def _insert_catalog_row(
     edited_by,
     change_id,
     *,
-    sidra_tabela=None,
+    tabela=None,
     ingestao=None,
     visibilidade=None,
 ) -> None:
@@ -1006,11 +1005,11 @@ def _insert_catalog_row(
     sql = f"""
         insert into `{table_fqn}`
             (codigo_produto, banco, agrupamento, descricao_produto,
-             ciclo_de_vida, ingestao, visibilidade, agrupamento_id, sidra_tabela,
+             ciclo_de_vida, ingestao, visibilidade, agrupamento_id, tabela,
              active, edited_by, edited_at, change_id)
         values
             (@codigo_produto, @banco, @agrupamento, @descricao_produto,
-             @ciclo_de_vida, @ingestao, @visibilidade, @agrupamento_id, @sidra_tabela,
+             @ciclo_de_vida, @ingestao, @visibilidade, @agrupamento_id, @tabela,
              @active, @edited_by, current_timestamp(), @change_id)
     """
     p = bigquery.ScalarQueryParameter
@@ -1023,7 +1022,7 @@ def _insert_catalog_row(
         p("ingestao", "STRING", ingestao),
         p("visibilidade", "STRING", visibilidade),
         p("agrupamento_id", "STRING", agrupamento_id),
-        p("sidra_tabela", "STRING", sidra_tabela),
+        p("tabela", "STRING", tabela),
         p("active", "BOOL", active),
         p("edited_by", "STRING", edited_by),
         p("change_id", "STRING", change_id),
@@ -1043,7 +1042,7 @@ def _catalog_row(
     change_id,
     *,
     deduped,
-    sidra_tabela=None,
+    tabela=None,
     ingestao=None,
     visibilidade=None,
 ) -> dict:
@@ -1060,7 +1059,7 @@ def _catalog_row(
         "ingestao": ingestao_efetiva(ingestao),
         "visibilidade": visibilidade_efetiva(visibilidade, ciclo_de_vida),
         "agrupamento_id": agrupamento_id,
-        "sidra_tabela": sidra_tabela,
+        "tabela": tabela,
         "active": active,
         "edited_by": edited_by,
         "change_id": change_id,
@@ -1075,7 +1074,7 @@ def _row_for_change_id(bq, table_fqn: str, change_id: str) -> dict | None:
     STORED, not the (possibly changed) new request body. None if not found."""
     sql = f"""
         select codigo_produto, banco, agrupamento, descricao_produto, ciclo_de_vida,
-               ingestao, visibilidade, agrupamento_id, sidra_tabela, active, edited_by
+               ingestao, visibilidade, agrupamento_id, tabela, active, edited_by
         from `{table_fqn}`
         where change_id = @change_id
         order by edited_at desc
@@ -1096,7 +1095,7 @@ def _row_for_change_id(bq, table_fqn: str, change_id: str) -> dict | None:
         bool(r["active"]),
         r["edited_by"],
         change_id,
-        sidra_tabela=r["sidra_tabela"],
+        tabela=r["tabela"],
         ingestao=r["ingestao"],
         visibilidade=r["visibilidade"],
         deduped=True,
@@ -1135,9 +1134,9 @@ def invalidate_catalog_editors_cache() -> None:
         logger.warning("Could not invalidate catalog-editors cache: %s", exc)
 
 
-# The env → catalog banco/sidra_tabela plan for catalog_authoritative_ingestion cutover.
+# The env → catalog banco/tabela plan for catalog_authoritative_ingestion cutover.
 def _seed_plan(cfg: Settings) -> list[tuple[str, str, str | None]]:
-    """(banco, codigo_produto, sidra_tabela) for every configured IBGE env code — the
+    """(banco, codigo_produto, tabela) for every configured IBGE env code — the
     exact set the catalog-driven resolver must reproduce on day one."""
     plan: list[tuple[str, str, str | None]] = []
     plan += [("pevs", c, None) for c in cfg.product_codes]
@@ -1159,7 +1158,7 @@ def seed_catalog_from_env(
     ``catalog_authoritative_ingestion``). Idempotent: a deterministic per-code ``change_id``
     makes a re-run a no-op. An already-cataloged code keeps its agrupamento; a NEW code uses
     ``agrupamento_default`` or falls back to the code itself (the researcher renames/groups
-    it later). PPM codes are tagged with their ``sidra_tabela`` (herd/animal). Returns
+    it later). PPM codes are tagged with their ``tabela`` (herd/animal). Returns
     ``{seeded, skipped}``."""
     cfg = settings or get_settings()
     bq = client or _bq_client(cfg)
@@ -1181,7 +1180,7 @@ def seed_catalog_from_env(
             )
 
     seeded = skipped = 0
-    for banco, code, sidra_tabela in _seed_plan(cfg):
+    for banco, code, tabela in _seed_plan(cfg):
         agr, agr_id = existing.get((banco, code), (None, None))
         agrupamento = agr or agrupamento_default or code
         rec = record_produto_catalog(
@@ -1191,8 +1190,8 @@ def seed_catalog_from_env(
             agrupamento=agrupamento,
             agrupamento_id=agr_id,
             ciclo_de_vida=CICLO_DE_VIDA_VISIVEL,
-            sidra_tabela=sidra_tabela,
-            change_id=f"seed-from-env:{banco}:{code}:{sidra_tabela or '-'}",
+            tabela=tabela,
+            change_id=f"seed-from-env:{banco}:{code}:{tabela or '-'}",
             settings=cfg,
             client=bq,
             invalidate_cache=False,

@@ -147,9 +147,9 @@ describe('ViewOverview — KPI strip + quality digest (H3 + P0 lock-in)', () => 
     stubGlobals({
       ...FIXTURE,
       topProducts: [
-        { code: '3457', name: 'Madeira em tora', sidra_tabela: '291', share: 0.57 },
-        { code: '3435', name: 'Madeira em tora', sidra_tabela: '289', share: 0.07 },
-        { code: '3403', name: 'Açaí (fruto)', sidra_tabela: '289', share: 0.02 },
+        { code: '3457', name: 'Madeira em tora', tabela: '291', share: 0.57 },
+        { code: '3435', name: 'Madeira em tora', tabela: '289', share: 0.07 },
+        { code: '3403', name: 'Açaí (fruto)', tabela: '289', share: 0.02 },
       ],
     });
     const { container } = render(

@@ -77,6 +77,9 @@ base_flows as (
         reporter_code,
         partner_code,
         cmd_code,
+        -- A TABELA no grão da CTE base, vinda do Silver — o trio atravessa o Gold
+        -- inteiro em vez de ser reconstituído no select final.
+        tabela,
         any_value(hs_chapter)                     as hs_chapter,
         -- The unit fields are picked together from the group's dominant-quantity
         -- row (same ORDER BY for all five) so family/base_unit/unit stay COHERENT
@@ -99,7 +102,7 @@ base_flows as (
         count(*)                                  as source_rows,
         max(ingestion_timestamp)                  as last_refresh
     from with_dominant
-    group by flow, customs_code, reference_year, reporter_code, partner_code, cmd_code
+    group by flow, customs_code, reference_year, reporter_code, partner_code, cmd_code, tabela
 
 ),
 
@@ -140,6 +143,10 @@ enriched as (
 )
 
 select
+    -- A TABELA da fonte, carregada do Silver (que a carimba). Fecha o trio
+    -- `(banco, tabela, código)` neste banco de uma tabela só — a simetria é o ponto:
+    -- com o trio valendo nos cinco, nenhum consumidor ramifica por banco.
+    tabela,
     -- ── Time ─────────────────────────────────────────────────────────────────
     reference_year,
     date(reference_year, 12, 31)                            as reference_date,

@@ -168,6 +168,13 @@ parsed as (
 )
 
 select
+    -- A TABELA da fonte, carimbada AQUI, na primeira camada tipada — cada modelo Silver
+    -- sabe de qual tabela ele lê, então a informação nasce onde é conhecida em vez de ser
+    -- reconstituída depois. Fecha o trio `(banco, tabela, código)` em TODOS os bancos:
+    -- 291, a metade de silvicultura do PEVS.
+    -- Com isso as uniões do Gold são `select *` puro e nenhum consumidor ramifica por
+    -- banco para saber se há tabela. Ver docs/audits/chave_produto_audit_2026-08-30.md.
+    '{{ var("silvicultura_table_id") }}' as tabela,
     p.reference_year,
     p.city_code,
     p.city_name,

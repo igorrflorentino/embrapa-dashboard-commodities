@@ -91,12 +91,12 @@ def _product_codes(settings: Settings) -> list[str]:
     """The codes to fetch — the catalog's t291 entries, falling back to env.
 
     PEVS's catalog token (``'pevs'``) holds BOTH halves, so this must resolve with its
-    own ``sidra_tabela``: asking for the token alone would hand the SILVICULTURE table
+    own ``tabela``: asking for the token alone would hand the SILVICULTURE table
     the EXTRACTION codes, SIDRA would answer with an empty slice, and the pipeline would
     report a clean no-op — the worst kind of wrong.
 
     This read the env list exclusively until 2026-08-29, because the catalog could not
-    yet tell the two halves apart. It now can (the pevs entries carry ``sidra_tabela``,
+    yet tell the two halves apart. It now can (the pevs entries carry ``tabela``,
     the tag PPM already used), so both halves resolve the same way, and a produto a
     researcher adds to the silviculture half is ingested without an env edit.
     """
@@ -104,7 +104,7 @@ def _product_codes(settings: Settings) -> list[str]:
         settings,
         "pevs",
         env_fallback=settings.silvicultura_product_codes_list,
-        sidra_tabela=settings.silvicultura_table_id,
+        tabela=settings.silvicultura_table_id,
     )
 
 

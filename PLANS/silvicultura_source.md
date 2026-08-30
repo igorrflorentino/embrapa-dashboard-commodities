@@ -5,7 +5,7 @@
 > ⚠ **O que mudou depois deste plano.** Ele especifica uma coluna `origem`
 > (`extrativa` | `silvicultura`) carimbada na união dos dois Silvers. Essa coluna **não
 > existe mais**: a identidade de um produto é `(banco, tabela, código)`, então quem
-> discrimina as duas metades passou a ser **`sidra_tabela`** — o id da tabela SIDRA (t289 |
+> discrimina as duas metades passou a ser **`tabela`** — o id da tabela SIDRA (t289 |
 > t291) —, e os nomes "Extração vegetal" / "Silvicultura" são DERIVADOS dele onde aparecem.
 >
 > O motivo foi concreto: guardando só a prosa, o id existia apenas como *nome de tabela* no

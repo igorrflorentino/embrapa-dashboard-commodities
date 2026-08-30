@@ -86,48 +86,48 @@ def test_validate_catalog_edit_rejects_overlong_code():
     curation._validate_catalog_edit("1" * curation.MAX_CODE_LEN, "un_comtrade", None)
 
 
-# ── _validate_sidra_tabela: PPM herd/animal discriminator ─────────────────────
+# ── _validate_tabela: PPM herd/animal discriminator ─────────────────────
 
 
-def test_validate_sidra_tabela_required_for_ppm():
+def test_validate_tabela_required_for_ppm():
     from embrapa_dashboard.serving import curation
 
     with pytest.raises(ValueError, match="obrigatória"):
-        curation._validate_sidra_tabela("ppm", None, _settings())
+        curation._validate_tabela("ppm", None, _settings())
 
 
-def test_validate_sidra_tabela_rejects_bad_value_for_ppm():
+def test_validate_tabela_rejects_bad_value_for_ppm():
     from embrapa_dashboard.serving import curation
 
     with pytest.raises(ValueError, match="inválida"):
-        curation._validate_sidra_tabela("ppm", "9999", _settings())
+        curation._validate_tabela("ppm", "9999", _settings())
 
 
-def test_validate_sidra_tabela_accepts_valid_ppm():
+def test_validate_tabela_accepts_valid_ppm():
     from embrapa_dashboard.serving import curation
 
     # Both configured PPM SIDRA tables (herd 3939 / animal 74) are accepted.
-    curation._validate_sidra_tabela("ppm", "3939", _settings())
-    curation._validate_sidra_tabela("ppm", "74", _settings())
+    curation._validate_tabela("ppm", "3939", _settings())
+    curation._validate_tabela("ppm", "74", _settings())
 
 
-def test_validate_sidra_tabela_rejected_for_single_table_banco():
+def test_validate_tabela_rejected_for_single_table_banco():
     """pam/comex/comtrade map to ONE SIDRA table (or none), so a tag is meaningless there."""
     from embrapa_dashboard.serving import curation
 
     with pytest.raises(ValueError, match="só se aplica"):
-        curation._validate_sidra_tabela("pam", "3939", _settings())
+        curation._validate_tabela("pam", "3939", _settings())
 
 
-def test_validate_sidra_tabela_accepts_both_pevs_halves():
+def test_validate_tabela_accepts_both_pevs_halves():
     """PEVS became multi-table on 2026-08-29 (extração t289 + silvicultura t291)."""
     from embrapa_dashboard.serving import curation
 
-    curation._validate_sidra_tabela("pevs", "289", _settings())
-    curation._validate_sidra_tabela("pevs", "291", _settings())
+    curation._validate_tabela("pevs", "289", _settings())
+    curation._validate_tabela("pevs", "291", _settings())
 
 
-def test_validate_sidra_tabela_required_for_every_multi_table_banco():
+def test_validate_tabela_required_for_every_multi_table_banco():
     """A tag virou OBRIGATÓRIA nos dois bancos multi-tabela quando a identidade de um
     produto passou a ser (banco, tabela, código): sem ela a entrada não cai em nenhuma das
     duas metades, cai numa TERCEIRA identidade (a sentinela) que não corresponde a dado
@@ -136,26 +136,26 @@ def test_validate_sidra_tabela_required_for_every_multi_table_banco():
 
     for banco in ("pevs", "ppm"):
         with pytest.raises(ValueError, match="obrigatória"):
-            curation._validate_sidra_tabela(banco, None, _settings())
+            curation._validate_tabela(banco, None, _settings())
 
 
-def test_validate_sidra_tabela_preserved_on_update():
+def test_validate_tabela_preserved_on_update():
     """Num UPDATE o chamador preserva a tag guardada, então a ausência é legítima."""
     from embrapa_dashboard.serving import curation
 
-    curation._validate_sidra_tabela("pevs", None, _settings(), require_for_ppm=False)
+    curation._validate_tabela("pevs", None, _settings(), require_for_ppm=False)
 
 
-def test_validate_sidra_tabela_rejects_the_other_bancos_table():
+def test_validate_tabela_rejects_the_other_bancos_table():
     """A multi-table banco accepts ONLY its own tables — ppm's 3939 is not a pevs half."""
     from embrapa_dashboard.serving import curation
 
     with pytest.raises(ValueError, match="inválida para o banco"):
-        curation._validate_sidra_tabela("pevs", "3939", _settings())
+        curation._validate_tabela("pevs", "3939", _settings())
 
 
 def test_writer_rejects_a_bad_tag_before_touching_bigquery():
-    """The early gate must DELEGATE to _validate_sidra_tabela, not restate it. It was a
+    """The early gate must DELEGATE to _validate_tabela, not restate it. It was a
     verbatim copy, and when pevs became multi-table only the validator was updated — so
     every pevs stamp was still refused with the stale "só se aplica ao banco 'ppm'".
     No client/settings are needed: a correct gate rejects before resolving either."""
@@ -167,19 +167,19 @@ def test_writer_rejects_a_bad_tag_before_touching_bigquery():
             "pevs",
             {},
             agrupamento="Madeira",
-            sidra_tabela="3939",
+            tabela="3939",
             settings=_settings(),
         )
 
 
-def test_validate_sidra_tabela_optional_for_ppm_update():
+def test_validate_tabela_optional_for_ppm_update():
     from embrapa_dashboard.serving import curation
 
     # On an UPDATE (require_for_ppm=False) a missing tag is allowed (the caller preserves it).
-    curation._validate_sidra_tabela("ppm", None, _settings(), require_for_ppm=False)
+    curation._validate_tabela("ppm", None, _settings(), require_for_ppm=False)
 
 
-def test_record_produto_catalog_new_ppm_requires_sidra_tabela(monkeypatch):
+def test_record_produto_catalog_new_ppm_requires_tabela(monkeypatch):
     pytest.importorskip("flask_caching")
     from embrapa_dashboard.serving import curation
 
@@ -198,17 +198,17 @@ def test_record_produto_catalog_new_ppm_requires_sidra_tabela(monkeypatch):
         )
 
 
-def test_record_produto_catalog_ppm_update_preserves_sidra_tabela(monkeypatch):
+def test_record_produto_catalog_ppm_update_preserves_tabela(monkeypatch):
     pytest.importorskip("flask_caching")
     from embrapa_dashboard.serving import curation
 
     monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)
     monkeypatch.setattr(curation, "_is_active_entry", lambda *a, **k: True)  # UPDATE
     monkeypatch.setattr(curation, "_check_code_status", lambda *a, **k: None)
-    monkeypatch.setattr(curation, "_current_sidra_tabela", lambda *a, **k: "3939")  # stored tag
+    monkeypatch.setattr(curation, "_current_tabela", lambda *a, **k: "3939")  # stored tag
     client = mock.Mock()
     client.query.return_value.result.return_value = []
-    # Inline ciclo edit re-sends no sidra_tabela → the stored '3939' must be preserved.
+    # Inline ciclo edit re-sends no tabela → the stored '3939' must be preserved.
     curation.record_produto_catalog(
         "2670",
         "ppm",
@@ -220,7 +220,7 @@ def test_record_produto_catalog_ppm_update_preserves_sidra_tabela(monkeypatch):
         invalidate_cache=False,
     )
     params = {p.name: p.value for p in client.query.call_args.kwargs["job_config"].query_parameters}
-    assert params["sidra_tabela"] == "3939"
+    assert params["tabela"] == "3939"
 
 
 # ── record_produto_catalog: descricao_produto is preserve-on-omit ─────────────
@@ -510,9 +510,7 @@ def test_remove_produto_catalog_change_id_conflict_active_flip(monkeypatch):
     # Desde v1.39.2 o tombstone resolve a tabela SIDRA da entrada (ela faz parte da
     # chave que decide se um change_id repetido é replay do MESMO produto). Este teste
     # exercita o conflito, não a resolução — então ela é dublada.
-    monkeypatch.setattr(
-        "embrapa_dashboard.serving.curation._current_sidra_tabela", lambda *a, **k: "289"
-    )
+    monkeypatch.setattr("embrapa_dashboard.serving.curation._current_tabela", lambda *a, **k: "289")
     pytest.importorskip("flask_caching")
     from embrapa_dashboard.serving import curation
     from embrapa_dashboard.serving.research_inputs import ChangeIdConflictError
@@ -699,10 +697,10 @@ def test_seed_catalog_from_env_routes_and_reuses(monkeypatch):
     res = curation.seed_catalog_from_env({}, settings=cfg, client=mock.Mock())
     assert res == {"seeded": 4, "skipped": 0}
     by_code = {c["code"]: c for c in calls}
-    # PEVS/PAM carry no sidra_tabela; PPM herd→3939, animal→74.
-    assert by_code["3405"]["banco"] == "pevs" and by_code["3405"]["sidra_tabela"] is None
-    assert by_code["2670"]["sidra_tabela"] == "3939"
-    assert by_code["2682"]["sidra_tabela"] == "74"
+    # PEVS/PAM carry no tabela; PPM herd→3939, animal→74.
+    assert by_code["3405"]["banco"] == "pevs" and by_code["3405"]["tabela"] is None
+    assert by_code["2670"]["tabela"] == "3939"
+    assert by_code["2682"]["tabela"] == "74"
     # New codes fall back to the code as its own agrupamento; existing ones are reused.
     assert by_code["3405"]["agrupamento"] == "3405"
     assert by_code["40124"]["agrupamento"] == "Soja"
@@ -814,8 +812,8 @@ def test_lifecycle_translation_matches_the_dbt_macro():
     assert c.ingestao_efetiva("lixo") == "ativa"
 
 
-def test_current_sidra_tabela_reads_stored_absent_and_pre_migration(monkeypatch):
-    """_current_sidra_tabela returns the stored PPM tag, None when absent, and None ONLY on
+def test_current_tabela_reads_stored_absent_and_pre_migration(monkeypatch):
+    """_current_tabela returns the stored PPM tag, None when absent, and None ONLY on
     the pre-migration NotFound/BadRequest — a transient fault must NOT be swallowed here."""
     from types import SimpleNamespace
 
@@ -824,19 +822,19 @@ def test_current_sidra_tabela_reads_stored_absent_and_pre_migration(monkeypatch)
     from embrapa_dashboard.serving import curation
 
     client = mock.Mock()
-    client.query.return_value.result.return_value = [SimpleNamespace(sidra_tabela="3939")]
-    assert curation._current_sidra_tabela(client, "t.r.log", "3405", "ppm") == "3939"
+    client.query.return_value.result.return_value = [SimpleNamespace(tabela="3939")]
+    assert curation._current_tabela(client, "t.r.log", "3405", "ppm") == "3939"
 
     client.query.return_value.result.return_value = []
-    assert curation._current_sidra_tabela(client, "t.r.log", "3405", "ppm") is None
+    assert curation._current_tabela(client, "t.r.log", "3405", "ppm") is None
 
     boom = mock.Mock()
     boom.query.side_effect = NotFound("no table yet")
-    assert curation._current_sidra_tabela(boom, "t.r.log", "3405", "ppm") is None
+    assert curation._current_tabela(boom, "t.r.log", "3405", "ppm") is None
 
     boom2 = mock.Mock()
-    boom2.query.side_effect = BadRequest("Unrecognized name: sidra_tabela")
-    assert curation._current_sidra_tabela(boom2, "t.r.log", "3405", "ppm") is None
+    boom2.query.side_effect = BadRequest("Unrecognized name: tabela")
+    assert curation._current_tabela(boom2, "t.r.log", "3405", "ppm") is None
 
 
 # ── the guards that were never exercised (coverage-gate re-arm, 2026-08-20) ────
@@ -1013,7 +1011,7 @@ def test_record_produto_catalog_accepts_a_registered_agrupamento(monkeypatch):
         agrupamento="Madeira",
         # Entrada NOVA em banco multi-tabela exige a tag desde v1.40.1 — sem ela a entrada
         # não pertence a metade nenhuma. Estes testes exercitam o registro de agrupamentos.
-        sidra_tabela="291",
+        tabela="291",
         settings=_settings(),
         client=client,
         invalidate_cache=False,
@@ -1037,7 +1035,7 @@ def test_an_absent_group_registry_does_not_block_the_first_product(monkeypatch):
         "3457",
         "pevs",
         _HEADERS,
-        sidra_tabela="291",  # entrada nova em banco multi-tabela exige a tag (v1.40.1)
+        tabela="291",  # entrada nova em banco multi-tabela exige a tag (v1.40.1)
         agrupamento="Qualquer",
         settings=_settings(),
         client=client,
@@ -1059,7 +1057,7 @@ def test_tabela_do_produto_aceita_token_de_banco_e_de_fonte(monkeypatch):
         vistos.append(banco)
         return "291"
 
-    monkeypatch.setattr(curation, "_current_sidra_tabela", _fake)
+    monkeypatch.setattr(curation, "_current_tabela", _fake)
     monkeypatch.setattr(curation, "_bq_client", lambda cfg: object())
 
     for token in ("pevs", "ibge_pevs"):
@@ -1072,7 +1070,7 @@ def test_tabela_do_produto_devolve_none_sem_entrada(monkeypatch):
     chave colapsa na sentinela, e para esses bancos a coluna não carrega informação."""
     from embrapa_dashboard.serving import curation
 
-    monkeypatch.setattr(curation, "_current_sidra_tabela", lambda *a, **k: None)
+    monkeypatch.setattr(curation, "_current_tabela", lambda *a, **k: None)
     monkeypatch.setattr(curation, "_bq_client", lambda cfg: object())
 
     assert curation.tabela_do_produto("comex", "44011000", settings=_settings()) is None
@@ -1085,9 +1083,7 @@ def test_tabela_do_produto_reusa_o_cliente_recebido(monkeypatch):
 
     sentinela = object()
     recebidos = []
-    monkeypatch.setattr(
-        curation, "_current_sidra_tabela", lambda bq, *a: recebidos.append(bq) or "289"
-    )
+    monkeypatch.setattr(curation, "_current_tabela", lambda bq, *a: recebidos.append(bq) or "289")
 
     def _nao_chamar(cfg):
         raise AssertionError("abriu um cliente novo tendo recebido um")

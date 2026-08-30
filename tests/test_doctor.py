@@ -655,7 +655,7 @@ def test_catalog_parity_matches_env(monkeypatch, settings_factory) -> None:
     monkeypatch.setattr(
         catalog_resolver,
         "read_catalog_codes",
-        lambda s, banco, *, sidra_tabela=None, bq_client=None: codes[(banco, sidra_tabela)],
+        lambda s, banco, *, tabela=None, bq_client=None: codes[(banco, tabela)],
     )
     r = doctor._check_catalog_resolver_parity(_small_codes(settings_factory))
     assert r.ok is True
@@ -677,7 +677,7 @@ def test_catalog_parity_reports_drift_without_failing(monkeypatch, settings_fact
     monkeypatch.setattr(
         catalog_resolver,
         "read_catalog_codes",
-        lambda s, banco, *, sidra_tabela=None, bq_client=None: codes[(banco, sidra_tabela)],
+        lambda s, banco, *, tabela=None, bq_client=None: codes[(banco, tabela)],
     )
     r = doctor._check_catalog_resolver_parity(_small_codes(settings_factory))
     assert r.ok is True  # never fails on intended drift
@@ -695,10 +695,10 @@ def test_catalog_parity_compares_each_pevs_half_separately(monkeypatch, settings
 
     pedidos = []
 
-    def _fake(s, banco, *, sidra_tabela=None, bq_client=None):
-        pedidos.append((banco, sidra_tabela))
+    def _fake(s, banco, *, tabela=None, bq_client=None):
+        pedidos.append((banco, tabela))
         return {"289": ["3405"], "291": ["3457"], "3939": ["2670"], "74": ["2682"]}.get(
-            sidra_tabela, ["40124"]
+            tabela, ["40124"]
         )
 
     monkeypatch.setattr(catalog_resolver, "read_catalog_codes", _fake)
@@ -963,7 +963,7 @@ def test_silvicultura_variable_codes_check_fails_when_one_is_mistyped(
     settings.silvicultura_variable_value_code = "1443"  # transposed
     result = doctor._check_silvicultura_variable_codes(settings)
     assert result.ok is False
-    assert "143" in result.detail and "sidra_tabela='291'" in result.detail
+    assert "143" in result.detail and "tabela='291'" in result.detail
 
 
 def test_silvicultura_variable_codes_check_reports_an_unexpected_error() -> None:
@@ -1353,15 +1353,15 @@ def test_the_multi_table_registry_matches_the_curation_validator() -> None:
 
     Os testes acima derivam do próprio registro (contam `len(...)`, iteram sobre ele), então
     remover um banco dali muda os dois lados da asserção e passa verde — uma injeção provou
-    isso. `curation._validate_sidra_tabela` mantém a MESMA lista por outro motivo (só um
-    banco multi-tabela pode carregar `sidra_tabela`), e as duas divergirem é sempre defeito:
+    isso. `curation._validate_tabela` mantém a MESMA lista por outro motivo (só um
+    banco multi-tabela pode carregar `tabela`), e as duas divergirem é sempre defeito:
     ou o doctor deixou de vigiar um banco, ou a validação passou a aceitar tag onde não
     deve.
     """
     from embrapa_dashboard.serving import curation
 
     # A âncora é `_tabelas_validas_por_banco` — o vocabulário de tabelas por banco, mantido
-    # por outro motivo (validar a tag). Ela saiu de dentro de `_validate_sidra_tabela` em
+    # por outro motivo (validar a tag). Ela saiu de dentro de `_validate_tabela` em
     # v1.40.1 e este teste acusou a mudança, que é o que se espera dele.
     fonte = inspect.getsource(curation._tabelas_validas_por_banco)
     do_validador = {b for b in ("ppm", "pevs", "pam", "comex", "comtrade") if f'"{b}":' in fonte}

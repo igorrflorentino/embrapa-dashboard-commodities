@@ -32,6 +32,10 @@ with pam as (
         reference_year,
         state_acronym,
         product_code,
+        -- A TABELA no grão, como em todos os bancos. Constante aqui (banco de UMA tabela
+        -- só), e é justamente por isso que precisa estar: com o trio valendo nos cinco, a
+        -- mart tem a MESMA forma em todos e o consumidor não ramifica por banco.
+        tabela,
         family,
         any_value(product_description)  as product_description,
         any_value(base_unit)            as base_unit,
@@ -65,7 +69,7 @@ with pam as (
         max(last_refresh)               as last_refresh
     from {{ ref('gold_pam_production') }}
     where {{ hidden_code_predicate('pam', 'product_code') }}
-    group by reference_year, state_acronym, product_code, family
+    group by reference_year, state_acronym, product_code, tabela, family
 
 ),
 
@@ -112,6 +116,7 @@ select
     x.agrupamento_id,
     x.agrupamento_nome,
     p.product_code,
+    p.tabela,
     p.product_description,
     p.family,
     p.base_unit,

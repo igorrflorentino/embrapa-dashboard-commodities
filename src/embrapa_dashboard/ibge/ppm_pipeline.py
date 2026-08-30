@@ -87,7 +87,7 @@ def _specs(settings: Settings, bq_client: bigquery.Client | None = None) -> list
     """The two PPM SIDRA tables, built from settings.
 
     Each table's product codes come from the Curadoria catalog when
-    ``catalog_authoritative_ingestion`` is set — routed by ``sidra_tabela`` (the
+    ``catalog_authoritative_ingestion`` is set — routed by ``tabela`` (the
     SIDRA table id) so herd (3939) and animal (74) codes never cross — else from
     the env fields (see ``catalog_resolver``). ``bq_client`` is reused when given.
     """
@@ -101,7 +101,7 @@ def _specs(settings: Settings, bq_client: bigquery.Client | None = None) -> list
                     settings,
                     "ppm",
                     env_fallback=settings.ppm_herd_product_codes_list,
-                    sidra_tabela=settings.ppm_herd_table_id,
+                    tabela=settings.ppm_herd_table_id,
                     bq_client=bq_client,
                 )
             ),
@@ -117,7 +117,7 @@ def _specs(settings: Settings, bq_client: bigquery.Client | None = None) -> list
                     settings,
                     "ppm",
                     env_fallback=settings.ppm_animal_product_codes_list,
-                    sidra_tabela=settings.ppm_animal_table_id,
+                    tabela=settings.ppm_animal_table_id,
                     bq_client=bq_client,
                 )
             ),

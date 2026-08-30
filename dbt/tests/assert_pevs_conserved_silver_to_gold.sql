@@ -24,7 +24,7 @@
 -- grain orders; a real dropped row moves the total by whole percent. Verified on
 -- prod: both drifts are exactly 0.0.
 --
--- SCOPED BY `sidra_tabela` (v1.46.0; era `origem` desde 2026-08-29). Gold carries BOTH
+-- SCOPED BY `tabela` (v1.46.0; era `origem` desde 2026-08-29). Gold carries BOTH
 -- halves of the survey — extraction
 -- (t289) and silviculture (t291) — so a grand total across the whole table no longer
 -- reconciles against ONE Silver. Comparing each half to its own Silver is not a
@@ -41,7 +41,7 @@ with checks as (
         'extrativa/qty_base'                                                    as measure,
         (select sum(qty_base) from {{ ref('silver_ibge_pevs') }})               as silver_total,
         (select sum(qty_base) from {{ ref('gold_pevs_production') }}
-          where sidra_tabela = '{{ var("ibge_table_id") }}')                                           as gold_total
+          where tabela = '{{ var("ibge_table_id") }}')                                           as gold_total
 
     union all
 
@@ -50,7 +50,7 @@ with checks as (
         (select sum(numeric_value) from {{ ref('silver_ibge_pevs') }}
           where is_monetary_value),
         (select sum(val_yearfx_brl) from {{ ref('gold_pevs_production') }}
-          where sidra_tabela = '{{ var("ibge_table_id") }}')
+          where tabela = '{{ var("ibge_table_id") }}')
 
     union all
 
@@ -58,7 +58,7 @@ with checks as (
         'silvicultura/qty_base',
         (select sum(qty_base) from {{ ref('silver_ibge_silvicultura') }}),
         (select sum(qty_base) from {{ ref('gold_pevs_production') }}
-          where sidra_tabela = '{{ var("silvicultura_table_id") }}')
+          where tabela = '{{ var("silvicultura_table_id") }}')
 
     union all
 
@@ -67,7 +67,7 @@ with checks as (
         (select sum(numeric_value) from {{ ref('silver_ibge_silvicultura') }}
           where is_monetary_value),
         (select sum(val_yearfx_brl) from {{ ref('gold_pevs_production') }}
-          where sidra_tabela = '{{ var("silvicultura_table_id") }}')
+          where tabela = '{{ var("silvicultura_table_id") }}')
 
 )
 

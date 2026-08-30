@@ -62,7 +62,7 @@
 //
 // ⚠ Os ids têm de bater com config.py (ibge_table_id / silvicultura_table_id / ppm_*) e
 // com as vars do dbt_project.yml — `embrapa doctor` valida a paridade.
-window.SIDRA_TABELA_OPTIONS = {
+window.TABELA_OPTIONS = {
   ibge_pevs: [
     { value: 'all', label: 'Ambas' },
     { value: '289', label: 'Extração vegetal (nativa)', short: 'extração' },
@@ -130,9 +130,9 @@ window.FILTER_SCHEMAS = {
         requires: 'product', backed: true, serverParam: 'niveis',
         label: 'Nível de industrialização', column: 'industrialization_level',
         hint: 'Do bruto ao manufaturado, pela classificação curada de cada código.' },
-      { id: 'sidraTabela', tier: 'specific', type: 'segment',
-        requires: null, backed: true, serverParam: 'sidraTabela',
-        label: 'Origem da produção',       column: 'sidra_tabela',
+      { id: 'tabela', tier: 'specific', type: 'segment',
+        requires: null, backed: true, serverParam: 'tabela',
+        label: 'Origem da produção',       column: 'tabela',
         hint: 'Metade da pesquisa, pela tabela SIDRA: t289 extração de floresta nativa · '
               + 't291 silvicultura (plantada).' },
       { id: 'periodo',   tier: 'universal', type: 'period-value',
@@ -357,7 +357,7 @@ window.flowOptionsFor = (bancoId) => window.FLOW_OPTIONS[bancoId] || null;
 
 // As tabelas SIDRA de um banco, ou null quando o banco tem uma só (nada a distinguir).
 // Espelha flowOptionsFor.
-window.sidraTabelaOptionsFor = (bancoId) => window.SIDRA_TABELA_OPTIONS[bancoId] || null;
+window.tabelaOptionsFor = (bancoId) => window.TABELA_OPTIONS[bancoId] || null;
 
 /**
  * Nomeia as linhas de um ranking de produtos, desambiguando SÓ quando é preciso.
@@ -379,7 +379,7 @@ window.sidraTabelaOptionsFor = (bancoId) => window.SIDRA_TABELA_OPTIONS[bancoId]
 window.labelProductRows = (rows, bancoId) => {
   const lista = rows || [];
   const curto = Object.fromEntries(
-    ((window.SIDRA_TABELA_OPTIONS || {})[bancoId] || [])
+    ((window.TABELA_OPTIONS || {})[bancoId] || [])
       .map((o) => [o.value, o.short]).filter((p) => p[1]),
   );
   const vezes = {};
@@ -389,7 +389,7 @@ window.labelProductRows = (rows, bancoId) => {
   }
   return lista.map((r) => {
     const n = r.name || r.code;
-    const sufixo = curto[r.sidra_tabela];
+    const sufixo = curto[r.tabela];
     return vezes[n] > 1 && sufixo ? { ...r, name: `${n} · ${sufixo}` } : r;
   });
 };

@@ -27,6 +27,7 @@ models:
               - state_acronym
               - city_code
               - product_code
+              - tabela
     columns:
       - name: reference_year
         tests:
@@ -126,6 +127,7 @@ models:
               - state_acronym
               - city_code
               - product_code
+              - tabela
     columns:
       - name: reference_year
         tests:
@@ -244,6 +246,7 @@ models:
               - state_acronym
               - city_code
               - product_code
+              - tabela
     columns:
       - name: reference_year
         tests:
@@ -352,6 +355,7 @@ models:
               - reference_year
               - reference_month
               - ncm_code
+              - tabela
               - country_code
               - state_acronym
               - transport_route_code
@@ -496,6 +500,7 @@ models:
               - reporter_code
               - partner_code
               - cmd_code
+              - tabela
     columns:
       - name: flow
         tests:
@@ -622,6 +627,7 @@ models:
             combination_of_columns:
               - source
               - code
+              - tabela
     columns:
       - name: agrupamento_id
         description: "Stable commodity slug (e.g. castanha_do_para, madeira, soja)."
@@ -701,7 +707,7 @@ unit_tests:
   #   FX USD: avg(2000)=2.0, latest=5.0
   #     → val_yearfx_usd    = 1000 / 2.0          = 500   (year >= 1994)
   #     → val_real_ipca_usd = 3000 / 5.0          = 600
-  # ── The `sidra_tabela` axis ───────────────────────────────────────────────
+  # ── The `tabela` axis ───────────────────────────────────────────────
   # gold_pevs_production carries BOTH halves of the survey, told apart by the SIDRA
   # table each row came from. A row must be stamped by WHICH SILVER IT CAME FROM — if
   # the union ever tags by position, or a copy-paste swaps the two ids, every
@@ -709,23 +715,27 @@ unit_tests:
   # else changing shape. Same product NAME in both halves on purpose: that is the
   # confusable case, and the one that used to merge two produtos into one bar before
   # the id travelled with the row (v1.46.0).
-  - name: test_pevs_sidra_tabela_is_stamped_from_the_source_half
+  # Desde v1.47.0 o carimbo vive no SILVER (cada modelo sabe de qual tabela lê) e o Gold
+  # apenas une — as fixtures abaixo trazem a coluna por isso. O invariante guardado é o
+  # mesmo e continua sendo o que importa: cada metade chega ao Gold com a SUA tabela, e
+  # duas linhas de mesmo nome não se confundem.
+  - name: test_pevs_tabela_survives_the_union_from_each_half
     model: gold_pevs_production
     given:
       - input: ref('silver_ibge_pevs')
         rows:
-          - {reference_year: 2023, state_acronym: "PA", city_code: "1500800", city_name: "Belém", product_code: "3435", product_description: "Madeira em tora", is_monetary_value: true, numeric_value: 100, qty_native: , qty_base: , family: , unit_native: , base_unit: , ingestion_timestamp: "2024-01-01 00:00:00"}
+          - {reference_year: 2023, state_acronym: "PA", city_code: "1500800", city_name: "Belém", product_code: "3435", tabela: "289", product_description: "Madeira em tora", is_monetary_value: true, numeric_value: 100, qty_native: , qty_base: , family: , unit_native: , base_unit: , ingestion_timestamp: "2024-01-01 00:00:00"}
       - input: ref('silver_ibge_silvicultura')
         rows:
-          - {reference_year: 2023, state_acronym: "SP", city_code: "3550308", city_name: "São Paulo", product_code: "3457", product_description: "Madeira em tora", is_monetary_value: true, numeric_value: 900, qty_native: , qty_base: , family: , unit_native: , base_unit: , ingestion_timestamp: "2024-01-01 00:00:00"}
+          - {reference_year: 2023, state_acronym: "SP", city_code: "3550308", city_name: "São Paulo", product_code: "3457", tabela: "291", product_description: "Madeira em tora", is_monetary_value: true, numeric_value: 900, qty_native: , qty_base: , family: , unit_native: , base_unit: , ingestion_timestamp: "2024-01-01 00:00:00"}
       - input: ref('silver_bcb_inflation')
         rows: []
       - input: ref('silver_currency')
         rows: []
     expect:
       rows:
-        - {reference_year: 2023, state_acronym: "PA", product_code: "3435", sidra_tabela: "289", val_yearfx_brl: 100}
-        - {reference_year: 2023, state_acronym: "SP", product_code: "3457", sidra_tabela: "291", val_yearfx_brl: 900}
+        - {reference_year: 2023, state_acronym: "PA", product_code: "3435", tabela: "289", val_yearfx_brl: 100}
+        - {reference_year: 2023, state_acronym: "SP", product_code: "3457", tabela: "291", val_yearfx_brl: 900}
 
   - name: test_pevs_deflation_and_fx_arithmetic
     model: gold_pevs_production
@@ -738,7 +748,7 @@ unit_tests:
           - {reference_year: 2000, state_acronym: "PA", city_code: "1500800", city_name: "Belém", product_code: "0001", product_description: "Açaí", is_monetary_value: false, numeric_value: 5,    qty_native: 5, qty_base: 5, family: "massa", unit_native: "t", base_unit: "t", ingestion_timestamp: "2024-01-01 00:00:00"}
       # The model now unions BOTH halves of the survey; dbt requires every ref to be
       # given. Empty here on purpose — this test is about the deflation arithmetic, and
-      # the sidra_tabela axis has its own case below.
+      # the tabela axis has its own case below.
       - input: ref('silver_ibge_silvicultura')
         rows: []
       - input: ref('silver_bcb_inflation')
@@ -764,10 +774,10 @@ unit_tests:
   #
   # Este teste roda o SQL DE VERDADE no BigQuery, e é por isso que ele existe aqui e
   # não em Python: a armadilha é de RESOLUÇÃO DE NOME, e quem decide é o BigQuery.
-  # Dentro do `not exists`, um `sidra_tabela` sem qualificar resolve para o escopo
-  # INTERNO — `v.sidra_tabela = sidra_tabela` vira tautologia e volta a esconder as
+  # Dentro do `not exists`, um `tabela` sem qualificar resolve para o escopo
+  # INTERNO — `v.tabela = tabela` vira tautologia e volta a esconder as
   # duas metades, com aparência de correto. A macro evita isso expondo a coluna do
-  # gate como `_vis_sidra_tabela`; se alguém "simplificar" esse rename, ESTE teste
+  # gate como `_vis_tabela`; se alguém "simplificar" esse rename, ESTE teste
   # cai (total_rows 2 → 1), que é onde precisa cair.
   #
   # gold_source_metadata foi escolhido por ser o modelo mais barato que usa a macro:
@@ -779,12 +789,12 @@ unit_tests:
       - input: ref('dim_produto_visibility')
         rows:
           # esconde SÓ a metade extração (289) do código 3405
-          - {source: 'pevs', code: '3405', sidra_tabela: '289'}
+          - {source: 'pevs', code: '3405', tabela: '289'}
       - input: ref('gold_pevs_production')
         rows:
-          - {reference_year: 2020, product_code: '3405', sidra_tabela: '289', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
-          - {reference_year: 2021, product_code: '3405', sidra_tabela: '291', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
-          - {reference_year: 2021, product_code: '9999', sidra_tabela: '289', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
+          - {reference_year: 2020, product_code: '3405', tabela: '289', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
+          - {reference_year: 2021, product_code: '3405', tabela: '291', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
+          - {reference_year: 2021, product_code: '9999', tabela: '289', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
       # os demais bancos entram vazios: o `having count(*) > 0` os elimina, e o expect
       # fica com uma linha só. dbt exige fixture para TODO ref do modelo.
       - {input: "ref('gold_pam_production')", rows: []}
@@ -797,7 +807,7 @@ unit_tests:
         - {source: 'ibge_pevs', year_start: 2021, year_end: 2021, total_rows: 2, products_total: 2, ufs_total: 1}
 
   # Uma linha do gate SEM tabela é CORINGA: esconde as duas metades. É o
-  # comportamento anterior preservado — `sidra_tabela` é opcional numa entrada de
+  # comportamento anterior preservado — `tabela` é opcional numa entrada de
   # PEVS, e uma tag ausente tem de continuar escondendo tudo, jamais nada. Sem esta
   # regra a mudança acima seria fail-open: um produto escondido reapareceria.
   - name: test_hidden_code_predicate_untagged_row_hides_both_halves
@@ -805,12 +815,12 @@ unit_tests:
     given:
       - input: ref('dim_produto_visibility')
         rows:
-          - {source: 'pevs', code: '3405', sidra_tabela: null}
+          - {source: 'pevs', code: '3405', tabela: null}
       - input: ref('gold_pevs_production')
         rows:
-          - {reference_year: 2020, product_code: '3405', sidra_tabela: '289', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
-          - {reference_year: 2020, product_code: '3405', sidra_tabela: '291', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
-          - {reference_year: 2021, product_code: '9999', sidra_tabela: '289', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
+          - {reference_year: 2020, product_code: '3405', tabela: '289', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
+          - {reference_year: 2020, product_code: '3405', tabela: '291', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
+          - {reference_year: 2021, product_code: '9999', tabela: '289', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
       # os demais bancos entram vazios: o `having count(*) > 0` os elimina, e o expect
       # fica com uma linha só. dbt exige fixture para TODO ref do modelo.
       - {input: "ref('gold_pam_production')", rows: []}

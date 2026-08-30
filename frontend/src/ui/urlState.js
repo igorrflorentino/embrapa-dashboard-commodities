@@ -110,7 +110,7 @@ window.buildUrlState = ({ view, database, infoPage, conventions, summary, crossS
     // Escreve `tb` desde v1.46.0; o decodificador ainda ACEITA o `or=extrativa|silvicultura`
     // dos links antigos (ver main.jsx) para que nenhum permalink já compartilhado pare de
     // restaurar o recorte.
-    tb: s.sidraTabela && s.sidraTabela !== 'all' ? s.sidraTabela : '',
+    tb: s.tabela && s.tabela !== 'all' ? s.tabela : '',
     // Níveis de industrialização; omitido quando nada está selecionado.
     ni: window.urlEncodeArr(s.niveis),
     // Server-side customs-procedure filter (regime aduaneiro, COMTRADE); omitted when

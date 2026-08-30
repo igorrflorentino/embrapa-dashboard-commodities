@@ -33,12 +33,15 @@ with current_catalog as (
         codigo_produto,
         -- Parte da identidade do produto. O `partition by` abaixo funciona sem ela porque
         -- avalia sobre a tabela de origem; o SELECT final, não — ele lê desta CTE.
-        sidra_tabela,
+        -- Padrão do banco quando o log histórico não traz tabela (comex/comtrade/pam
+        -- nasceram sem ela). ÚNICO ponto do projeto que trata a ausência; daqui para
+        -- baixo o trio é NÃO-NULO em todas as camadas.
+        {{ tabela_com_padrao('tabela', 'banco') }} as tabela,
         {{ catalog_visibilidade() }} as visibilidade_efetiva,
         active,
         -- Latest-wins per key; same tie-breaker note as dim_produto_catalog: a
         -- same-microsecond change_id tie is deterministic but not true write-order —
-        -- unreachable for human edits, and the unique_combination(source, code, sidra_tabela) test on this
+        -- unreachable for human edits, and the unique_combination(source, code, tabela) test on this
         -- model is the backstop. This ORDER BY is replicated across the serving readers.
         row_number() over (
             partition by {{ chave_produto() }}
@@ -52,7 +55,7 @@ select
     source,
     codigo_produto as code,
     -- Ver dim_produto_catalog: parte da identidade do produto.
-    sidra_tabela
+    tabela
 from current_catalog
 where _rn = 1
   and active

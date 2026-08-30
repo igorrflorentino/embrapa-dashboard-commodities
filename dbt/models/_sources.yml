@@ -185,7 +185,7 @@ sources:
           Append-only Curadoria (catalog) source: one row per manual commodity-catalog
           edit. Columns: codigo_produto (the EXACT source code — no prefixes), banco
           (source token pevs/comex/comtrade/pam/ppm), agrupamento (cross-source concept),
-          descricao_produto, ciclo_de_vida, agrupamento_id, sidra_tabela (PPM only: which
+          descricao_produto, ciclo_de_vida, agrupamento_id, tabela (PPM only: which
           SIDRA table the code belongs to — '3939' herd / '74' animal production — routing
           catalog-driven ingestion; NULL for every other banco), active
           (false = a tombstone: the entry left the catalog → its Gold data is an

@@ -152,7 +152,7 @@ _MEASURE_KIND_SOURCES = {"ibge_ppm"}
 # mesmo banco podem trazer o MESMO nome (madeira/lenha/carvão no PEVS): sem o id, a tela
 # não tem como distinguir duas entradas idênticas. Mesma nota de cache do conjunto acima —
 # o tratamento é DERIVADO de `source`, que já entra na chave de memoize de todo leitor.
-_SIDRA_TABELA_SOURCES = {"ibge_pevs", "ibge_ppm"}
+_TABELA_SOURCES = {"ibge_pevs", "ibge_ppm"}
 
 
 # Production sources whose marts are COLUMN-IDENTICAL (PEVS shape: product_code,
@@ -183,7 +183,7 @@ def fetch_production_overview(
     value_column: str = "val_real_ipca_brl",
     source: str = "ibge_pevs",
     uf_codes: Sequence[str] = (),
-    sidra_tabela: str | None = None,
+    tabela: str | None = None,
 ):
     """Annual production total for a PEVS-shaped source (backs overviewTS).
 
@@ -199,7 +199,7 @@ def fetch_production_overview(
         value_column=value_column,
         uf_codes=tuple(uf_codes),
         has_measure_kind=source in _MEASURE_KIND_SOURCES,
-        sidra_tabela=sidra_tabela,
+        tabela=tabela,
     )
     return run_query(sql, params)
 
@@ -213,7 +213,7 @@ def fetch_production_by_uf(
     value_column: str = "val_real_ipca_brl",
     source: str = "ibge_pevs",
     latest_year_only: bool = True,
-    sidra_tabela: str | None = None,
+    tabela: str | None = None,
 ):
     """Production aggregated by UF for a PEVS-shaped source (backs ufData).
 
@@ -232,7 +232,7 @@ def fetch_production_by_uf(
         value_column=value_column,
         latest_year_only=latest_year_only,
         has_measure_kind=source in _MEASURE_KIND_SOURCES,
-        sidra_tabela=sidra_tabela,
+        tabela=tabela,
     )
     return run_query(sql, params)
 
@@ -244,7 +244,7 @@ def fetch_production_by_uf_yearly(
     product_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     source: str = "ibge_pevs",
-    sidra_tabela: str | None = None,
+    tabela: str | None = None,
 ):
     """Production by (UF, year) for a PEVS-shaped source (backs the ano × UF heatmap)."""
     settings = get_settings()
@@ -256,7 +256,7 @@ def fetch_production_by_uf_yearly(
         product_codes=tuple(product_codes),
         value_column=value_column,
         has_measure_kind=source in _MEASURE_KIND_SOURCES,
-        sidra_tabela=sidra_tabela,
+        tabela=tabela,
     )
     return run_query(sql, params)
 
@@ -275,7 +275,7 @@ def fetch_production_by_municipio_yearly(
     city_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     source: str = "ibge_pevs",
-    sidra_tabela: str | None = None,
+    tabela: str | None = None,
 ):
     """Production by (município, year) for a PEVS-shaped source, straight from
     gold_<source>_production (already município-grained) — backs the sub-UF +
@@ -301,7 +301,7 @@ def fetch_production_by_municipio_yearly(
         visibility_predicate=sqlbuild.visibility_clause(
             settings, _SHORT_SOURCE[source], _GOLD_PRODUCT[source][0]
         ),
-        sidra_tabela=sidra_tabela,
+        tabela=tabela,
     )
     return run_query(sql, params)
 
@@ -314,8 +314,8 @@ def fetch_products_by_municipio(
     city_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     source: str = "ibge_pevs",
-    sidra_tabela: str | None = None,
-    include_sidra_tabela: bool = False,
+    tabela: str | None = None,
+    include_tabela: bool = False,
 ):
     """Per-product ranking WITHIN the given municípios — "o que este lugar produz".
 
@@ -337,8 +337,8 @@ def fetch_products_by_municipio(
         name_column=name_column,
         year_start=year_start,
         year_end=year_end,
-        sidra_tabela=sidra_tabela,
-        include_sidra_tabela=include_sidra_tabela,
+        tabela=tabela,
+        include_tabela=include_tabela,
         product_codes=tuple(product_codes),
         city_codes=tuple(city_codes),
         value_column=value_column,
@@ -686,8 +686,8 @@ def fetch_products_by_uf(
     uf_codes: Sequence[str] = (),
     value_column: str = "val_yearfx_usd",
     flow: str | None = None,
-    sidra_tabela: str | None = None,
-    include_sidra_tabela: bool = False,
+    tabela: str | None = None,
+    include_tabela: bool = False,
 ):
     """Per-product ranking within a UF selection (backs the 'Base de dados' per-UF
     product breakdown). ``table_key`` + columns are internal literals the seam picks
@@ -705,8 +705,8 @@ def fetch_products_by_uf(
         uf_codes=tuple(uf_codes),
         value_column=value_column,
         flow=flow,
-        sidra_tabela=sidra_tabela,
-        include_sidra_tabela=include_sidra_tabela,
+        tabela=tabela,
+        include_tabela=include_tabela,
     )
     return run_query(sql, params)
 
@@ -973,7 +973,7 @@ def fetch_produto_catalog(banco: str | None = None):
     where = "where banco = @banco" if banco else ""
     sql = f"""
         select codigo_produto, banco, agrupamento, descricao_produto,
-               ciclo_de_vida, ingestao, visibilidade, agrupamento_id, sidra_tabela
+               ciclo_de_vida, ingestao, visibilidade, agrupamento_id, tabela
         from (
           select *, row_number() over (
             partition by {sqlbuild.CHAVE_CATALOGO} order by edited_at desc, change_id desc
@@ -986,7 +986,7 @@ def fetch_produto_catalog(banco: str | None = None):
     try:
         return run_query(sql, params)
     except BadRequest:
-        # An older produto_catalog_log predates a column the SELECT names (sidra_tabela /
+        # An older produto_catalog_log predates a column the SELECT names (tabela /
         # agrupamento_id were added late). The writer self-heals via ALTER on every write, but a
         # read on a not-yet-written table would 500. Self-heal here (idempotent) + retry once,
         # so viewing the Cadastro never fails on a stale schema. Deferred import breaks the
@@ -1035,11 +1035,16 @@ def fetch_source_code_stats(source: str):
     table = sqlbuild.table_ref(settings, "bq_gold_dataset", table_name)
     sql = f"""
         select cast({code_col} as string) as code,
+               tabela,
                count(*) as n_rows,
                min(reference_year) as year_start,
                max(reference_year) as year_end
         from `{table}`
-        group by code
+        -- Agrupa pelo TRIO (o banco é a própria tabela consultada). Agrupava só por
+        -- `code`, o que SOMAVA as duas metades de PEVS/PPM num único total — e o editor
+        -- do Cadastro, que tem uma linha por entrada do catálogo (única no trio), mostraria
+        -- o mesmo número somado nas duas linhas.
+        group by code, tabela
     """
     return run_query(sql, [], max_bytes=RAW_TABLE_MAX_BYTES)
 
@@ -1060,10 +1065,14 @@ def fetch_source_products_gold(source: str):
     table = sqlbuild.table_ref(settings, "bq_gold_dataset", table_name)
     code_col, name_col = cols
     sql = f"""
-        select cast({code_col} as string) as code, any_value({name_col}) as name
+        select cast({code_col} as string) as code, tabela,
+               any_value({name_col}) as name
         from `{table}`
-        group by code
-        order by code
+        -- Pelo TRIO: `any_value(name)` sobre um código presente nas duas metades devolveria
+        -- um nome arbitrário. As três descrições que se repetem entre as metades do PEVS
+        -- (Carvão vegetal, Lenha, Madeira em tora) são exatamente esse caso.
+        group by code, tabela
+        order by code, tabela
     """
     return run_query(sql, [], max_bytes=RAW_TABLE_MAX_BYTES)
 
@@ -1182,7 +1191,7 @@ def fetch_products(source: str):
         code_column=code_col,
         name_column=name_col,
         with_measure_kind=source in _MEASURE_KIND_SOURCES,
-        with_sidra_tabela=source in _SIDRA_TABELA_SOURCES,
+        with_tabela=source in _TABELA_SOURCES,
     )
     return run_query(sql, params)
 

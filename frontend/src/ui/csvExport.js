@@ -65,9 +65,9 @@
     })();
     const origem = (() => {
       const opts =
-        (window.sidraTabelaOptionsFor && window.sidraTabelaOptionsFor(database)) || null;
+        (window.tabelaOptionsFor && window.tabelaOptionsFor(database)) || null;
       if (!opts) return null;                       // banco has no origem column
-      const raw = (summary || {}).sidraTabela;
+      const raw = (summary || {}).tabela;
       if (!raw || raw === 'all') return 'ambas as metades';
       return (opts.find((o) => o.value === raw) || {}).label || raw;
     })();

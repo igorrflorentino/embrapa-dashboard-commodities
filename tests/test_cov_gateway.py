@@ -156,7 +156,7 @@ def test_fetch_produto_catalog_scoped_binds_banco_param(monkeypatch):
 
 
 def test_fetch_produto_catalog_self_heals_on_missing_column(monkeypatch):
-    """A produto_catalog_log that predates a SELECTed column (e.g. sidra_tabela added late)
+    """A produto_catalog_log that predates a SELECTed column (e.g. tabela added late)
     raises BadRequest; fetch self-heals via ensure + retries once instead of 500ing the read."""
     pytest.importorskip("flask_caching")
     from google.api_core.exceptions import BadRequest
@@ -168,7 +168,7 @@ def test_fetch_produto_catalog_self_heals_on_missing_column(monkeypatch):
     def flaky(query, params, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
-            raise BadRequest("Unrecognized name: sidra_tabela")
+            raise BadRequest("Unrecognized name: tabela")
         return "CATALOG"
 
     monkeypatch.setattr(gateway, "run_query", flaky)

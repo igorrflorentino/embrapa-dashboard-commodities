@@ -6,7 +6,7 @@ e a ingestão dirigida pelo catálogo perderia a metade não marcada em silênci
 
 Eram **16** `partition by` espalhados por 5 módulos Python e mais 3 modelos dbt. Uma chave
 que muda em 15 lugares e fica no 16º é a forma exata do defeito que este projeto já teve
-três vezes em um único dia (o eixo `origem`, o `niveis`, a regra do `sidra_tabela`), e em
+três vezes em um único dia (o eixo `origem`, o `niveis`, a regra do `tabela`), e em
 todas a suíte ficou verde. Por isso a chave vive em constantes/macro e estes testes varrem
 os CALL SITES — não a função.
 """
@@ -78,7 +78,7 @@ def test_as_tres_chaves_carregam_a_tabela_e_a_sentinela() -> None:
     carrega informação, e sem o `ifnull` um NULL viraria uma identidade à parte."""
     for nome in ("CHAVE_CATALOGO", "CHAVE_CLASSIFICACAO", "CHAVE_CICLO_DE_VIDA"):
         frag = getattr(sqlbuild, nome)
-        assert "sidra_tabela" in frag, f"{nome} não inclui a tabela"
+        assert "tabela" in frag, f"{nome} não inclui a tabela"
         assert f"'{sqlbuild.SEM_TABELA}'" in frag, f"{nome} não colapsa NULL na sentinela"
 
 
@@ -125,7 +125,7 @@ def test_todo_insert_em_log_de_produto_grava_a_tabela(arquivo: str) -> None:
     alvo = [s for s in _inserts(texto) if _e_log_de_produto(s)]
     assert alvo, f"{arquivo}: o varredor não achou insert de log de produto"
     for stmt in alvo:
-        assert "sidra_tabela" in stmt, f"{arquivo}: insert sem a tabela — {stmt[:90]!r}"
+        assert "tabela" in stmt, f"{arquivo}: insert sem a tabela — {stmt[:90]!r}"
 
 
 def test_o_varredor_de_escrita_enxerga_os_inserts() -> None:
@@ -141,7 +141,7 @@ def test_o_tombstone_preserva_a_tabela_da_entrada() -> None:
     fonte = inspect.getsource(
         __import__("embrapa_dashboard.serving.curation", fromlist=["x"]).remove_produto_catalog
     )
-    assert "_current_sidra_tabela" in fonte, "o tombstone não preserva a tabela da entrada"
+    assert "_current_tabela" in fonte, "o tombstone não preserva a tabela da entrada"
 
 
 def test_o_ciclo_de_vida_grava_a_tabela_que_o_catalogo_resolveu(monkeypatch) -> None:
@@ -171,7 +171,7 @@ def test_o_ciclo_de_vida_grava_a_tabela_que_o_catalogo_resolveu(monkeypatch) -> 
         change_id="c1",
     )
     params = {p.name: p.value for p in bq.query.call_args.kwargs["job_config"].query_parameters}
-    assert params["sidra_tabela"] == "291", "o evento não levou a tabela resolvida"
+    assert params["tabela"] == "291", "o evento não levou a tabela resolvida"
 
 
 # ── a documentação do grão ────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ def test_nenhum_doc_descreve_a_chave_sem_a_tabela(arquivo: str) -> None:
     mecanicamente; é pouco, e é exatamente o que apodreceu."""
     texto = (_RAIZ / arquivo).read_text(encoding="utf-8")
     for padrao in (
-        # Sem lookahead: a forma CORRETA é `(codigo_produto, banco, sidra_tabela)`, que não
+        # Sem lookahead: a forma CORRETA é `(codigo_produto, banco, tabela)`, que não
         # contém `(codigo_produto, banco)` — o parêntese de fechar é o que separa as duas.
         # A versão anterior punha um `(?!,)` DEPOIS do parêntese e não pegava a injeção.
         r"per \(codigo_produto, banco\)",
@@ -224,7 +224,7 @@ def test_as_guardas_de_idempotencia_comparam_a_chave_inteira(arquivo: str) -> No
     de_produto = [t for t in tuplas if "codigo_produto" in t or '"code"' in t]
     assert de_produto, f"{arquivo}: o varredor não achou guarda de produto"
     for t in de_produto:
-        assert "sidra_tabela" in t, f"{arquivo}: guarda sem a tabela — ({t.strip()})"
+        assert "tabela" in t, f"{arquivo}: guarda sem a tabela — ({t.strip()})"
 
 
 def test_as_chaves_de_idempotencia_do_frontend_incluem_a_tabela() -> None:
@@ -233,7 +233,7 @@ def test_as_chaves_de_idempotencia_do_frontend_incluem_a_tabela() -> None:
     jsx = (_RAIZ / "frontend/src/ui/ViewCadastroProdutos.jsx").read_text(encoding="utf-8")
     for rotulo in ("save:", "rm:"):
         linha = next(x for x in jsx.split("\n") if f"`{rotulo}" in x)
-        assert "sidra_tabela" in linha, f"chave {rotulo} sem a tabela — {linha.strip()[:80]}"
+        assert "tabela" in linha, f"chave {rotulo} sem a tabela — {linha.strip()[:80]}"
 
 
 def test_o_delete_envia_a_tabela_da_entrada() -> None:
@@ -241,7 +241,7 @@ def test_o_delete_envia_a_tabela_da_entrada() -> None:
     ambíguo se houver duas metades. A linha da tela já tem a tag (ela desenha o selo)."""
     jsx = (_RAIZ / "frontend/src/ui/ViewCadastroProdutos.jsx").read_text(encoding="utf-8")
     linha = next(x for x in jsx.split("\n") if "catalog/entry/remove" in x)
-    assert "sidra_tabela" in linha, "o delete não envia a tabela"
+    assert "tabela" in linha, "o delete não envia a tabela"
 
 
 # ── a regra da tag vale para TODO banco multi-tabela ──────────────────────────
@@ -301,7 +301,7 @@ def test_entrada_nova_exige_a_tag_em_todo_banco_multi_tabela(banco: str) -> None
     from embrapa_dashboard.serving import curation
 
     with pytest.raises(ValueError, match="obrigatória"):
-        curation._validate_sidra_tabela(banco, None, _cfg_falsa(), require_for_ppm=True)
+        curation._validate_tabela(banco, None, _cfg_falsa(), require_for_ppm=True)
 
 
 @pytest.mark.parametrize("banco", ["ppm", "pevs"])
@@ -314,16 +314,16 @@ def test_update_sem_a_tag_e_legitimo_porque_o_chamador_preserva(
     `sql.SEM_TABELA`, sumindo das duas metades do banco.
 
     Verifica o COMPORTAMENTO, não o texto-fonte. A versão anterior procurava a chamada a
-    `_current_sidra_tabela` dentro de `record_produto_catalog` e reprovou quando ela foi
+    `_current_tabela` dentro de `record_produto_catalog` e reprovou quando ela foi
     extraída na v1.45.0 — a preservação continuava lá, só tinha mudado de casa."""
     from embrapa_dashboard.serving import curation
 
     # A permissão: sem tag, num update, o validador não recusa.
-    curation._validate_sidra_tabela(banco, None, _cfg_falsa(), require_for_ppm=False)
+    curation._validate_tabela(banco, None, _cfg_falsa(), require_for_ppm=False)
 
     # E a contrapartida que a torna segura: a tag guardada é recuperada quando omitida.
     guardada = "3939" if banco == "ppm" else "291"
-    monkeypatch.setattr(curation, "_current_sidra_tabela", lambda *a, **k: guardada)
+    monkeypatch.setattr(curation, "_current_tabela", lambda *a, **k: guardada)
     monkeypatch.setattr(curation, "_current_descricao", lambda *a, **k: None)
     monkeypatch.setattr(curation, "_current_lifecycle", lambda *a, **k: (None, None))
     tag, _desc, _ing, _vis = curation._preserve_omitted_fields(
@@ -332,7 +332,7 @@ def test_update_sem_a_tag_e_legitimo_porque_o_chamador_preserva(
         "4403",
         banco,
         is_active=True,  # UPDATE de uma entrada existente
-        sidra_tabela=None,  # que NÃO reenvia a tag
+        tabela=None,  # que NÃO reenvia a tag
         descricao_produto=None,
         ingestao=None,
         visibilidade=None,
@@ -348,7 +348,7 @@ def test_update_sem_a_tag_e_legitimo_porque_o_chamador_preserva(
         "4403",
         banco,
         is_active=False,
-        sidra_tabela=None,
+        tabela=None,
         descricao_produto=None,
         ingestao=None,
         visibilidade=None,

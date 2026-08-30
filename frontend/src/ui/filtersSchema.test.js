@@ -40,7 +40,7 @@ describe('dimAppliesTo — capability crossing (requires × provides)', () => {
 describe('bancoFilterDims — only backed AND applicable dims (everything else hidden)', () => {
   const ids = (banco) => window.bancoFilterDims(banco).map((d) => d.id);
 
-  it('PEVS: the production dims, in order — with `sidraTabela` since the survey has two tables', () => {
+  it('PEVS: the production dims, in order — with `tabela` since the survey has two tables', () => {
     // `origem` (extração nativa | silvicultura plantada) joined in 2026-08-29 when the
     // t291 half was ingested. It sits right after produtos on purpose: it changes WHAT a
     // number covers, so it belongs beside the product choice rather than buried below the
@@ -49,7 +49,7 @@ describe('bancoFilterDims — only backed AND applicable dims (everything else h
     // dashboard classificava mas não deixava filtrar — o eixo existia no editor e na view
     // "Valor agregado", e não no menu.
     expect(ids('ibge_pevs')).toEqual([
-      'produtos', 'nivel', 'sidraTabela', 'periodo', 'geografia', 'qualidade',
+      'produtos', 'nivel', 'tabela', 'periodo', 'geografia', 'qualidade',
     ]);
   });
 

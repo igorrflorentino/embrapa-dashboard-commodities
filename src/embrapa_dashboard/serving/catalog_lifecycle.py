@@ -55,7 +55,7 @@ CATALOG_LIFECYCLE_LOG_SCHEMA = [
     # NULLABLE: os bancos de uma tabela só não a preenchem, e o `ifnull` do
     # `sql.CHAVE_*` a colapsa na sentinela. Sem ela aqui, uma instalação NOVA criaria
     # o log sem a coluna e o particionamento quebraria — furo que um teste pegou.
-    bigquery.SchemaField("sidra_tabela", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("tabela", "STRING", mode="NULLABLE"),
 ]
 
 
@@ -91,21 +91,21 @@ def _insert_lifecycle_event(
     """
     from embrapa_dashboard.serving.curation import tabela_do_produto
 
-    sidra_tabela = tabela_do_produto(banco, code, client=bq)
+    tabela = tabela_do_produto(banco, code, client=bq)
     sql = f"""
         insert into `{table_fqn}`
             (element_kind, banco, code, status, reason, scheduled_purge_note,
-             edited_by, edited_at, change_id, sidra_tabela)
+             edited_by, edited_at, change_id, tabela)
         values
             (@element_kind, @banco, @code, @status, @reason, @purge_note,
-             @edited_by, current_timestamp(), @change_id, @sidra_tabela)
+             @edited_by, current_timestamp(), @change_id, @tabela)
     """
     p = bigquery.ScalarQueryParameter
     params = [
         p("element_kind", "STRING", element_kind),
         p("banco", "STRING", banco),
         p("code", "STRING", code),
-        p("sidra_tabela", "STRING", sidra_tabela),
+        p("tabela", "STRING", tabela),
         p("status", "STRING", status),
         p("reason", "STRING", reason),
         p("purge_note", "STRING", purge_note),

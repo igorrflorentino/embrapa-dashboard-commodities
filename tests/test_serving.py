@@ -503,7 +503,7 @@ def test_comex_seasonality_filters_flow_and_ncm():
 def test_products_readers_carry_the_pevs_half_only_when_asked(
     builder, table, code_col, name_col, escopo
 ):
-    """``include_sidra_tabela`` faz a metade do PEVS viajar junto com cada linha — e só quando
+    """``include_tabela`` faz a metade do PEVS viajar junto com cada linha — e só quando
     pedida, porque o COMEX não tem a coluna e um select fixo quebraria o banco inteiro.
 
     Quem exibe precisa dela: madeira, lenha e carvão existem nas DUAS metades com o MESMO
@@ -512,12 +512,12 @@ def test_products_readers_carry_the_pevs_half_only_when_asked(
     suíte inteira — a tela voltaria a borrar os rótulos sem nenhum teste vermelho."""
     comum = dict(code_column=code_col, name_column=name_col, **escopo)
 
-    ligada, _ = builder(table, include_sidra_tabela=True, **comum)
-    assert "any_value(sidra_tabela) as sidra_tabela" in ligada.lower()
+    ligada, _ = builder(table, include_tabela=True, **comum)
+    assert "any_value(tabela) as tabela" in ligada.lower()
 
     desligada, _ = builder(table, **comum)
-    assert "sidra_tabela" not in desligada.lower().split("from")[0], (
-        "sem include_sidra_tabela o select não pode citar a tabela — o COMEX não tem a coluna"
+    assert "tabela" not in desligada.lower().split("from")[0], (
+        "sem include_tabela o select não pode citar a tabela — o COMEX não tem a coluna"
     )
     # E o sinalizador mexe SÓ no select: o agrupamento continua por produto nos dois casos,
     # senão a linha extra viria de um grão diferente.
@@ -965,16 +965,16 @@ def test_products_adds_the_sidra_table_only_when_requested():
         "p.serving.serving_pevs_annual",
         code_column="product_code",
         name_column="product_description",
-        with_sidra_tabela=True,
+        with_tabela=True,
     )
-    assert "any_value(sidra_tabela) as sidra_tabela" in ligada
+    assert "any_value(tabela) as tabela" in ligada
 
     # E desligada por padrão: um mart de tabela única não tem a coluna, e um select fixo
     # quebraria o banco inteiro.
     desligada, _ = sql.products(
         "p.serving.serving_comex_annual", code_column="ncm_code", name_column="ncm_description"
     )
-    assert "sidra_tabela" not in desligada
+    assert "tabela" not in desligada
 
 
 def test_products_adds_measure_kind_only_when_requested():
@@ -1210,7 +1210,7 @@ def test_ensure_code_industrialization_log_table_creates_with_explicit_schema(mo
         "edited_by",
         "edited_at",
         "change_id",
-        "sidra_tabela",
+        "tabela",
     }
     assert client.create_table.call_args.kwargs["exists_ok"] is True
 
@@ -2299,7 +2299,7 @@ def test_visibility_clause_and_builder_injection():
 def test_visibility_clause_matches_the_sidra_table_only_for_multi_table_bancos():
     """A identidade de um produto é (banco, tabela, código), então o gate casa também a
     tabela — mas SÓ nos bancos que têm duas. `comex`/`comtrade`/`pam` não têm a coluna
-    `sidra_tabela` no Gold: referenciá-la seria um erro de compilação a cada leitura.
+    `tabela` no Gold: referenciá-la seria um erro de compilação a cada leitura.
 
     A âncora é `curation._BANCOS_MULTI_TABELA`, mantida para validar a tag de tabela nas
     escritas da curadoria — outro motivo, outro dono. Uma lista escrita aqui à mão apenas
@@ -2313,7 +2313,7 @@ def test_visibility_clause_matches_the_sidra_table_only_for_multi_table_bancos()
         # o subselect renomeia a coluna em TODO banco (o SQL é uniforme); o que varia é a
         # CONDIÇÃO, então é ela que decide — a primeira versão deste teste procurava o
         # rename e dava positivo para os cinco.
-        casa_tabela = "_vis_sidra_tabela is null" in clause
+        casa_tabela = "_vis_tabela is null" in clause
         assert casa_tabela is (banco in _BANCOS_MULTI_TABELA), (
             f"{banco}: casa_tabela={casa_tabela}, mas multi-tabela={banco in _BANCOS_MULTI_TABELA}"
         )
@@ -2322,9 +2322,9 @@ def test_visibility_clause_matches_the_sidra_table_only_for_multi_table_bancos()
 def test_visibility_clause_renames_the_gate_column_to_avoid_the_shadowing_tautology():
     """A armadilha que o predicado tem de evitar, como teste.
 
-    Dentro do NOT EXISTS, um `sidra_tabela` sem qualificação resolve para o escopo
+    Dentro do NOT EXISTS, um `tabela` sem qualificação resolve para o escopo
     INTERNO. Se a view do gate expuser a coluna com esse nome, a comparação vira
-    `v.sidra_tabela = v.sidra_tabela` — sempre verdadeira — e as DUAS metades voltam a ser
+    `v.tabela = v.tabela` — sempre verdadeira — e as DUAS metades voltam a ser
     escondidas juntas, com aparência de correto. Medido contra o BigQuery em 2026-08-30.
 
     O comportamento em si é guardado pelo teste unitário dbt
@@ -2335,9 +2335,9 @@ def test_visibility_clause_renames_the_gate_column_to_avoid_the_shadowing_tautol
 
     clause = sql.visibility_clause(_isolated_settings(), "pevs", "product_code")
     interno = clause[clause.index("(select source") : clause.index(") v ")]
-    assert "sidra_tabela as _vis_sidra_tabela" in interno
-    assert ".sidra_tabela" not in clause, (
-        "a coluna do gate ficou acessível como `sidra_tabela` no escopo interno — a "
+    assert "tabela as _vis_tabela" in interno
+    assert ".tabela" not in clause, (
+        "a coluna do gate ficou acessível como `tabela` no escopo interno — a "
         "comparação vira tautologia e esconde as duas metades"
     )
 
@@ -2639,7 +2639,7 @@ def test_fetch_products_requests_the_sidra_table_for_multi_table_bancos(
         gateway.fetch_products(source)
 
     assert f"p.serving.{mart}" in recorded["query"]
-    tem = "any_value(sidra_tabela) as sidra_tabela" in recorded["query"]
+    tem = "any_value(tabela) as tabela" in recorded["query"]
     assert tem is pede_tabela, f"{source}: pediu a tabela={tem}, esperado={pede_tabela}"
 
 

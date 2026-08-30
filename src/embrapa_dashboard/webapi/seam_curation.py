@@ -65,7 +65,7 @@ def catalog_worklist(banco: str | None = None) -> dict:
             # PPM herd/animal SIDRA-table tag (NULL for single-table bancos) — echoed back
             # so an inline re-save carries the real value instead of relying solely on the
             # writer's server-side preservation.
-            "sidra_tabela": _clean(getattr(r, "sidra_tabela", None)),
+            "tabela": _clean(getattr(r, "tabela", None)),
         }
         for r in df.itertuples()
     ]
@@ -128,7 +128,8 @@ def catalog_status() -> dict:
     """Per-commodity Gold STATE for every cataloged (banco, code): row count + reference-
     year span. Backs the catalog's status columns. One cheap aggregate per source that has
     catalog entries (cached); a cataloged code with no Gold rows reports n_rows=0 /
-    has_data=False (a registered-but-empty commodity). Keyed ``"<banco>:<code>"``."""
+    has_data=False (a registered-but-empty commodity).
+    Keyed ``"<banco>:<tabela>:<code>"`` — o TRIO."""
     import collections
 
     try:
@@ -137,25 +138,31 @@ def catalog_status() -> dict:
         return {"status": {}}
     if df is None or df.empty:
         return {"status": {}}
+    # Indexado pelo TRIO. Era `(banco, código)` nas três camadas — aqui, no `group by` do
+    # gateway e na leitura do frontend —, e o catálogo é único no trio: duas entradas
+    # legítimas (mesmo código, tabelas diferentes) colidiriam numa entrada de estado só, e
+    # as duas linhas do editor mostrariam o mesmo total somado.
     by_banco: dict[str, set] = collections.defaultdict(set)
     for r in df.itertuples():
-        by_banco[r.banco].add(str(r.codigo_produto))
+        by_banco[r.banco].add((str(r.codigo_produto), str(r.tabela)))
     status: dict[str, dict] = {}
-    for banco, codes in by_banco.items():
+    for banco, chaves in by_banco.items():
         try:
             sdf = gateway.fetch_source_code_stats(banco)
         except NotFound:
             continue
         stat = (
-            {str(r.code): r for r in sdf.itertuples()} if sdf is not None and not sdf.empty else {}
+            {(str(r.code), str(r.tabela)): r for r in sdf.itertuples()}
+            if sdf is not None and not sdf.empty
+            else {}
         )
-        for code in codes:
-            s = stat.get(code)
+        for code, tabela in chaves:
+            s = stat.get((code, tabela))
             # _clean(x) is None both for SQL NULL and a pandas float NaN (a plain
             # ``is not None`` would let a NaN through to int() → ValueError).
             year_start = _clean(s.year_start) if s is not None else None
             year_end = _clean(s.year_end) if s is not None else None
-            status[f"{banco}:{code}"] = {
+            status[f"{banco}:{tabela}:{code}"] = {
                 "n_rows": int(s.n_rows) if s is not None else 0,
                 "year_start": int(year_start) if year_start is not None else None,
                 "year_end": int(year_end) if year_end is not None else None,
@@ -167,7 +174,7 @@ def catalog_status() -> dict:
 def record_catalog_entry(payload: dict) -> dict:
     """Upsert one catalog entry from a request body. Author from the IAP header (dev
     fallback per config). Wraps the verified writer; raises ValueError on a bad key /
-    over-length / an invalid banco or ciclo / a missing PPM sidra_tabela (→ HTTP 400). A
+    over-length / an invalid banco or ciclo / a missing PPM tabela (→ HTTP 400). A
     code absent from the source's Gold is NOT rejected — it registers as *pendente de
     ingestão*."""
     from flask import has_request_context, request
@@ -187,9 +194,9 @@ def record_catalog_entry(payload: dict) -> dict:
         ingestao=payload.get("ingestao"),
         visibilidade=payload.get("visibilidade"),
         agrupamento_id=payload.get("agrupamento_id"),
-        # PPM (SIDRA tables 3939/74) routes catalog-driven ingestion by sidra_tabela;
+        # PPM (SIDRA tables 3939/74) routes catalog-driven ingestion by tabela;
         # the writer requires it for a new PPM entry — a dropped value 400s the save.
-        sidra_tabela=payload.get("sidra_tabela"),
+        tabela=payload.get("tabela"),
         change_id=payload.get("change_id"),
     )
 

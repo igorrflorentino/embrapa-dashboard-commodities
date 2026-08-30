@@ -98,6 +98,13 @@ parsed as (
 -- net_weight_kg is left untouched: it is always kilograms (massa), the only
 -- quantity comparable across NCMs, and is summed directly in Gold.
 select
+    -- A TABELA da fonte, carimbada AQUI, na primeira camada tipada — cada modelo Silver
+    -- sabe de qual tabela ele lê, então a informação nasce onde é conhecida em vez de ser
+    -- reconstituída depois. Fecha o trio `(banco, tabela, código)` em TODOS os bancos:
+    -- COMEX não vem do SIDRA: id é um nome do PROJETO (config.py).
+    -- Com isso as uniões do Gold são `select *` puro e nenhum consumidor ramifica por
+    -- banco para saber se há tabela. Ver docs/audits/chave_produto_audit_2026-08-30.md.
+    '{{ var("comex_table_id") }}' as tabela,
     p.flow,
     p.reference_year,
     p.reference_month,

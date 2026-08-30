@@ -81,9 +81,9 @@ def _validate_column(column: str, allowed: frozenset[str], kind: str) -> str:
 # defeito que este projeto já teve três vezes. `test_chave_produto.py` varre os call sites.
 SEM_TABELA = "-"
 
-CHAVE_CATALOGO = f"codigo_produto, banco, ifnull(sidra_tabela, '{SEM_TABELA}')"
-CHAVE_CLASSIFICACAO = f"source, code, ifnull(sidra_tabela, '{SEM_TABELA}')"
-CHAVE_CICLO_DE_VIDA = f"element_kind, banco, code, ifnull(sidra_tabela, '{SEM_TABELA}')"
+CHAVE_CATALOGO = f"codigo_produto, banco, ifnull(tabela, '{SEM_TABELA}')"
+CHAVE_CLASSIFICACAO = f"source, code, ifnull(tabela, '{SEM_TABELA}')"
+CHAVE_CICLO_DE_VIDA = f"element_kind, banco, code, ifnull(tabela, '{SEM_TABELA}')"
 
 
 # ── Vocabulário de bancos: o token CURTO ↔ o id LONGO ────────────────────────
@@ -259,12 +259,12 @@ def _flow(
         params.append(bigquery.ArrayQueryParameter("__sum_flows", "STRING", list(sum_flows)))
 
 
-def _sidra_tabela(
+def _tabela(
     conditions: list[str],
     params: list[bigquery.ScalarQueryParameter],
-    sidra_tabela: str | None,
+    tabela: str | None,
 ) -> None:
-    """Optional ``sidra_tabela = @sidra_tabela`` predicate — WHICH SIDRA TABLE.
+    """Optional ``tabela = @tabela`` predicate — WHICH SIDRA TABLE.
 
     A produto's identity is ``(banco, tabela, código)``, so the table is the thing that
     tells two halves of a multi-table banco apart: PEVS t289 (native forest, extração
@@ -282,9 +282,9 @@ def _sidra_tabela(
     silent: the table reaches the chip, the ABNT citation and the CSV precisely because a
     number that mixes native and planted has to say so.
     """
-    if sidra_tabela is not None:
-        conditions.append("sidra_tabela = @sidra_tabela")
-        params.append(bigquery.ScalarQueryParameter("sidra_tabela", "STRING", sidra_tabela))
+    if tabela is not None:
+        conditions.append("tabela = @tabela")
+        params.append(bigquery.ScalarQueryParameter("tabela", "STRING", tabela))
 
 
 def _customs(
@@ -365,7 +365,7 @@ def production_overview(
     value_column: str = "val_real_ipca_brl",
     uf_codes: Sequence[str] = (),
     has_measure_kind: bool = False,
-    sidra_tabela: str | None = None,
+    tabela: str | None = None,
 ) -> tuple[str, list]:
     """Annual production total from ``serving_pevs_annual`` (backs overviewTS).
 
@@ -376,7 +376,7 @@ def production_overview(
     conditions: list[str] = []
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
-    _sidra_tabela(conditions, params, sidra_tabela)
+    _tabela(conditions, params, tabela)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
     _in_array(conditions, params, "state_acronym", "uf_codes", uf_codes)
     sql = f"""
@@ -402,7 +402,7 @@ def production_by_uf(
     value_column: str = "val_real_ipca_brl",
     latest_year_only: bool = True,
     has_measure_kind: bool = False,
-    sidra_tabela: str | None = None,
+    tabela: str | None = None,
 ) -> tuple[str, list]:
     """Production aggregated by UF from ``serving_pevs_annual`` (backs ufData).
 
@@ -425,7 +425,7 @@ def production_by_uf(
     conditions: list[str] = []
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
-    _sidra_tabela(conditions, params, sidra_tabela)
+    _tabela(conditions, params, tabela)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
     # `uf_codes` narrows to the researcher's selected states. It is applied BEFORE the
     # latest-year pin below, deliberately: with a UF filter active the reference year
@@ -463,7 +463,7 @@ def production_by_uf_yearly(
     product_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     has_measure_kind: bool = False,
-    sidra_tabela: str | None = None,
+    tabela: str | None = None,
 ) -> tuple[str, list]:
     """Production by (UF, year) from ``serving_pevs_annual`` (backs the ano × UF heatmap).
 
@@ -478,7 +478,7 @@ def production_by_uf_yearly(
     conditions: list[str] = []
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
-    _sidra_tabela(conditions, params, sidra_tabela)
+    _tabela(conditions, params, tabela)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
     sql = f"""
         select
@@ -514,8 +514,8 @@ def visibility_clause(settings, source_short: str, code_column: str) -> str:
     silvicultura (291) visível. Uma linha do gate sem tabela é CORINGA — esconde as duas —,
     que é o comportamento anterior preservado para as entradas sem tag.
 
-    ⚠ O subselect renomeia a coluna do gate para ``_vis_sidra_tabela`` por necessidade, não
-    por estilo: dentro do NOT EXISTS um ``sidra_tabela`` sem qualificação resolve para o
+    ⚠ O subselect renomeia a coluna do gate para ``_vis_tabela`` por necessidade, não
+    por estilo: dentro do NOT EXISTS um ``tabela`` sem qualificação resolve para o
     escopo INTERNO e a comparação vira tautologia, escondendo as duas metades de novo com
     aparência de correto (medido contra o BigQuery em 2026-08-30). Mantido idêntico ao da
     macro ``hidden_code_predicate`` — os dois lados nunca podem divergir.
@@ -524,13 +524,12 @@ def visibility_clause(settings, source_short: str, code_column: str) -> str:
 
     vis = table_ref(settings, "bq_gold_dataset", "dim_produto_visibility")
     tabela_casada = (
-        " and (v._vis_sidra_tabela is null or v._vis_sidra_tabela = ''"
-        " or v._vis_sidra_tabela = sidra_tabela)"
+        " and (v._vis_tabela is null or v._vis_tabela = '' or v._vis_tabela = tabela)"
         if source_short in _BANCOS_MULTI_TABELA
         else ""
     )
     return (
-        "not exists (select 1 from (select source, code, sidra_tabela as _vis_sidra_tabela "
+        "not exists (select 1 from (select source, code, tabela as _vis_tabela "
         f"from `{vis}`) v "
         f"where v.source = '{source_short}' and {code_column} = v.code{tabela_casada})"
     )
@@ -545,7 +544,7 @@ def production_by_municipio_yearly(
     city_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     visibility_predicate: str = "",
-    sidra_tabela: str | None = None,
+    tabela: str | None = None,
 ) -> tuple[str, list]:
     """Production by (município, year) straight from ``gold_<source>_production``,
     which is ALREADY município-grained — backs the sub-UF + live-município geography
@@ -565,7 +564,7 @@ def production_by_municipio_yearly(
     conditions: list[str] = []
     params: list = []
     _year_bounds(conditions, params, year_start, year_end)
-    _sidra_tabela(conditions, params, sidra_tabela)
+    _tabela(conditions, params, tabela)
     _in_array(conditions, params, "product_code", "product_codes", product_codes)
     _in_array(conditions, params, "city_code", "city_codes", city_codes)
     if visibility_predicate:
@@ -598,8 +597,8 @@ def products_by_municipio(
     city_codes: Sequence[str] = (),
     value_column: str = "val_real_ipca_brl",
     visibility_predicate: str = "",
-    sidra_tabela: str | None = None,
-    include_sidra_tabela: bool = False,
+    tabela: str | None = None,
+    include_tabela: bool = False,
 ) -> tuple[str, list]:
     """Per-PRODUCT ranking WITHIN a município selection — what the território profile
     needs to answer "o que este município produz".
@@ -613,7 +612,7 @@ def products_by_municipio(
     so this only ever scans the selected cities. Quantities stay split by ``family`` —
     they are only summable WITHIN a family.
 
-    ``include_sidra_tabela`` faz a TABELA viajar junto com cada linha. Ela é constante
+    ``include_tabela`` faz a TABELA viajar junto com cada linha. Ela é constante
     por ``product_code`` (um código pertence a uma tabela SIDRA só), então o ``any_value``
     é exato, não uma escolha arbitrária. Serve a quem EXIBE: madeira, lenha e carvão
     existem nas duas metades com o MESMO nome, e uma tela que rotule as linhas pelo nome
@@ -632,10 +631,10 @@ def products_by_municipio(
     # The PEVS half — see products_by_uf. This reader names the produtos behind a place,
     # and madeira/lenha/carvão exist in BOTH halves, so without it a território profile
     # filtered to one half lists the other's produtos alongside.
-    _sidra_tabela(conditions, params, sidra_tabela)
+    _tabela(conditions, params, tabela)
     if visibility_predicate:
         conditions.append(visibility_predicate)
-    tabela_select = "any_value(sidra_tabela) as sidra_tabela," if include_sidra_tabela else ""
+    tabela_select = "any_value(tabela) as tabela," if include_tabela else ""
     sql = f"""
         select
             {code_column}                                        as product_code,
@@ -733,8 +732,8 @@ def products_by_uf(
     uf_codes: Sequence[str] = (),
     value_column: str = "val_yearfx_usd",
     flow: str | None = None,
-    sidra_tabela: str | None = None,
-    include_sidra_tabela: bool = False,
+    tabela: str | None = None,
+    include_tabela: bool = False,
 ) -> tuple[str, list]:
     """Per-PRODUCT ranking WITHIN a UF selection (backs the "Base de dados" per-UF
     product breakdown). This is the INVERSE of production_by_uf / comex_by_uf (which
@@ -746,7 +745,7 @@ def products_by_uf(
     family-split ``q_mass`` (t) / ``q_vol`` (m³) so the view can rank by Capital,
     Volume(massa) or Volume(volume) — quantities only ever sum WITHIN a family.
 
-    ``include_sidra_tabela`` faz a TABELA viajar junto com cada linha. Ela é constante
+    ``include_tabela`` faz a TABELA viajar junto com cada linha. Ela é constante
     por ``product_code`` (um código pertence a uma tabela SIDRA só), então o ``any_value``
     é exato, não uma escolha arbitrária. Serve a quem EXIBE: madeira, lenha e carvão
     existem nas duas metades com o MESMO nome, e uma tela que rotule as linhas pelo nome
@@ -768,8 +767,8 @@ def products_by_uf(
     # computed over both while the chip says one half is a wrong number under a right label.
     # Left off on 2026-08-29 when the axis was introduced — the aggregate path honoured it
     # and this one silently did not.
-    _sidra_tabela(conditions, params, sidra_tabela)
-    tabela_select = "any_value(sidra_tabela) as sidra_tabela," if include_sidra_tabela else ""
+    _tabela(conditions, params, tabela)
+    tabela_select = "any_value(tabela) as tabela," if include_tabela else ""
     sql = f"""
         select
             {code_column}                                      as product_code,
@@ -1415,7 +1414,7 @@ def products(
     code_column: str,
     name_column: str,
     with_measure_kind: bool = False,
-    with_sidra_tabela: bool = False,
+    with_tabela: bool = False,
 ) -> tuple[str, list]:
     """Distinct product list ``(code, name, unit, unit_native, family)`` (backs `products`).
 
@@ -1425,7 +1424,7 @@ def products(
     milk) that share the ``contagem`` family. Other marts have no such column, so the
     flag defaults False and the SELECT stays schema-compatible with them.
 
-    ``with_sidra_tabela`` adds the SIDRA table id — the third component of a produto's
+    ``with_tabela`` adds the SIDRA table id — the third component of a produto's
     identity ``(banco, tabela, código)``, carried only by the marts of multi-table bancos.
     Quem exibe precisa dela: madeira, lenha e carvão existem nas DUAS tabelas do PEVS com o
     MESMO nome, então uma tela que rotule as linhas pelo nome mostra duas entradas
@@ -1436,8 +1435,8 @@ def products(
     code_column = _validate_column(code_column, ALLOWED_PRODUCT_COLUMNS, "product column")
     name_column = _validate_column(name_column, ALLOWED_PRODUCT_COLUMNS, "product column")
     extra = ",\n            any_value(measure_kind) as measure_kind" if with_measure_kind else ""
-    if with_sidra_tabela:
-        extra += ",\n            any_value(sidra_tabela) as sidra_tabela"
+    if with_tabela:
+        extra += ",\n            any_value(tabela) as tabela"
     sql = f"""
         select
             {code_column}            as code,

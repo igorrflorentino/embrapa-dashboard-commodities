@@ -10,7 +10,7 @@
 -- já vive no `.env`, no validador da curadoria e no registro do doctor. Desde v1.46.0 o id
 -- viaja no fato e aquele join usa a chave inteira.
 --
--- Desde v1.39.0 a dim tem grão (codigo_produto, source, sidra_tabela), então um código
+-- Desde v1.39.0 a dim tem grão (codigo_produto, source, tabela), então um código
 -- presente nas DUAS tabelas de um banco multi-tabela devolveria DUAS linhas — e o join
 -- faria fan-out, DUPLICANDO os valores do fato. Silenciosamente: nenhum erro, só números
 -- dobrados num mart.

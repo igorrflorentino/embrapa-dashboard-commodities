@@ -39,9 +39,9 @@
     // Which half of the PEVS survey. Gated on the banco carrying the column (only PEVS),
     // like regime/mercado — not on a capability flag.
     const tabelaOpts =
-      (window.sidraTabelaOptionsFor && id && window.sidraTabelaOptionsFor(id)) || null;
+      (window.tabelaOptionsFor && id && window.tabelaOptionsFor(id)) || null;
     const origem = tabelaOpts
-      ? resolve(s.sidraTabelaLabel, s.sidraTabela, tabelaOpts, 'Ambas')
+      ? resolve(s.tabelaLabel, s.tabela, tabelaOpts, 'Ambas')
       : null;
 
     const flow = provides.includes('flow')

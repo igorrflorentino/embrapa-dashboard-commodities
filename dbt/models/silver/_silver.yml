@@ -10,6 +10,7 @@ models:
               - reference_year
               - city_code
               - product_code
+              - tabela
               - variable_code
               - unit_of_measure
     columns:
@@ -40,7 +41,7 @@ models:
     description: >
       PEVS SILVICULTURE half (SIDRA 291, planted forest) — cleaned, typed, deduplicated.
       Column-identical to silver_ibge_pevs by construction (it is a mirror of that model);
-      gold_pevs_production unions the two positionally and tells them apart with `sidra_tabela`.
+      gold_pevs_production unions the two positionally and tells them apart with `tabela`.
       That parity is pinned by assert_pevs_silvers_column_identical, not by a contract:
       what matters is that the two agree with EACH OTHER, which a per-model contract
       cannot express.
@@ -51,6 +52,7 @@ models:
               - reference_year
               - city_code
               - product_code
+              - tabela
               - variable_code
               - unit_of_measure
     columns:
@@ -82,6 +84,7 @@ models:
               - reference_year
               - city_code
               - product_code
+              - tabela
               - variable_code
               - unit_of_measure
     columns:
@@ -122,6 +125,7 @@ models:
               - reference_year
               - city_code
               - product_code
+              - tabela
               - variable_code
               - unit_of_measure
     columns:

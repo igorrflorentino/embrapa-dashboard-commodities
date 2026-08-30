@@ -253,7 +253,7 @@ def test_products_emit_the_sidra_table_only_when_present():
                     "unit": "m³",
                     "unit_native": "Metros cúbicos",
                     "family": "volume",
-                    "sidra_tabela": "291",
+                    "tabela": "291",
                 },
                 {
                     "code": "3435",
@@ -261,7 +261,7 @@ def test_products_emit_the_sidra_table_only_when_present():
                     "unit": "m³",
                     "unit_native": "Metros cúbicos",
                     "family": "volume",
-                    "sidra_tabela": "289",
+                    "tabela": "289",
                 },
                 # sem a coluna (banco de tabela única) → chave ausente
                 {
@@ -270,7 +270,7 @@ def test_products_emit_the_sidra_table_only_when_present():
                     "unit": "t",
                     "unit_native": "kg",
                     "family": "massa",
-                    "sidra_tabela": float("nan"),
+                    "tabela": float("nan"),
                 },
             ]
         ),
@@ -283,9 +283,9 @@ def test_products_emit_the_sidra_table_only_when_present():
     prods = {p["code"]: p for p in s.serialize_snapshot(snap)["products"]}
     # Dois códigos, o MESMO nome, tabelas diferentes: é isso que a tela precisa receber.
     assert prods["3457"]["name"] == prods["3435"]["name"] == "Madeira em tora"
-    assert prods["3457"]["sidra_tabela"] == "291"
-    assert prods["3435"]["sidra_tabela"] == "289"
-    assert "sidra_tabela" not in prods["4403"]
+    assert prods["3457"]["tabela"] == "291"
+    assert prods["3435"]["tabela"] == "289"
+    assert "tabela" not in prods["4403"]
 
 
 def test_products_emit_measure_kind_only_when_present():
@@ -1157,13 +1157,13 @@ def test_serialize_products_by_uf_carries_the_sidra_table_when_the_reader_select
             {
                 "product_code": "3455",
                 "product_name": "Carvão vegetal",
-                "sidra_tabela": "291",
+                "tabela": "291",
                 "total_value": 114_000_000,
             },
             {
                 "product_code": "3433",
                 "product_name": "Carvão vegetal",
-                "sidra_tabela": "289",
+                "tabela": "289",
                 "total_value": 13_000_000,
             },
         ]
@@ -1171,7 +1171,7 @@ def test_serialize_products_by_uf_carries_the_sidra_table_when_the_reader_select
     out = s.serialize_products_by_uf(df)
     # Duas linhas com o MESMO nome e códigos/metades diferentes — é isso que a tela precisa.
     assert [p["name"] for p in out["products"]] == ["Carvão vegetal", "Carvão vegetal"]
-    assert [p["sidra_tabela"] for p in out["products"]] == ["291", "289"]
+    assert [p["tabela"] for p in out["products"]] == ["291", "289"]
     assert [p["code"] for p in out["products"]] == ["3455", "3433"]
 
 
@@ -1205,9 +1205,9 @@ def test_serialize_products_by_uf_scales_value_and_quantities():
         "q_mass": 2.0,  # 2_000 ÷1e3 → mil t
         "q_vol": 19.0,  # 19_000_000 ÷1e6 → mi m³
         "q_count": 0.0,  # absent → 0 (a herd row carries it for the 'Produtos do estado' rank)
-        # Sem coluna `sidra_tabela` no df (banco de tabela única) → None, e a chave CONTINUA
+        # Sem coluna `tabela` no df (banco de tabela única) → None, e a chave CONTINUA
         # presente: uma chave que aparece e some por banco faz o consumidor adivinhar.
-        "sidra_tabela": None,
+        "tabela": None,
     }
     assert out["products"][1]["q_mass"] == 0.0  # None → 0
     # A livestock row carries q_count (mi un) so a value-less herd ranks by headcount.

@@ -300,9 +300,9 @@ def _products(df: pd.DataFrame | None) -> list[dict]:
         # A TABELA SIDRA — só nos bancos multi-tabela (o gateway a seleciona para eles).
         # Sem ela a tela não distingue dois produtos que dividem o nome, e o Donut de
         # "Participação por produto" mostrava duas fatias rotuladas "Madeira em tora".
-        st = getattr(r, "sidra_tabela", None)
+        st = getattr(r, "tabela", None)
         if isinstance(st, str) and st:
-            row["sidra_tabela"] = st
+            row["tabela"] = st
         mk = getattr(r, "measure_kind", None)
         if isinstance(mk, str) and mk:
             row["measure_kind"] = mk
@@ -802,7 +802,7 @@ def serialize_products_by_uf(df: pd.DataFrame | None, max_rows: int = 100) -> di
             # produz" desenhava uma barra só e dois rótulos sobrepostos. `None` nos bancos
             # de tabela única, o que mantém a chave presente e o contrato estável em vez de
             # aparecer e sumir por banco.
-            "sidra_tabela": getattr(r, "sidra_tabela", None),
+            "tabela": getattr(r, "tabela", None),
             "value": _num(r.total_value) / 1e6,
             "q_mass": _num(getattr(r, "q_mass", 0)) / 1e3,
             "q_vol": _num(getattr(r, "q_vol", 0)) / 1e6,
