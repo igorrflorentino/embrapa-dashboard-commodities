@@ -147,6 +147,13 @@ def _product_source(source: str) -> tuple[str, str, str, str]:
 # request differing only by an un-keyed filter would otherwise serve a stale result.
 _MEASURE_KIND_SOURCES = {"ibge_ppm"}
 
+# Fontes cujo mart carrega o id da TABELA SIDRA — os bancos multi-tabela. `fetch_products`
+# o expõe porque a identidade de um produto é (banco, tabela, código) e duas tabelas de um
+# mesmo banco podem trazer o MESMO nome (madeira/lenha/carvão no PEVS): sem o id, a tela
+# não tem como distinguir duas entradas idênticas. Mesma nota de cache do conjunto acima —
+# o tratamento é DERIVADO de `source`, que já entra na chave de memoize de todo leitor.
+_SIDRA_TABELA_SOURCES = {"ibge_pevs", "ibge_ppm"}
+
 
 # Production sources whose marts are COLUMN-IDENTICAL (PEVS shape: product_code,
 # state_acronym, family, qty_native, val_*). fetch_production_* are generic over
@@ -1181,6 +1188,7 @@ def fetch_products(source: str):
         code_column=code_col,
         name_column=name_col,
         with_measure_kind=source in _MEASURE_KIND_SOURCES,
+        with_sidra_tabela=source in _SIDRA_TABELA_SOURCES,
     )
     return run_query(sql, params)
 

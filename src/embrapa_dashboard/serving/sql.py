@@ -1353,7 +1353,12 @@ def quality_by_source(
 
 
 def products(
-    table: str, *, code_column: str, name_column: str, with_measure_kind: bool = False
+    table: str,
+    *,
+    code_column: str,
+    name_column: str,
+    with_measure_kind: bool = False,
+    with_sidra_tabela: bool = False,
 ) -> tuple[str, list]:
     """Distinct product list ``(code, name, unit, unit_native, family)`` (backs `products`).
 
@@ -1362,10 +1367,20 @@ def products(
     so the herd (stock, value-less) can be told apart from animal-product flows (eggs,
     milk) that share the ``contagem`` family. Other marts have no such column, so the
     flag defaults False and the SELECT stays schema-compatible with them.
+
+    ``with_sidra_tabela`` adds the SIDRA table id — the third component of a produto's
+    identity ``(banco, tabela, código)``, carried only by the marts of multi-table bancos.
+    Quem exibe precisa dela: madeira, lenha e carvão existem nas DUAS tabelas do PEVS com o
+    MESMO nome, então uma tela que rotule as linhas pelo nome mostra duas entradas
+    idênticas — foi o que restou no Donut "Participação por produto" e no comparativo entre
+    produtos depois que os rankings por UF/município já haviam sido corrigidos. É constante
+    por código (um código pertence a uma tabela só), então o ``any_value`` é exato.
     """
     code_column = _validate_column(code_column, ALLOWED_PRODUCT_COLUMNS, "product column")
     name_column = _validate_column(name_column, ALLOWED_PRODUCT_COLUMNS, "product column")
     extra = ",\n            any_value(measure_kind) as measure_kind" if with_measure_kind else ""
+    if with_sidra_tabela:
+        extra += ",\n            any_value(sidra_tabela) as sidra_tabela"
     sql = f"""
         select
             {code_column}            as code,

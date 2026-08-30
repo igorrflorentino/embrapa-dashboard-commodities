@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.46.3] - 2026-08-30
+
+### Corrigido
+
+- **Os dois últimos gráficos que confundiam as duas metades do PEVS.** A varredura que
+  encontrou o defeito nos rankings por UF e por município (v1.46.1) apontou mais dois
+  pontos, que ficaram abertos:
+
+  - **Donut "Participação por produto"** (Visão geral, a tela mais visitada) — a legenda
+    mostrava `Madeira em tora 57%` e `Madeira em tora 7%`, `Lenha 11%` e `Lenha 2%`. O
+    Donut usa índice como chave, então não *fundia* as fatias como o gráfico de barras —
+    mas o leitor não tinha como saber qual metade era qual, e "Carvão vegetal" aparecia
+    uma vez só porque sua segunda metade caía em "Outros".
+  - **Comparativo entre produtos** — a legenda, a tabela de métricas e o nome das séries.
+    Alcançável sempre que se escolhem as duas metades do mesmo produto, o que o seletor de
+    cesta permite. (A matriz de correlação da mesma tela já mostrava o **código** e por
+    isso nunca teve o problema.)
+
+  Faltava a `sidra_tabela` na lista de produtos do *snapshot*. Ela passa a viajar por lá
+  seguindo o precedente que já existia no mesmo arquivo — `measure_kind` é selecionada só
+  para o PPM —, e as duas telas usam o `labelProductRows` que já existia. O rótulo só
+  ganha o sufixo quando o nome se repete no conjunto exibido.
+
+---
+
 ## [1.46.2] - 2026-08-30
 
 ### Documentação

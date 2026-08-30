@@ -12,6 +12,10 @@ import { cleanup, render } from '@testing-library/react';
 // four-line component, and stubbing it away would hide the very disclosure these views
 // exist to carry.
 import './RecorteNote.jsx';
+// O registro REAL de tabelas + `labelProductRows` (filtersSchema.js). A chamada na view é
+// DELIBERADAMENTE incondicional: um helper ausente tem de estourar, não voltar a rotular
+// duas metades do PEVS com o mesmo nome em silêncio.
+import './filtersSchema.js';
 
 function stubGlobals(filtered) {
   window.applyFilters = () => filtered;
@@ -46,7 +50,10 @@ function stubGlobals(filtered) {
   window.UnitFamilyBanner = () => null;
   window.UnitFamilyTag = () => null;
   window.LineChart = () => null;
-  window.Donut = () => null;
+  // Expõe os rótulos que o Donut recebeu: é o que o defeito das duas metades corrompia.
+  window.Donut = (props) => (
+    <div className="donut" data-rotulos={(props.data || []).map((d) => d.name).join('|')} />
+  );
   window.BrazilTileMap = () => null;
 }
 
@@ -130,6 +137,31 @@ describe('ViewOverview — KPI strip + quality digest (H3 + P0 lock-in)', () => 
     const values = [...container.querySelectorAll('.kpi-value')].map((e) => e.textContent);
     expect(values).not.toContain('count:2000'); // blended count KPI suppressed for a stock basket
     expect(container.textContent).toContain('Rebanho'); // redirect note instead
+  });
+
+  it('o Donut não mostra duas fatias com o MESMO rótulo quando o nome se repete', () => {
+    // Madeira em tora existe nas DUAS tabelas do PEVS com o mesmo nome. O Donut usa índice
+    // como chave, então não FUNDE as fatias — mas mostrava "Madeira em tora 57%" e
+    // "Madeira em tora 7%", e o leitor não tinha como saber qual metade era qual.
+    // A desambiguação vem da tabela, que é o terceiro componente da identidade do produto.
+    stubGlobals({
+      ...FIXTURE,
+      topProducts: [
+        { code: '3457', name: 'Madeira em tora', sidra_tabela: '291', share: 0.57 },
+        { code: '3435', name: 'Madeira em tora', sidra_tabela: '289', share: 0.07 },
+        { code: '3403', name: 'Açaí (fruto)', sidra_tabela: '289', share: 0.02 },
+      ],
+    });
+    const { container } = render(
+      <ViewOverview families={['mass']} summary={{}} database="ibge_pevs" conventions={{}} />
+    );
+    const rotulos = container.querySelector('.donut').getAttribute('data-rotulos').split('|');
+    expect(new Set(rotulos).size, `rótulos repetidos: ${rotulos}`).toBe(rotulos.length);
+    expect(rotulos).toEqual([
+      'Madeira em tora · silvicultura',
+      'Madeira em tora · extração',
+      'Açaí (fruto)',   // nome único → sem sufixo
+    ]);
   });
 
   it('omits the volume KPI when the banco has no volume family', () => {
