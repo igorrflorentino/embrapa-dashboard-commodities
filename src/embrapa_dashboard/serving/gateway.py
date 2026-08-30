@@ -819,13 +819,7 @@ _GOLD_TABLE = {
 
 # Banco id (long) → the short source token the catalog / dim_produto_visibility use.
 # Threads the F7 visibility gate into the direct-Gold readers (which bypass the marts).
-_SHORT_SOURCE = {
-    "ibge_pevs": "pevs",
-    "ibge_pam": "pam",
-    "ibge_ppm": "ppm",
-    "mdic_comex": "comex",
-    "un_comtrade": "comtrade",
-}
+_SHORT_SOURCE = sqlbuild.SOURCE_TO_BANCO
 
 
 @cache.memoize()

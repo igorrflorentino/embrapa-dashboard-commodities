@@ -2342,6 +2342,105 @@ def test_visibility_clause_renames_the_gate_column_to_avoid_the_shadowing_tautol
     )
 
 
+def test_the_banco_vocabulary_is_written_by_hand_exactly_once():
+    """Varredura do domínio: o mapeamento banco↔fonte só pode existir à mão UMA vez.
+
+    Estava escrito QUATRO vezes — `curation._BANCO_TO_SOURCE`, `curation._SOURCE_PARA_BANCO`,
+    `gateway._SHORT_SOURCE` e `seam_curation._BANCO_TO_SOURCE` —, em três módulos, nas duas
+    direções, e duas delas com o MESMO NOME em módulos diferentes: importar a errada não
+    daria ImportError, daria o valor certo até o dia em que não desse. Concordavam (latente,
+    não vivo), e o que segurava isso era um comentário pedindo que se lembrasse das outras.
+
+    A âncora é a árvore de fontes, percorrida por AST — não uma lista de nomes que eu
+    tivesse escrito aqui, que envelheceria junto com o defeito.
+
+    Este teste é o par do de baixo: aqui a UNICIDADE, lá o CONTEÚDO. E ele afirma
+    `== 1`, não `<= 1`, de propósito — um extrator quebrado que devolvesse zero faria uma
+    asserção de teto passar para sempre."""
+    import ast
+
+    curtos = {"pevs", "pam", "ppm", "comex", "comtrade"}
+    longos = {"ibge_pevs", "ibge_pam", "ibge_ppm", "mdic_comex", "un_comtrade"}
+
+    def _dict_literal(valor: ast.expr) -> ast.Dict | None:
+        """O dict literal de uma atribuição, inclusive envolto num wrapper.
+
+        O canônico é `MappingProxyType({...})` — um Call, não um Dict. A primeira versão
+        deste extrator só olhava Dict, achou ZERO cópias, e o `== 1` abaixo reprovou na
+        hora: é exatamente para isso que ele afirma o número exato e não um teto."""
+        if isinstance(valor, ast.Dict):
+            return valor
+        if isinstance(valor, ast.Call) and valor.args and isinstance(valor.args[0], ast.Dict):
+            return valor.args[0]
+        return None
+
+    copias: list[str] = []
+    raiz = _RAIZ_REPO / "src"
+    for arquivo in sorted(raiz.rglob("*.py")):
+        arvore = ast.parse(arquivo.read_text(encoding="utf-8"))
+        for no in ast.walk(arvore):
+            # AnnAssign também: o canônico é anotado (`X: Mapping[str, str] = ...`), e a
+            # segunda versão deste extrator olhava só Assign — ZERO cópias de novo.
+            if not isinstance(no, ast.Assign | ast.AnnAssign) or no.value is None:
+                continue
+            literal = _dict_literal(no.value)
+            if literal is None:
+                continue
+            chaves = {k.value for k in literal.keys if isinstance(k, ast.Constant)}
+            valores = {v.value for v in literal.values if isinstance(v, ast.Constant)}
+            if (chaves >= curtos and valores >= longos) or (chaves >= longos and valores >= curtos):
+                destino = no.targets[0] if isinstance(no, ast.Assign) else no.target
+                alvo_nome = getattr(destino, "id", "?")
+                copias.append(f"{arquivo.relative_to(_RAIZ_REPO)}:{no.lineno} — {alvo_nome}")
+
+    if not copias:
+        raise AssertionError(
+            "nenhuma cópia encontrada — DUAS causas possíveis, e elas pedem coisas "
+            "opostas:\n"
+            "  (a) o vocabulário em serving/sql.py mudou de forma (um banco foi removido, "
+            "ou a grafia de um token mudou) → atualize os conjuntos `curtos`/`longos` "
+            "acima, que são a lista-âncora deste teste;\n"
+            "  (b) o extrator parou de reconhecer a atribuição (já aconteceu duas vezes: "
+            "com o wrapper MappingProxyType e com a anotação de tipo) → conserte "
+            "`_dict_literal` / o filtro de nós. NÃO relaxe a asserção."
+        )
+    assert len(copias) == 1, (
+        "o vocabulário banco↔fonte tem de ser escrito à mão uma única vez "
+        f"(em serving/sql.py); encontrado {len(copias)}x:\n  " + "\n  ".join(copias)
+    )
+
+
+def test_the_banco_vocabulary_is_a_bijection_and_covers_every_known_banco():
+    """O CONTEÚDO, com âncoras mantidas por outros motivos.
+
+    Uma bijeção com valor repetido é o erro clássico de copiar-e-colar ao acrescentar o
+    sexto banco, e ele só apareceria no sentido inverso — que ninguém pensa em testar.
+    Depois: todo banco que OUTRAS estruturas já conhecem tem de estar aqui. As âncoras não
+    derivam deste vocabulário e são mantidas para outra coisa — a validação da tag de
+    tabela na escrita da curadoria, e o roteamento do gateway para a tabela Gold."""
+    from embrapa_dashboard.serving import gateway, sql
+    from embrapa_dashboard.serving.curation import (
+        _BANCOS_MULTI_TABELA,
+        _tabelas_validas_por_banco,
+    )
+
+    assert len(set(sql.BANCO_TO_SOURCE.values())) == len(sql.BANCO_TO_SOURCE), (
+        "id longo repetido — a inversa perderia um banco em silêncio"
+    )
+    assert dict(sql.SOURCE_TO_BANCO) == {v: k for k, v in sql.BANCO_TO_SOURCE.items()}
+
+    assert set(_BANCOS_MULTI_TABELA) <= set(sql.BANCO_TO_SOURCE), (
+        "banco multi-tabela desconhecido do vocabulário"
+    )
+    assert set(_tabelas_validas_por_banco(_isolated_settings())) <= set(sql.BANCO_TO_SOURCE)
+    # Toda fonte que o gateway sabe rotear precisa de token curto: sem ele o gate de
+    # visibilidade levanta KeyError no meio de uma leitura de Gold.
+    assert set(gateway._GOLD_TABLE) <= set(sql.SOURCE_TO_BANCO), (
+        f"fonte roteável sem token curto: "
+        f"{sorted(set(gateway._GOLD_TABLE) - set(sql.SOURCE_TO_BANCO))}"
+    )
+
+
 def test_the_multi_table_banco_list_agrees_between_dbt_and_python():
     """A macro dbt e o espelho Python decidem a MESMA coisa e vivem em arquivos
     diferentes. Divergirem é sempre defeito: a macro gateia as marts, o Python gateia os

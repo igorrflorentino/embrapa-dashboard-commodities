@@ -16,7 +16,8 @@ Pure module: builds strings and parameter objects, performs no I/O.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 
 from google.cloud import bigquery
 
@@ -83,6 +84,42 @@ SEM_TABELA = "-"
 CHAVE_CATALOGO = f"codigo_produto, banco, ifnull(sidra_tabela, '{SEM_TABELA}')"
 CHAVE_CLASSIFICACAO = f"source, code, ifnull(sidra_tabela, '{SEM_TABELA}')"
 CHAVE_CICLO_DE_VIDA = f"element_kind, banco, code, ifnull(sidra_tabela, '{SEM_TABELA}')"
+
+
+# ── Vocabulário de bancos: o token CURTO ↔ o id LONGO ────────────────────────
+# São a MESMA informação em duas grafias. O token curto (`pevs`) é o que a curadoria, o
+# catálogo e o gate de visibilidade usam; o id longo (`ibge_pevs`) é o que o Gold, o
+# gateway e a UI usam.
+#
+# Estava escrito à mão QUATRO vezes, em três módulos e nas duas direções —
+# `curation._BANCO_TO_SOURCE`, `curation._SOURCE_PARA_BANCO`, `gateway._SHORT_SOURCE` e
+# `seam_curation._BANCO_TO_SOURCE` —, e duas delas com o MESMO NOME em módulos diferentes,
+# o que faz de um import errado um erro silencioso em vez de um ImportError. Nenhum teste
+# guardava uma contra a outra; o que segurava a consistência era um comentário pedindo que
+# se lembrasse das outras.
+#
+# Concordavam quando isto foi escrito (medido 2026-08-30), então era latente. O gatilho é
+# datado, não hipotético: SEFAZ NFe está `Planejado`, e um sexto banco significa acertar
+# quatro lugares — errar um falha em silêncio, num caminho diferente daquele que a pessoa
+# está testando.
+#
+# Fonte única aqui, e as outras três DERIVAM. `MappingProxyType` porque um dict
+# compartilhado por três módulos que alguém mute em um deles muda em todos.
+BANCO_TO_SOURCE: Mapping[str, str] = MappingProxyType(
+    {
+        "pevs": "ibge_pevs",
+        "pam": "ibge_pam",
+        "ppm": "ibge_ppm",
+        "comex": "mdic_comex",
+        "comtrade": "un_comtrade",
+    }
+)
+
+# A inversa. Derivada, nunca redigitada: uma bijeção escrita duas vezes à mão é duas vezes
+# a chance de errar, e o erro só aparece no sentido que ninguém testou.
+SOURCE_TO_BANCO: Mapping[str, str] = MappingProxyType(
+    {longo: curto for curto, longo in BANCO_TO_SOURCE.items()}
+)
 
 
 def _year_bounds(

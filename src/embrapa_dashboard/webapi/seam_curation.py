@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from google.api_core.exceptions import NotFound
 
-from embrapa_dashboard.serving import gateway
+from embrapa_dashboard.serving import gateway, sql
 from embrapa_dashboard.serving.curation import ingestao_efetiva, visibilidade_efetiva
 
 PRODUTO_CATALOG_RESOURCE = "produto_catalog"
@@ -31,13 +31,7 @@ def _clean(x):
 
 # Catalog banco token → the long source id ``fetch_products`` expects, so the editor can
 # show each code's ORIGINAL source description (IBGE product / NCM / HS6 name).
-_BANCO_TO_SOURCE = {
-    "pevs": "ibge_pevs",
-    "pam": "ibge_pam",
-    "ppm": "ibge_ppm",
-    "comex": "mdic_comex",
-    "comtrade": "un_comtrade",
-}
+_BANCO_TO_SOURCE = sql.BANCO_TO_SOURCE
 
 
 def catalog_worklist(banco: str | None = None) -> dict:
