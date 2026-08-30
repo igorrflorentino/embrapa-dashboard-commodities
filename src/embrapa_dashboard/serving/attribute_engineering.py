@@ -192,15 +192,26 @@ def record_code_industrialization(
             "deduped": True,
         }
 
+    # A tabela SIDRA faz parte da CHAVE de um produto. Sem ela, a classificação cai na
+    # sentinela `sql.SEM_TABELA` — uma identidade à parte — e a dim SCD2, que particiona
+    # pela chave de 3 colunas, abriria uma linhagem paralela: as versões anteriores do
+    # MESMO produto ficariam órfãs das novas, sem erro nenhum. O catálogo é a fonte de
+    # verdade da identidade, então a tag vem dele.
+    from embrapa_dashboard.serving.curation import tabela_do_produto
+
+    sidra_tabela = tabela_do_produto(source, code, settings=cfg, client=bq)
     sql = f"""
         insert into `{table_fqn}`
-            (source, code, industrialization_level, note, edited_by, edited_at, change_id)
+            (source, code, industrialization_level, note, edited_by, edited_at, change_id,
+             sidra_tabela)
         values
-            (@source, @code, @level, @note, @edited_by, current_timestamp(), @change_id)
+            (@source, @code, @level, @note, @edited_by, current_timestamp(), @change_id,
+             @sidra_tabela)
     """
     params = [
         bigquery.ScalarQueryParameter("source", "STRING", source),
         bigquery.ScalarQueryParameter("code", "STRING", code),
+        bigquery.ScalarQueryParameter("sidra_tabela", "STRING", sidra_tabela),
         bigquery.ScalarQueryParameter("level", "STRING", industrialization_level),
         bigquery.ScalarQueryParameter("note", "STRING", note),
         bigquery.ScalarQueryParameter("edited_by", "STRING", edited_by),

@@ -26,8 +26,14 @@ def _status_df(rows):
     return pd.DataFrame(rows)
 
 
-def test_insert_lifecycle_event_builds_parameterized_dml():
+def test_insert_lifecycle_event_builds_parameterized_dml(monkeypatch):
     """_insert_lifecycle_event (lines 81-100): server-side timestamp + 8 scalar params."""
+    # A tabela SIDRA faz parte da identidade do produto e o funil a resolve no
+    # CATÁLOGO — senão o evento marca a sentinela em vez do produto. Este teste
+    # exercita a DML do funil, não o catálogo, então a resolução é dublada.
+    monkeypatch.setattr(
+        "embrapa_dashboard.serving.curation.tabela_do_produto", lambda *a, **k: "291"
+    )
     pytest.importorskip("flask_caching")
     from embrapa_dashboard.serving import catalog_lifecycle
 

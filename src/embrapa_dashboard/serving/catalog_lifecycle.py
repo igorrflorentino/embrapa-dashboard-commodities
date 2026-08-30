@@ -82,20 +82,30 @@ def ensure_catalog_lifecycle_log_table(
 def _insert_lifecycle_event(
     bq, table_fqn, *, element_kind, banco, code, status, reason, purge_note, edited_by, change_id
 ) -> None:
-    """Append one lifecycle event (parameterized DML, server-side timestamp)."""
+    """Append one lifecycle event (parameterized DML, server-side timestamp).
+
+    Funil único dos três escritores (auto_mark_orphans, mark_purged, o manual), então a
+    tabela SIDRA entra aqui uma vez só. Ela faz parte da CHAVE de um produto: sem ela o
+    evento cai na sentinela `sql.SEM_TABELA` — uma identidade à parte — e o produto real
+    ficaria sem o evento, com a marcação reportando sucesso.
+    """
+    from embrapa_dashboard.serving.curation import tabela_do_produto
+
+    sidra_tabela = tabela_do_produto(banco, code, client=bq)
     sql = f"""
         insert into `{table_fqn}`
             (element_kind, banco, code, status, reason, scheduled_purge_note,
-             edited_by, edited_at, change_id)
+             edited_by, edited_at, change_id, sidra_tabela)
         values
             (@element_kind, @banco, @code, @status, @reason, @purge_note,
-             @edited_by, current_timestamp(), @change_id)
+             @edited_by, current_timestamp(), @change_id, @sidra_tabela)
     """
     p = bigquery.ScalarQueryParameter
     params = [
         p("element_kind", "STRING", element_kind),
         p("banco", "STRING", banco),
         p("code", "STRING", code),
+        p("sidra_tabela", "STRING", sidra_tabela),
         p("status", "STRING", status),
         p("reason", "STRING", reason),
         p("purge_note", "STRING", purge_note),

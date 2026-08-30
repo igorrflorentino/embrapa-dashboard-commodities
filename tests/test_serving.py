@@ -1072,6 +1072,12 @@ def test_record_code_industrialization_inserts_parameterized_row_with_author(mon
     from embrapa_dashboard.serving import attribute_engineering as curation
 
     monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)  # writer self-heals
+    # A tabela SIDRA faz parte da identidade do produto e o escritor a resolve no CATÁLOGO
+    # (senão a classificação cai na sentinela). Estes testes exercitam o escritor de nível,
+    # não o catálogo — então a resolução é dublada.
+    monkeypatch.setattr(
+        "embrapa_dashboard.serving.curation.tabela_do_produto", lambda *a, **k: None
+    )
     settings = _settings()
     client = mock.Mock()
     client.query.return_value.result.return_value = None
@@ -1165,6 +1171,12 @@ def test_record_flow_market_inserts_parameterized_row_with_author(monkeypatch):
     from embrapa_dashboard.serving import attribute_engineering as curation
 
     monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)  # writer self-heals
+    # A tabela SIDRA faz parte da identidade do produto e o escritor a resolve no CATÁLOGO
+    # (senão a classificação cai na sentinela). Estes testes exercitam o escritor de nível,
+    # não o catálogo — então a resolução é dublada.
+    monkeypatch.setattr(
+        "embrapa_dashboard.serving.curation.tabela_do_produto", lambda *a, **k: None
+    )
     client = mock.Mock()
     client.query.return_value.result.return_value = None
     headers = {iap.IAP_EMAIL_HEADER: "accounts.google.com:alice@embrapa.br"}
@@ -1350,6 +1362,10 @@ def test_record_code_industrialization_generates_change_id_when_absent(monkeypat
     from embrapa_dashboard.serving import attribute_engineering as curation
 
     monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)
+    # Ver a nota nos demais testes deste escritor: a tabela SIDRA vem do catálogo.
+    monkeypatch.setattr(
+        "embrapa_dashboard.serving.curation.tabela_do_produto", lambda *a, **k: None
+    )
     client = _seen_client(exists=True)  # would dedupe IF it probed — it must not
     headers = {iap.IAP_EMAIL_HEADER: "accounts.google.com:alice@embrapa.br"}
 
@@ -1406,6 +1422,10 @@ def test_record_code_industrialization_inserts_when_change_id_is_new(monkeypatch
     from embrapa_dashboard.serving import attribute_engineering as curation
 
     monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)
+    # Ver a nota nos demais testes deste escritor: a tabela SIDRA vem do catálogo.
+    monkeypatch.setattr(
+        "embrapa_dashboard.serving.curation.tabela_do_produto", lambda *a, **k: None
+    )
     client = _seen_client(exists=False)
     headers = {iap.IAP_EMAIL_HEADER: "accounts.google.com:alice@embrapa.br"}
 
@@ -2641,6 +2661,12 @@ def test_save_invalidates_code_industrialization_cache(monkeypatch):
     monkeypatch.setattr(gateway, "run_query", fake_run)
     monkeypatch.setattr(gateway, "get_settings", lambda: _isolated_settings())
     monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)  # writer self-heals
+    # A tabela SIDRA faz parte da identidade do produto e o escritor a resolve no CATÁLOGO
+    # (senão a classificação cai na sentinela). Estes testes exercitam o escritor de nível,
+    # não o catálogo — então a resolução é dublada.
+    monkeypatch.setattr(
+        "embrapa_dashboard.serving.curation.tabela_do_produto", lambda *a, **k: None
+    )
 
     bq_client = mock.Mock()
     bq_client.query.return_value.result.return_value = None
@@ -2724,6 +2750,12 @@ def test_record_code_industrialization_accepts_free_text_level(monkeypatch):
     from embrapa_dashboard.serving import attribute_engineering as curation
 
     monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)  # writer self-heals
+    # A tabela SIDRA faz parte da identidade do produto e o escritor a resolve no CATÁLOGO
+    # (senão a classificação cai na sentinela). Estes testes exercitam o escritor de nível,
+    # não o catálogo — então a resolução é dublada.
+    monkeypatch.setattr(
+        "embrapa_dashboard.serving.curation.tabela_do_produto", lambda *a, **k: None
+    )
     client = mock.Mock()
     client.query.return_value.result.return_value = None
     headers = {iap.IAP_EMAIL_HEADER: "accounts.google.com:alice@embrapa.br"}
