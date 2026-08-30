@@ -75,8 +75,9 @@ const _CC_EMPTY_DRAFT = {
 // vocabulary it documents, so a new column/action is added in one place and the counts in the
 // summary stay honest automatically. Order matches the table, left to right.
 const _CC_HELP_COLUNAS = [
-  { k: 'Banco', d: 'A fonte oficial do dado (IBGE PEVS/PAM/PPM, MDIC COMEX, UN Comtrade). No PPM aparece também de qual tabela SIDRA veio — rebanho ou produção animal — porque o mesmo produto pode estar cadastrado nas duas.' },
-  { k: 'Código', d: 'O código real da fonte (NCM, HS, código SIDRA). É ele, junto com o banco, que identifica o produto no cadastro — não o nome.' },
+  { k: 'Banco', d: 'A fonte oficial do dado (IBGE PEVS/PAM/PPM, MDIC COMEX, UN Comtrade).' },
+  { k: 'Tabela', d: 'Qual tabela SIDRA dentro do banco. Só o PEVS (extração vegetal · silvicultura) e o PPM (rebanho · produção animal) reúnem duas tabelas sob um mesmo banco; nos demais aparece um travessão. Junto com o banco e o código, ela forma a identidade do produto — o mesmo código pode estar cadastrado nas duas tabelas e são produtos diferentes.' },
+  { k: 'Código', d: 'O código real da fonte (NCM, HS, código SIDRA). É ele, junto com o banco e a tabela, que identifica o produto no cadastro — não o nome.' },
   { k: 'Descrição (fonte)', d: 'O nome que a própria fonte dá a esse código; é somente leitura. Logo abaixo fica a sua anotação (✎), um texto livre seu que não altera nenhum dado.' },
   { k: 'Linhas', d: 'Quantas linhas esse produto tem hoje na camada Gold. Zero significa que ainda não foi ingerido.' },
   { k: 'Período', d: 'O intervalo de anos que os dados já ingeridos cobrem.' },
@@ -605,28 +606,35 @@ function ViewCadastroProdutos() {
       <table className="dt-table cc-table">
         <thead>
           <tr>
-            <th>Banco</th><th>Código</th><th>Descrição (fonte)</th>
+            <th>Banco</th><th>Tabela</th><th>Código</th><th>Descrição (fonte)</th>
             <th className="num">Linhas</th><th>Período</th><th>Status</th>
             <th>Agrupamento</th><th>Ingestão</th><th>Exibição</th><th aria-label="ações"></th>
           </tr>
         </thead>
         <tbody>
           {members.map((e) => {
+            // O status vem do Gold por (banco, código): o FATO não carrega a tabela, então
+            // duas metades de um código compartilhado mostrariam a mesma contagem. É limite
+            // do dado, não chave errada — `doctor → shared-code` avisa se o caso aparecer.
             const st = statusMap[e.banco + ':' + e.codigo_produto];
             return (
-              <tr key={e.banco + '|' + e.codigo_produto}>
-                <td className="cc-cell-title">
-                  {_CC_BANCO_LABEL[e.banco] || e.banco}
-                  {/* Which SIDRA table this row came from. PPM is the ONE banco that stores two
-                      tables (3939 rebanho / 74 produção animal) under the same banco token, so the
-                      same produto can be cadastered twice — this qualifies WHICH one. It belongs
-                      here, next to the banco it qualifies, NOT in the Descrição cell (where it
-                      used to sit below the researcher's annotation and read like part of it). */}
-                  {e.sidra_tabela && _CC_SIDRA_TABELAS[e.banco] && (
-                    <span className="cc-sidra-tag">
-                      {_CC_SIDRA_LABEL[e.banco]?.[e.sidra_tabela] || e.sidra_tabela}
-                    </span>
-                  )}
+              // A key precisa da chave INTEIRA: com banco+código só, as duas metades de um
+              // código compartilhado colidiriam e o React reusaria a linha errada.
+              <tr key={e.banco + '|' + (e.sidra_tabela ?? '-') + '|' + e.codigo_produto}>
+                <td className="cc-cell-title">{_CC_BANCO_LABEL[e.banco] || e.banco}</td>
+                {/* A identidade de um produto é BANCO + TABELA + CÓDIGO, então o trio lê da
+                    esquerda para a direita em colunas próprias. Era um selo dentro da célula do
+                    banco, o que escondia um terço da chave dentro de outro terço. Bancos de uma
+                    tabela só mostram o travessão: a coluna não some, senão o leitor não sabe se
+                    aquele banco não tem tabela ou se a tela deixou de mostrar. */}
+                <td data-label="Tabela">
+                  {_CC_SIDRA_TABELAS[e.banco]
+                    ? (
+                      <span className="cc-sidra-tag">
+                        {_CC_SIDRA_LABEL[e.banco]?.[e.sidra_tabela] || e.sidra_tabela || '—'}
+                      </span>
+                    )
+                    : <span className="dt-null">—</span>}
                 </td>
                 <td className="tnum" data-label="Código">{e.codigo_produto}</td>
                 <td data-label="Descrição">
@@ -698,8 +706,9 @@ function ViewCadastroProdutos() {
       <div className="card subtle" style={{ marginBottom: 12 }}>
         <p className="caption" style={{ margin: 0 }}>
           Este é o <strong>cadastro de produtos</strong> — a fonte única de verdade do que entra
-          e sai do dashboard. Cada produto é identificado por <code>(código, banco)</code> — o
-          <strong> código real da fonte</strong>, uma a uma — e pertence a um <strong>agrupamento</strong> (o
+          e sai do dashboard. Cada produto é identificado por <code>(banco, tabela, código)</code> —
+          o <strong>código real da fonte</strong>, e a tabela porque PEVS e PPM reúnem duas sob um
+          mesmo banco — e pertence a um <strong>agrupamento</strong> (o
           conceito que a unifica entre fontes). Agrupamentos são criados, renomeados e excluídos aqui;
           <strong>Ingestão</strong> e <strong>Exibição</strong> controlam, separadamente, se o pipeline
           busca dados novos e se o pesquisador vê o produto; <strong>remover</strong> um produto o marca

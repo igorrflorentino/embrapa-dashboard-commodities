@@ -476,10 +476,11 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(postBody.agrupamento).toBe('Castanha');
   });
 
-  it('tags a PPM row with its SIDRA table next to the BANCO (not inside the Descrição cell)', async () => {
-    // PPM is the one banco storing two SIDRA tables (3939 rebanho / 74 produção animal) under
-    // one banco token, so the tag qualifies the SOURCE. It must sit in the banco cell — putting
-    // it under the researcher's annotation (where it used to be) read like part of that note.
+  it('mostra a tabela SIDRA em COLUNA própria, não escondida na célula do banco', async () => {
+    // A identidade de um produto é banco + tabela + código, então o trio lê da esquerda para
+    // a direita em colunas próprias. O selo já esteve embaixo da anotação do pesquisador (onde
+    // lia como parte dela) e depois dentro da célula do banco — o que escondia um terço da
+    // chave dentro de outro terço.
     mockFetch({
       entries: {
         entries: [{
@@ -494,8 +495,9 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
     const tag = container.querySelector('.cc-sidra-tag');
     expect(tag.textContent).toBe('Rebanho (efetivo)');
-    // It lives in the banco (title) cell, and NOT in the Descrição cell.
-    expect(tag.closest('td').classList.contains('cc-cell-title')).toBe(true);
+    // Coluna própria — nem na célula do banco, nem na de Descrição.
+    expect(tag.closest('td').getAttribute('data-label')).toBe('Tabela');
+    expect(container.querySelector('td.cc-cell-title .cc-sidra-tag')).toBeNull();
     expect(container.querySelector('td[data-label="Descrição"] .cc-sidra-tag')).toBeNull();
   });
 
@@ -646,5 +648,22 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(container.textContent).toContain('Cupuaçu');
     expect(container.textContent).toContain('20079926');
     expect(container.textContent).toContain('nunca automaticamente');
+  });
+
+  it('a coluna Tabela existe, é documentada e as larguras somam 100%', async () => {
+    // Três coisas que só quebram juntas. As larguras da tabela são POSICIONAIS
+    // (`nth-child`), então inserir uma coluna desloca todas as seguintes: ao acrescentar
+    // "Tabela", "Código" herdou os 16% de "Descrição" e "Exibição" caiu para 42px, com o
+    // cabeçalho quebrando em "Ex/ib/iç/ão". O CSS não é exercitado pelo jsdom, então o que
+    // dá para prender aqui é a soma — que é justamente o que denuncia o deslocamento.
+    const { container, getByText } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+
+    const cabecalhos = [...container.querySelectorAll('.cc-table thead th')]
+      .map((th) => th.textContent.trim()).filter(Boolean);
+    expect(cabecalhos.slice(0, 3)).toEqual(['Banco', 'Tabela', 'Código']);
+
+    // A legenda é a referência em produto: coluna sem verbete vira cabeçalho inexplicado.
+    expect(getByText('Tabela', { selector: '.cc-help-k, dt, strong, b' })).toBeTruthy();
   });
 });
