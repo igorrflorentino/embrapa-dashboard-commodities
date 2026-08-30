@@ -1676,6 +1676,27 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
   }
   .hs-status-pill { white-space: nowrap; }
 }
+/* Uma tela de TABELA larga sai do limite de leitura que `.content` impõe (max-width 1280px,
+   pensado para prosa a ~65 caracteres). O Cadastro tem 11 colunas que precisam de 884px só
+   de TEXTO; o resto do orçamento é padding. Duas medições corrigiram versões anteriores
+   desta conta: (1) `measureText` do canvas IGNORA `letter-spacing`, então o piso medido por
+   ele saía baixo e o texto quebrava no meio da palavra mesmo com a conta "fechando" — o
+   piso real vem de um Range sobre o nó de texto; (2) um `<select>` não precisa caber a
+   opção mais longa do MENU, que abre em popup com largura própria, só o valor SELECIONADO —
+   exigir a opção mais longa inflava "Agrupamento" em ~20px sem necessidade.
+   Em 1440px o teto de 1280 não é o limite ativo (o ativo é shell − sidebar), então o
+   max-width sozinho não devolvia nada: quem devolve largura de fato é o padding lateral. */
+/* `:has()` porque quem precisa mudar é o PAI: `.screen--wide` está dentro de `.content` e
+   um filho não excede o teto do pai. Onde `:has()` não existir, a regra simplesmente não
+   aplica e a tela volta ao limite de 1280px — degradação silenciosa e aceitável, porque as
+   colunas ainda cabem nos seus pisos ali, só com a Descrição mais quebrada. */
+.content:has(.screen--wide) { max-width: 1600px; }
+/* Só no desktop: sob 768px a tabela vira cartões empilhados e o padding normal é o certo. */
+@media (min-width: 769px) {
+  .content:has(.screen--wide) { padding-left: 20px; padding-right: 20px; }  /* 32 → 20: +24px */
+  .screen--wide .card { padding-left: 16px; padding-right: 16px; }          /* 24 → 16: +16px */
+}
+
 /* ---------- Content ---------- */
 .content {
   padding: 28px 32px 48px;
@@ -3418,6 +3439,10 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
 .cc-descricao-input:disabled { cursor: not-allowed; }
 /* status cells in the catalog table */
 .cc-table th.num, .cc-table td.num { text-align: right; }
+/* `overflow-wrap: anywhere` (posto nas células para a Descrição poder quebrar) descia até
+   dentro do pill e partia "OCULT/O" no meio. Um rótulo de status é uma unidade: se algum dia
+   faltar largura, é melhor ele vazar do que virar duas sílabas. */
+.cc-status { white-space: nowrap; overflow-wrap: normal; }
 /* Fixed, IDENTICAL column widths across every agrupamento's table (one <table> per group
    card) — with the default auto layout, each table sized its own columns from its own
    content, so the same column landed at a different x-position in every card, forcing the
@@ -3429,33 +3454,56 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
    never fight the mobile layout's own `width:100%` reset on td/th — nth-child width rules
    are MORE specific than that reset and would otherwise win even under 768px. */
 @media (min-width: 769px) {
-  .cc-dt-wrap { overflow-x: hidden; overflow-y: auto; }
+  /* Sem `max-height`: o scroll vertical do `.dt-wrap` (640px) só disparava nos grupos
+     maiores e a barra roubava 15px DELES — 7 dos 31 cartões mediam 1074px contra 1089px
+     dos outros. Ou seja, a barra desalinhava exatamente a grade que o `table-layout:
+     fixed` abaixo existe para igualar, e apertava "Ingestã/o" e o pill "OCUL/TO" só nos
+     cartões grandes. A página inteira já rola; um scroll aninhado dentro dela não pagava
+     esse preço. `overflow: hidden` fica para preservar o border-radius. */
+  .cc-dt-wrap { overflow: hidden; max-height: none; }
   .cc-table { table-layout: fixed; width: 100%; }
-  .cc-table thead th, .cc-table tbody td { white-space: normal; overflow-wrap: anywhere; vertical-align: top; }
-  /* Percentages favor the columns that WRAP (plain text/numbers — an awkward mid-number
-     break looks broken) over the <select> columns (Agrupamento/Ingestão/Exibição), which
-     never wrap their own displayed value — a native <select> just clips internally when
-     narrow, ordinary/expected <select> behavior, not the truncation this fix avoids.
-     At the narrowest desktop width (~1280px) the 11 headers do not all fit on one line;
-     "Descrição (fonte)" is the one allowed to wrap because it breaks at its SPACE. Giving
-     that percent to it instead makes "Agrupamento" — a single word — break mid-word
-     ("Agrupame/nto"), which reads as broken. A slightly taller header row does not. */
+  .cc-table thead th, .cc-table tbody td {
+    /* `overflow-wrap: anywhere` só na coluna de PROSA (4). Aplicado a todas as células, era
+       ele que partia "251.7/77", "COMTRAD/E" e "Ex/ib/iç/ão" no meio quando faltava largura
+       — uma quebra dentro do número/palavra lê como defeito, e nas outras colunas nunca há
+       palavra longa demais para justificá-la. Fora dali, `normal`: quebra em espaço e
+       hífen, e no pior caso vaza alguns pixels em vez de partir a palavra. */
+    white-space: normal; overflow-wrap: normal; vertical-align: top;
+    /* 20px de padding horizontal × 11 colunas comiam 220px — um quinto da tabela. 16px
+       devolvem 44px ao conteúdo sem apertar a leitura. Escopo `.cc-table`: a `.dt-table`
+       compartilhada (ViewDados) fica intacta. */
+    padding-left: 8px; padding-right: 8px;
+  }
+  /* Each percentage is a MEASURED need, not a guess: the widest string the column must
+     render on one line (longest word for the columns that wrap; the widest SELECTED value,
+     plus ~30px for the arrow, for the <select> columns), plus 16px of padding. Measured on
+     the real 234-row catalog at 1440px, they come to 1067px against 1089px available, and
+     the 22px left over all go to "Descrição (fonte)" — the only column whose content is
+     open-ended prose, so it is the one that keeps benefiting from extra width.
+     Two traps this replaced, both of which made an earlier allocation "add up" and still
+     break on screen: canvas measureText ignores letter-spacing (understating every floor),
+     and a <select> was being sized to its longest MENU option rather than its selected
+     value. Re-measure with a Range over the text node if these ever need revisiting.
+     Below ~1089px of table width the columns squeeze proportionally again — that is the
+     pre-existing behavior on narrow desktops, deliberately kept: one horizontal scrollbar
+     PER agrupamento card would break the shared column grid these widths exist to create. */
   /* ⚠ Estas larguras são posicionais: inserir uma coluna desloca TODAS as seguintes, e a
      largura de cada uma passa a valer para a vizinha. Foi o que aconteceu ao acrescentar
      "Tabela" — "Código" herdou os 16% de "Descrição" e "Exibição" caiu para 42px, com o
      cabeçalho quebrando em "Ex/ib/iç/ão". Ao mexer na tabela, reveja o bloco inteiro; a
      soma tem de dar 100%. */
-  .cc-table thead th:nth-child(1), .cc-table tbody td:nth-child(1) { width: 8%; }  /* Banco */
-  .cc-table thead th:nth-child(2), .cc-table tbody td:nth-child(2) { width: 9%; }  /* Tabela */
-  .cc-table thead th:nth-child(3), .cc-table tbody td:nth-child(3) { width: 8%; }  /* Código */
-  .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { width: 15%; } /* Descrição (fonte) */
-  .cc-table thead th:nth-child(5), .cc-table tbody td:nth-child(5) { width: 7%; }  /* Linhas */
-  .cc-table thead th:nth-child(6), .cc-table tbody td:nth-child(6) { width: 9%; }  /* Período */
-  .cc-table thead th:nth-child(7), .cc-table tbody td:nth-child(7) { width: 10%; } /* Status (derivado) */
-  .cc-table thead th:nth-child(8), .cc-table tbody td:nth-child(8) { width: 11%; } /* Agrupamento */
-  .cc-table thead th:nth-child(9), .cc-table tbody td:nth-child(9) { width: 10%; } /* Ingestão */
-  .cc-table thead th:nth-child(10), .cc-table tbody td:nth-child(10) { width: 10%; } /* Exibição */
-  .cc-table thead th:nth-child(11), .cc-table tbody td:nth-child(11) { width: 3%; } /* Ações */
+  .cc-table thead th:nth-child(1), .cc-table tbody td:nth-child(1) { width: 10.28%; }           /* Banco · 112px · a frase "UN COMTRADE" inteira */
+  .cc-table thead th:nth-child(2), .cc-table tbody td:nth-child(2) { width: 9.64%; }            /* Tabela · 105px · "Rebanho (efetivo)" */
+  .cc-table thead th:nth-child(3), .cc-table tbody td:nth-child(3) { width: 7.71%; }            /* Código · 84px · NCM de 8 dígitos */
+  .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { width: 14.70%; }           /* Descrição (fonte) · 160px · piso 151 + toda a folga (9px) — é a única coluna de prosa */
+  .cc-table thead th:nth-child(5), .cc-table tbody td:nth-child(5) { width: 6.52%; }            /* Linhas · 71px · "251.777" */
+  .cc-table thead th:nth-child(6), .cc-table tbody td:nth-child(6) { width: 8.36%; }            /* Período · 91px · "1974–2024" sem quebrar no travessão */
+  .cc-table thead th:nth-child(7), .cc-table tbody td:nth-child(7) { width: 6.89%; }            /* Status · 75px · o pill "Oculto" INTEIRO, com o padding dele */
+  .cc-table thead th:nth-child(8), .cc-table tbody td:nth-child(8) { width: 16.98%; }           /* Agrupamento · 185px · o valor SELECIONADO mais longo + a seta */
+  .cc-table thead th:nth-child(9), .cc-table tbody td:nth-child(9) { width: 7.16%; }            /* Ingestão · 78px · o rótulo, mais largo que "Pausada" */
+  .cc-table thead th:nth-child(10), .cc-table tbody td:nth-child(10) { width: 7.90%; }          /* Exibição · 86px · "Visível" + a seta */
+  .cc-table thead th:nth-child(11), .cc-table tbody td:nth-child(11) { width: 3.86%; }          /* Ações · 42px · o botão da lixeira com o padding dele */
+  .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { overflow-wrap: anywhere; }
   .cc-table tbody td .cc-group-select, .cc-table tbody td select { width: 100%; max-width: 100%; }
 }
 /* Collapsible reference legend for the Cadastro table (what each column means, what each

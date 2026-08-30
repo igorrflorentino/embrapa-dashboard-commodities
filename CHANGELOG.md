@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.41.1] - 2026-08-30
+
+### Corrigido
+
+- **As 11 colunas do Cadastro cabem, e todos os cartões usam a mesma grade.** Com a
+  coluna `Tabela` a mais, faltava largura: o cabeçalho quebrava no meio das palavras
+  (`Ingestã/o`), o pill de status virava `OCULT/O` e números partiam em `251.7/77`.
+  Cada largura agora é uma necessidade **medida** — a maior string que a coluna precisa
+  renderizar numa linha, mais o padding — e não um palpite. O conteúdo real pede 884px;
+  o resto era padding, então 20px por coluna viraram 16px (devolve 44px) e a tela do
+  Cadastro recupera 40px de recuo lateral do `.content` e do `.card`. Sobra vai toda
+  para *Descrição (fonte)*, a única coluna de prosa.
+
+- **A barra de rolagem vertical desalinhava os cartões maiores.** O `max-height: 640px`
+  do `.dt-wrap` só disparava nos grupos com muitas linhas, e a barra roubava 15px **deles**:
+  7 dos 31 cartões mediam 1074px contra 1089px dos outros. Isso anulava justamente o que o
+  `table-layout: fixed` existe para garantir — a mesma grade em todos os cartões — e era a
+  razão de `Ingestã/o` e `OCULT/O` quebrarem só ali. Sem o scroll interno, os 31 cartões
+  medem 1089px. A página inteira já rolava.
+
+- **Quebra no meio da palavra onde não havia palavra longa.** `overflow-wrap: anywhere`
+  estava em todas as células, para a Descrição poder quebrar; era ele que partia número,
+  sigla e rótulo. Agora vale só na coluna de prosa. Em 1280px — onde a tabela ainda
+  comprime, comportamento que já existia — a quebra no meio da palavra passou de dezenas
+  de células a **zero**: o que não tem espaço nem hífen vaza alguns pixels em vez de virar
+  duas sílabas.
+
+### Notas de medição
+
+Três instrumentos deram resultado errado antes do repositório estar errado, e a correção
+de cada um mudou a conta: `measureText` do canvas **ignora `letter-spacing`** (subestimava
+todo piso); um `<select>` foi medido pela opção mais longa do **menu**, que abre em popup
+com largura própria, quando só o valor **selecionado** precisa caber; e `scrollWidth` não
+enxerga déficit **já absorvido por uma quebra** — devolvia exatamente a largura alocada,
+isto é, lia de volta a própria conta. A medição que vale usa uma cópia da tabela sem
+larguras impostas. `ccTableWidths.test.js` ganhou a âncora que faltava: uma largura por
+`<th>` do cabeçalho, contado no **JSX** — o arquivo que muda quando alguém acrescenta uma
+coluna e esquece o CSS.
+
+---
+
 ## [1.41.0] - 2026-08-30
 
 ### Adicionado
