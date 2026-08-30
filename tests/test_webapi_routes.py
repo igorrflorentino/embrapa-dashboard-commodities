@@ -253,7 +253,7 @@ def test_niveis_reach_the_seam_and_absence_means_no_filter(monkeypatch):
     assert seen[-1] is None
 
 
-def test_invalid_origem_is_400(monkeypatch):
+def test_invalid_sidra_tabela_is_400(monkeypatch):
     """A PEVS half outside {extrativa, silvicultura, all} 400s rather than binding
     verbatim and matching zero rows — which would draw an EMPTY dashboard that reads as
     "sem dados para esta seleção" instead of as a bad request."""
@@ -262,17 +262,17 @@ def test_invalid_origem_is_400(monkeypatch):
     client = _client(monkeypatch)
 
     def must_not_run(*a, **k):
-        raise AssertionError("seam reached despite an invalid origem")
+        raise AssertionError("seam reached despite an invalid sidra_tabela")
 
     monkeypatch.setattr(seam, "snapshot", must_not_run)
     monkeypatch.setattr(serializers, "serialize_snapshot", lambda *a, **k: {"ok": True})
 
-    bad = client.get("/api/snapshot?banco=ibge_pevs&origem=nativa")
+    bad = client.get("/api/snapshot?banco=ibge_pevs&sidraTabela=999")
     assert bad.status_code == 400
-    assert "origem inválida" in bad.get_json()["error"]
+    assert "tabela SIDRA inválida" in bad.get_json()["error"]
 
 
-def test_origem_reaches_the_seam_and_all_is_omitted(monkeypatch):
+def test_sidra_tabela_reaches_the_seam_and_all_is_omitted(monkeypatch):
     """The elo that was MISSING (v1.34.1): the route read every other axis and not this
     one, so picking a half relabelled the panel and changed no number. 'all' must stay out
     of the summary — a request without it has to be byte-identical to one made before the
@@ -284,10 +284,10 @@ def test_origem_reaches_the_seam_and_all_is_omitted(monkeypatch):
     monkeypatch.setattr(seam, "snapshot", lambda b, c, summary: seen.append(summary) or {})
     monkeypatch.setattr(serializers, "serialize_snapshot", lambda *a, **k: {"ok": True})
 
-    assert client.get("/api/snapshot?banco=ibge_pevs&origem=silvicultura").status_code == 200
-    assert seen[-1] == {"origem": "silvicultura"}
+    assert client.get("/api/snapshot?banco=ibge_pevs&sidraTabela=291").status_code == 200
+    assert seen[-1] == {"sidraTabela": "291"}
 
-    assert client.get("/api/snapshot?banco=ibge_pevs&origem=all").status_code == 200
+    assert client.get("/api/snapshot?banco=ibge_pevs&sidraTabela=all").status_code == 200
     assert seen[-1] is None  # nothing narrowed → no summary at all
 
 
@@ -2069,13 +2069,13 @@ def test_products_by_municipio_empty_when_banco_has_no_municipio_grain(monkeypat
     assert resp.get_json() == {"products": []}
 
 
-# ── origem: every route reaching a PEVS reader must parse it ──────────────────
+# ── sidraTabela: every route reaching a PEVS reader must parse it ─────────────
 # The axis shipped wired into /snapshot only, so these five answered with BOTH halves
 # summed while the chip announced one. Measured before the fix (2020–2023): identical
 # totals for extrativa, silvicultura and no filter, where the split is 372,9 bi × 690,6 bi.
 # One case per route because each builds its own summary; the helper is shared, the
 # CALLS were not.
-_ORIGEM_ROUTES = [
+_SIDRA_TABELA_ROUTES = [
     ("geo_yearly", "serialize_geo_yearly", "/api/geo-yearly?banco=ibge_pevs", {"ufYearly": []}),
     (
         "geo_municipio_yearly",
@@ -2098,8 +2098,10 @@ _ORIGEM_ROUTES = [
 ]
 
 
-@pytest.mark.parametrize("seam_fn,serializer,path,payload", _ORIGEM_ROUTES)
-def test_route_threads_origem_into_the_summary(monkeypatch, seam_fn, serializer, path, payload):
+@pytest.mark.parametrize("seam_fn,serializer,path,payload", _SIDRA_TABELA_ROUTES)
+def test_route_threads_sidra_tabela_into_the_summary(
+    monkeypatch, seam_fn, serializer, path, payload
+):
     from embrapa_dashboard.webapi import seam, serializers
 
     client = _client(monkeypatch)
@@ -2111,8 +2113,8 @@ def test_route_threads_origem_into_the_summary(monkeypatch, seam_fn, serializer,
         todos = [a for a in args if isinstance(a, dict)] + [
             v for v in kwargs.values() if isinstance(v, dict)
         ]
-        captured["origem"] = next(
-            (d.get("origem") for d in todos if isinstance(d, dict) and "origem" in d), None
+        captured["sidraTabela"] = next(
+            (d.get("sidraTabela") for d in todos if "sidraTabela" in d), None
         )
         return None
 
@@ -2121,16 +2123,16 @@ def test_route_threads_origem_into_the_summary(monkeypatch, seam_fn, serializer,
     sep = "&" if "?" in path else "?"
     body = {"cityCodes": ["3501608"]}
     resp = (
-        client.post(f"{path}{sep}origem=silvicultura", json=body)
+        client.post(f"{path}{sep}sidraTabela=291", json=body)
         if "municipio" in path
-        else client.get(f"{path}{sep}origem=silvicultura")
+        else client.get(f"{path}{sep}sidraTabela=291")
     )
     assert resp.status_code == 200
-    assert captured["origem"] == "silvicultura", f"{seam_fn} nao recebeu o eixo"
+    assert captured["sidraTabela"] == "291", f"{seam_fn} nao recebeu o eixo"
 
 
-@pytest.mark.parametrize("seam_fn,serializer,path,payload", _ORIGEM_ROUTES)
-def test_route_rejects_an_unknown_origem(monkeypatch, seam_fn, serializer, path, payload):
+@pytest.mark.parametrize("seam_fn,serializer,path,payload", _SIDRA_TABELA_ROUTES)
+def test_route_rejects_an_unknown_sidra_tabela(monkeypatch, seam_fn, serializer, path, payload):
     """A typo'd half must 400, not silently draw both halves under the wrong label."""
     from embrapa_dashboard.webapi import seam, serializers
 
@@ -2140,15 +2142,15 @@ def test_route_rejects_an_unknown_origem(monkeypatch, seam_fn, serializer, path,
     sep = "&" if "?" in path else "?"
     body = {"cityCodes": ["3501608"]}
     resp = (
-        client.post(f"{path}{sep}origem=plantada", json=body)
+        client.post(f"{path}{sep}sidraTabela=999", json=body)
         if "municipio" in path
-        else client.get(f"{path}{sep}origem=plantada")
+        else client.get(f"{path}{sep}sidraTabela=999")
     )
     assert resp.status_code == 400
-    assert "origem" in resp.get_json()["error"]
+    assert "tabela SIDRA" in resp.get_json()["error"]
 
 
-def test_product_uf_ranking_route_threads_origem(monkeypatch):
+def test_product_uf_ranking_route_threads_sidra_tabela(monkeypatch):
     """The fifth route: per-UF ranking for ONE produto — madeira/lenha/carvão exist in
     both halves, so without the axis the ranking mixes them."""
     from embrapa_dashboard.webapi import seam, serializers
@@ -2162,12 +2164,12 @@ def test_product_uf_ranking_route_threads_origem(monkeypatch):
 
     monkeypatch.setattr(seam, "product_uf_ranking", fake)
     monkeypatch.setattr(serializers, "serialize_product_uf", lambda *a, **k: {"ufs": []})
-    resp = client.get("/api/product-uf?banco=ibge_pevs&code=3457&origem=silvicultura")
+    resp = client.get("/api/product-uf?banco=ibge_pevs&code=3457&sidraTabela=291")
     assert resp.status_code == 200
-    assert (captured["summary"] or {}).get("origem") == "silvicultura"
+    assert (captured["summary"] or {}).get("sidraTabela") == "291"
 
 
-def test_product_uf_route_rejects_an_unknown_origem(monkeypatch):
+def test_product_uf_route_rejects_an_unknown_sidra_tabela(monkeypatch):
     """Same guard as the other four: a typo'd half is a 400, never both halves drawn
     silently under the requested label."""
     from embrapa_dashboard.webapi import seam, serializers
@@ -2175,12 +2177,12 @@ def test_product_uf_route_rejects_an_unknown_origem(monkeypatch):
     client = _client(monkeypatch)
     monkeypatch.setattr(seam, "product_uf_ranking", lambda *a, **k: None)
     monkeypatch.setattr(serializers, "serialize_product_uf", lambda *a, **k: {"ufs": []})
-    resp = client.get("/api/product-uf?banco=ibge_pevs&code=3457&origem=plantada")
+    resp = client.get("/api/product-uf?banco=ibge_pevs&code=3457&sidraTabela=999")
     assert resp.status_code == 400
-    assert "origem" in resp.get_json()["error"]
+    assert "tabela SIDRA" in resp.get_json()["error"]
 
 
-@pytest.mark.parametrize("seam_fn,serializer,path,payload", _ORIGEM_ROUTES)
+@pytest.mark.parametrize("seam_fn,serializer,path,payload", _SIDRA_TABELA_ROUTES)
 def test_route_threads_niveis_into_the_summary(monkeypatch, seam_fn, serializer, path, payload):
     """The SECOND axis, shipped a day after the first with the same defect: wired into
     /snapshot and nowhere else, so these readers served the whole banco under a level's
@@ -2233,12 +2235,12 @@ def test_both_axes_compose_in_one_request(monkeypatch):
     )
     monkeypatch.setattr(serializers, "serialize_geo_yearly", lambda *a, **k: {"ufYearly": []})
     resp = client.get(
-        "/api/geo-yearly?banco=ibge_pevs&origem=silvicultura&niveis=commodity_pura&codes=3457"
+        "/api/geo-yearly?banco=ibge_pevs&sidraTabela=291&niveis=commodity_pura&codes=3457"
     )
     assert resp.status_code == 200
     assert captured["s"] == {
         "basket": ["3457"],
-        "origem": "silvicultura",
+        "sidraTabela": "291",
         "niveis": ["commodity_pura"],
     }
 

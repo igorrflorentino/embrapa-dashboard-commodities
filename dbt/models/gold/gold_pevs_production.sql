@@ -174,18 +174,6 @@ select
     -- name of each half is derived from this id wherever it is displayed.
     sidra_tabela,
 
-    -- ⚠ TRANSITÓRIA. `origem` era o fato GUARDADO até v1.46.0 e agora é DERIVADA da
-    -- tabela: um fato só, uma projeção dele. Ela continua aqui apenas para os
-    -- consumidores que ainda a leem (seam, filtro, chip, citação, CSV) — a migração
-    -- deles vem no PR seguinte, e esta coluna sai junto. Separar assim é deliberado:
-    -- o deploy do webapi e o build da Gold disparam em PARALELO no mesmo merge, então
-    -- publicar as duas coisas juntas deixaria o dashboard consultando uma coluna que a
-    -- Gold ainda não tem durante a janela entre os dois.
-    case
-        when sidra_tabela = '{{ var("ibge_table_id") }}' then 'extrativa'
-        else 'silvicultura'
-    end                                 as origem,
-
     -- ── Quantities (physical-unit family) ───────────────────────────────────
     -- The reported quantity is normalised to a per-family base unit:
     --   family       — massa | volume | energia | contagem | area | desconhecida

@@ -193,21 +193,23 @@ def _flow_from_summary(summary: dict | None) -> str | None:
     return flow
 
 
-def _origem_from_summary(summary: dict | None) -> str | None:
-    """Which half of the PEVS survey the panel is scoped to, from the FilterMenu.
+def _sidra_tabela_from_summary(summary: dict | None) -> str | None:
+    """Which SIDRA TABLE the panel is scoped to, from the FilterMenu.
 
-    ``'extrativa'`` (native forest, SIDRA t289) | ``'silvicultura'`` (planted, t291).
-    ``'all'`` / absent → ``None`` = sum both, which is the survey's own total and keeps
-    an unfiltered request byte-identical to the one this seam emitted before the axis
-    existed. Mirrors ``_flow_from_summary``; only the PEVS-shaped branch passes it, since
-    PAM/PPM have no ``origem`` column.
+    A produto's identity is ``(banco, tabela, código)``, so the table is what tells the
+    two halves of a multi-table banco apart — PEVS t289 (extração vegetal, native forest)
+    vs t291 (silvicultura, planted). ``'all'`` / absent → ``None`` = sum every table,
+    which for PEVS is the survey's own total and keeps an unfiltered request
+    byte-identical to the one this seam emitted before the axis existed. Mirrors
+    ``_flow_from_summary``; only the PEVS-shaped branch passes it, since single-table
+    bancos have no ``sidra_tabela`` column to filter on.
     """
     if not summary:
         return None
-    origem = summary.get("origem")
-    if not origem or origem == "all":
+    tabela = summary.get("sidraTabela")
+    if not tabela or tabela == "all":
         return None
-    return origem
+    return str(tabela)
 
 
 def _customs_from_summary(summary: dict | None) -> str | None:
@@ -296,7 +298,7 @@ def _apply_levels(
     shipped on 2026-08-29 threaded through that one path, so the map, the município cube,
     both product rankings and the three trade readers ignored the filter entirely — the
     snapshot showed 1,3 bi for commodity_pura while the map beside it showed the whole
-    1.063,5 bi. Same defect as the ``origem`` axis one day earlier, one axis over.
+    1.063,5 bi. Same defect as the table axis one day earlier, one axis over.
 
     ``products`` is the banco's product universe; callers that already fetched it pass it
     in (the reader is cached, so the others simply fetch it).
@@ -412,16 +414,16 @@ def snapshot(banco_id: str, conv: dict, summary: dict | None = None) -> dict:
         product_ts = gateway.fetch_product_timeseries(
             banco_id, year_start=y0, year_end=y1, codes=codes, value_column=value_col
         )
-        # Only the PEVS-shaped branch carries `origem` — the axis exists in
-        # gold_pevs_production alone. None (the default) sums both halves.
-        origem = _origem_from_summary(summary)
+        # Only the PEVS-shaped branch carries `sidra_tabela` — of the production marts
+        # only gold_pevs_production spans two tables. None (the default) sums both.
+        sidra_tabela = _sidra_tabela_from_summary(summary)
         overview_ts = gateway.fetch_production_overview(
             year_start=y0,
             year_end=y1,
             product_codes=codes,
             value_column=value_col,
             source=banco_id,
-            origem=origem,
+            sidra_tabela=sidra_tabela,
         )
         uf_data = gateway.fetch_production_by_uf(
             year_start=y0,
@@ -429,7 +431,7 @@ def snapshot(banco_id: str, conv: dict, summary: dict | None = None) -> dict:
             product_codes=codes,
             value_column=value_col,
             source=banco_id,
-            origem=origem,
+            sidra_tabela=sidra_tabela,
         )
         uf_yearly = gateway.fetch_production_by_uf_yearly(
             year_start=y0,
@@ -437,7 +439,7 @@ def snapshot(banco_id: str, conv: dict, summary: dict | None = None) -> dict:
             product_codes=codes,
             value_column=value_col,
             source=banco_id,
-            origem=origem,
+            sidra_tabela=sidra_tabela,
         )
 
     return {
@@ -642,7 +644,7 @@ def product_uf_ranking(
         uf_codes=states,
         value_column=value_col,
         source=banco_id,
-        origem=_origem_from_summary(summary),
+        sidra_tabela=_sidra_tabela_from_summary(summary),
     )
 
 
@@ -680,7 +682,7 @@ def geo_yearly(banco_id: str, conv: dict, summary: dict | None = None) -> pd.Dat
         product_codes=codes,
         value_column=value_col,
         source=banco_id,
-        origem=_origem_from_summary(summary),
+        sidra_tabela=_sidra_tabela_from_summary(summary),
     )
 
 
@@ -750,7 +752,7 @@ def geo_municipio_yearly(
             city_codes=city_codes,
             value_column=value_col,
             source=banco_id,
-            origem=_origem_from_summary(summary),
+            sidra_tabela=_sidra_tabela_from_summary(summary),
         )
     except NotFound:
         # gold_<source>_production not built → documented None (serialize_municipio_yearly
@@ -785,7 +787,10 @@ def products_by_municipio(
             city_codes=city_codes,
             value_column=value_col,
             source=banco_id,
-            origem=_origem_from_summary(summary),
+            sidra_tabela=_sidra_tabela_from_summary(summary),
+            # A metade viaja junto com a linha: madeira, lenha e carvão existem nas DUAS
+            # com o mesmo nome, e quem exibe precisa distingui-las. Só o PEVS tem a coluna.
+            include_sidra_tabela=True,
         )
     except NotFound:
         # gold_<source>_production not built → documented None (→ {"products": []}),
@@ -980,7 +985,10 @@ def products_by_uf(
             codes=codes,
             uf_codes=states,
             value_column=value_col,
-            origem=_origem_from_summary(summary),
+            sidra_tabela=_sidra_tabela_from_summary(summary),
+            # A metade viaja junto com a linha: madeira, lenha e carvão existem nas DUAS
+            # com o mesmo nome, e quem exibe precisa distingui-las. Só o PEVS tem a coluna.
+            include_sidra_tabela=True,
         )
     return None
 

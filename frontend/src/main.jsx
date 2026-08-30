@@ -104,6 +104,22 @@ import './ui/ViewNotApplicable.jsx';
 import './ui/ViewPerspectiveSoon.jsx';
 
 // ── deep-link decode (the DECODER half of the urlState.js codec contract) ─────
+/**
+ * Traduz o parâmetro de URL ANTIGO (`or=extrativa|silvicultura`) para o id da tabela.
+ *
+ * Até v1.46.0 o recorte viajava como prosa. O mapeamento sai do próprio registro de
+ * tabelas (`SIDRA_TABELA_OPTIONS`), pelo `short` de cada uma — 'extração'/'silvicultura' —,
+ * de modo que renomear uma metade lá continua funcionando aqui. Devolve null para
+ * qualquer outra coisa, inclusive 'all'.
+ */
+function _tabelaDoParamAntigo(valor) {
+  if (!valor || valor === 'all') return null;
+  const antigo = { extrativa: 'extração', silvicultura: 'silvicultura' }[valor];
+  if (!antigo) return null;
+  const opts = (window.SIDRA_TABELA_OPTIONS || {}).ibge_pevs || [];
+  return (opts.find((o) => o.short === antigo) || {}).value || null;
+}
+
 function readStateFromURL() {
   const q = new URLSearchParams(location.search);
   if (!window.urlHasOwnState || !window.urlHasOwnState(q)) return null;
@@ -138,8 +154,14 @@ function readStateFromURL() {
     endDate: q.get('ed') || null,
     // Server-side flow filter (export/import); absent → all flows.
     flow: q.get('fx') || null,
-    // Which half of the PEVS survey (extrativa | silvicultura); absent = both.
-    origem: q.get('or') || null,
+    // Qual TABELA SIDRA (t289 extração | t291 silvicultura); ausente = todas.
+    //
+    // Aceita o `or=extrativa|silvicultura` dos links antigos e o traduz para a tabela: o
+    // parâmetro mudou em v1.46.0, quando a identidade do produto passou a viajar como o id
+    // da tabela em vez de uma prosa paralela, e um permalink já compartilhado não pode
+    // parar de restaurar o recorte por causa disso. A tradução lê o MESMO registro que
+    // desenha o filtro, então ela não é uma quarta cópia do mapeamento.
+    sidraTabela: q.get('tb') || _tabelaDoParamAntigo(q.get('or')) || null,
     // Níveis de industrialização selecionados (CSV); ausente = todos.
     niveis: window.urlDecodeArr(q, 'ni'),
     // Server-side customs-procedure filter (regime aduaneiro, COMTRADE); absent → all regimes.
@@ -463,8 +485,10 @@ function Dashboard() {
   // re-rendering the same numbers under a new chip — which is exactly what it did before
   // this bridge existed.
   useEffect(() => {
-    if (window.dataStore?.setOrigem) window.dataStore.setOrigem(summary.origem || 'all');
-  }, [summary.origem]);
+    if (window.dataStore?.setSidraTabela) {
+      window.dataStore.setSidraTabela(summary.sidraTabela || 'all');
+    }
+  }, [summary.sidraTabela]);
 
   // Nível → data layer bridge: the industrialization level is resolved to codes
   // server-side, so a change re-fetches rather than re-rendering the same numbers.

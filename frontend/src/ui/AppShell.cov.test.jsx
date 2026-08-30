@@ -24,6 +24,7 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 // stub here could make them agree in the test and disagree in the product.
 import './chipFmt.js';
 import './scopeChips.js';
+import './filtersSchema.js';
 
 const BANCOS = [
   { id: 'ibge_pevs', short: 'IBGE PEVS', label: 'Produção · Extração vegetal', maturity: 'estavel', status: 'live' },
@@ -1108,28 +1109,24 @@ describe('citação — o eixo origem da PEVS', () => {
     summary: { startDate: '2010', endDate: '2024', products: 'Todos (7)', ...over },
   });
 
-  beforeEach(() => {
-    window.origemOptionsFor = (id) => (id === 'ibge_pevs'
-      ? [{ value: 'all', label: 'Ambas' },
-         { value: 'extrativa', label: 'Extração vegetal (nativa)' },
-         { value: 'silvicultura', label: 'Silvicultura (plantada)' }]
-      : null);
-  });
-  afterEach(() => { delete window.origemOptionsFor; });
+  // Sem stub: o registro REAL vem de `filtersSchema.js`, importado no topo. Dublá-lo
+  // deixaria a citação concordar com um vocabulário de tabelas que o produto não tem —
+  // e foi exatamente assim que este teste continuou verde com os valores antigos
+  // ('extrativa'/'silvicultura') depois que o dado passou a carregar o id da tabela.
 
   it('nomeia a metade escolhida', () => {
-    const { container } = render(<AppShell {...pevsProps({ origem: 'silvicultura' })} />);
+    const { container } = render(<AppShell {...pevsProps({ sidraTabela: '291' })} />);
     expect(openAndPick(container, 'Consulta detalhada')).toContain('Origem: Silvicultura (plantada)');
   });
 
   it('cala quando o painel cobre as duas — mas só porque "ambas" É o total da pesquisa', () => {
-    const { container } = render(<AppShell {...pevsProps({ origem: 'all' })} />);
+    const { container } = render(<AppShell {...pevsProps({ sidraTabela: 'all' })} />);
     expect(openAndPick(container, 'Consulta detalhada')).not.toContain('Origem:');
   });
 
   it('não aparece num banco que não tem a dimensão', () => {
-    window.origemOptionsFor = () => null;
-    const { container } = render(<AppShell {...pevsProps({ origem: 'silvicultura' })} />);
+    window.sidraTabelaOptionsFor = () => null;  // banco sem a dimensão
+    const { container } = render(<AppShell {...pevsProps({ sidraTabela: '291' })} />);
     expect(openAndPick(container, 'Consulta detalhada')).not.toContain('Origem');
   });
 });

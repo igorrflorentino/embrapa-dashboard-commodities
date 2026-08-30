@@ -99,7 +99,7 @@ describe('dataStore', () => {
     expect(urls[1]).toContain('flow=export');
   });
 
-  it('re-fetches under a different origem, which drives the cache key + the URL param', async () => {
+  it('re-fetches under a different sidraTabela, which drives the cache key + the URL param', async () => {
     // The gap this closes, found only by driving the real UI (2026-08-29): `origem`
     // reached the chip, the citation and the CSV, and 1031 unit tests were green — while
     // the SNAPSHOT REQUEST never carried it. So picking "Extração vegetal" relabelled the
@@ -112,22 +112,22 @@ describe('dataStore', () => {
     const f = vi.fn(() => jsonRes(validSnap()));
     const ds = await loadStore(f);
 
-    await ds.load('ibge_pevs'); // origem 'all'
-    ds.setOrigem('extrativa');
+    await ds.load('ibge_pevs'); // sidraTabela 'all'
+    ds.setSidraTabela('289');
     await ds.load('ibge_pevs'); // extrativa → new key → fetch again
 
     expect(snapCalls(f)).toBe(2);
     const urls = f.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/snapshot'));
-    expect(urls[0]).not.toContain('origem='); // 'all' omits it — both halves, the survey total
-    expect(urls[1]).toContain('origem=extrativa');
+    expect(urls[0]).not.toContain('sidraTabela='); // 'all' omits it — every table halves, the survey total
+    expect(urls[1]).toContain('sidraTabela=289');
   });
 
-  it("setOrigem('all') when already all is a no-op (no extra fetch)", async () => {
+  it("setSidraTabela('all') when already all is a no-op (no extra fetch)", async () => {
     const f = vi.fn(() => jsonRes(validSnap()));
     const ds = await loadStore(f);
     await ds.load('ibge_pevs');
     expect(snapCalls(f)).toBe(1);
-    ds.setOrigem('all');
+    ds.setSidraTabela('all');
     await settle();
     expect(snapCalls(f)).toBe(1);
   });

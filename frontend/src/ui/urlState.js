@@ -104,10 +104,13 @@ window.buildUrlState = ({ view, database, infoPage, conventions, summary, crossS
     ed: s.endDate || '',
     // Server-side flow filter (export/import); omitted when 'all'/absent.
     fx: s.flow && s.flow !== 'all' ? s.flow : '',
-    // Server-side PEVS origem filter (extrativa/silvicultura); omitted when 'all'/absent,
-    // so a permalink to an unfiltered panel keeps meaning "both halves" — the survey's
-    // own total — rather than freezing today's default into the link.
-    or: s.origem && s.origem !== 'all' ? s.origem : '',
+    // Server-side SIDRA-table filter (t289 extração | t291 silvicultura); omitted when
+    // 'all'/absent, so a permalink to an unfiltered panel keeps meaning "every table" —
+    // the survey's own total — rather than freezing today's default into the link.
+    // Escreve `tb` desde v1.46.0; o decodificador ainda ACEITA o `or=extrativa|silvicultura`
+    // dos links antigos (ver main.jsx) para que nenhum permalink já compartilhado pare de
+    // restaurar o recorte.
+    tb: s.sidraTabela && s.sidraTabela !== 'all' ? s.sidraTabela : '',
     // Níveis de industrialização; omitido quando nada está selecionado.
     ni: window.urlEncodeArr(s.niveis),
     // Server-side customs-procedure filter (regime aduaneiro, COMTRADE); omitted when

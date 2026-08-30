@@ -17,6 +17,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // level derivation would let the view and the test disagree about where the researcher
 // is — the exact class of divergence that shipped bugs earlier today.
 import './geoDrill.js';
+// O registro REAL de origem + `labelProductRows`. A chamada na view é DELIBERADAMENTE
+// incondicional: um helper ausente tem de estourar, não fazer o gráfico voltar a fundir
+// duas metades do PEVS numa barra só, em silêncio.
+import './filtersSchema.js';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 
 // The click-a-UF-to-filter rule lives in geoSelect.js (shared with Visão geral and

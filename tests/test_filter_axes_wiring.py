@@ -70,27 +70,27 @@ def _gateway_calls(path: Path) -> list[tuple[str, int, set[str], str | None]]:
     return out
 
 
-def test_every_pevs_reader_call_in_the_seam_threads_origem() -> None:
-    """A PEVS reader called without `origem` silently answers for both halves."""
+def test_every_pevs_reader_call_in_the_seam_threads_sidra_tabela() -> None:
+    """A PEVS reader called without `sidra_tabela` silently answers for every table."""
     faltando = [
         f"{nome} (seam.py:{linha})"
         for nome, linha, kwargs, tabela in _gateway_calls(_SEAM)
-        if nome in _PEVS_READERS and "origem" not in kwargs and tabela != _TRADE_TABLE
+        if nome in _PEVS_READERS and "sidra_tabela" not in kwargs and tabela != _TRADE_TABLE
     ]
-    assert not faltando, "chamadas PEVS sem origem: " + ", ".join(faltando)
+    assert not faltando, "chamadas PEVS sem sidra_tabela: " + ", ".join(faltando)
 
 
-def test_a_trade_call_never_carries_origem() -> None:
+def test_a_trade_call_never_carries_sidra_tabela() -> None:
     """The converse. `fetch_products_by_uf` is SHARED: PEVS production and COMEX export
-    differ only by `table_key`. serving_comex_annual has no `origem` column, so passing it
+    differ only by `table_key`. serving_comex_annual has no `sidra_tabela` column, so passing it
     there would be a BigQuery error, not a silent one — but the sweep above must not push
     anyone into 'fixing' it that way."""
     indevidas = [
         f"{nome} (seam.py:{linha})"
         for nome, linha, kwargs, tabela in _gateway_calls(_SEAM)
-        if tabela == _TRADE_TABLE and "origem" in kwargs
+        if tabela == _TRADE_TABLE and "sidra_tabela" in kwargs
     ]
-    assert not indevidas, "origem enviada a uma tabela de comercio: " + ", ".join(indevidas)
+    assert not indevidas, "tabela SIDRA enviada a uma tabela de comercio: " + ", ".join(indevidas)
 
 
 def test_the_sweep_actually_sees_the_calls() -> None:
@@ -174,7 +174,7 @@ def test_the_level_narrowing_is_defined_once() -> None:
 
 # The five VALUE axes the shared route helper folds. reporters/partners are not here:
 # they come from _filter_summary, which every data route already shares.
-_VALUE_AXES = ("flow", "customs", "market", "origem", "niveis")
+_VALUE_AXES = ("flow", "customs", "market", "sidraTabela", "niveis")
 
 
 @pytest.mark.parametrize("eixo", _VALUE_AXES)

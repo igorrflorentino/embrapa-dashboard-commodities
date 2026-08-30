@@ -874,7 +874,9 @@ function ViewGeography({ families, conventions, summary, database }) {
       {summary && Array.isArray(summary.states) && summary.states.length > 0 && (() => {
         const pbuSummary = { ...summary, startDate: `${mapYear}-01-01`, endDate: `${mapYear}-12-01` };
         const pbu = window.productsByUf(database, pbuSummary, conv);
-        const rows = (pbu.products || [])
+        // Mesma desambiguação de "O que <lugar> produz": duas metades do PEVS podem trazer
+        // o mesmo NOME, e o BarChart usa o nome como categoria (o Plotly funde homônimas).
+        const rows = window.labelProductRows(pbu.products || [], database)
           .map(p => ({ ...p, [valueKey]: (p[valueKey] || 0) * mul }))
           .filter(r => (r[valueKey] || 0) > 0)
           .sort((a, b) => b[valueKey] - a[valueKey])

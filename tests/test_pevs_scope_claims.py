@@ -83,13 +83,13 @@ def test_pevs_description_points_at_the_axis_that_separates_them(copia: str) -> 
     )
 
 
-def test_the_origem_axis_is_declared_in_both_filter_schemas() -> None:
+def test_the_sidra_tabela_axis_is_declared_in_both_filter_schemas() -> None:
     """The axis has to EXIST as a filter, not just be named in prose."""
     from embrapa_dashboard.webapi.registries import FILTER_SCHEMAS
 
     dims = FILTER_SCHEMAS["ibge_pevs"]["dims"]
-    assert any(d.get("id") == "origem" for d in dims), "backend: sem a dimensão origem"
-    assert "id: 'origem'" in SCHEMA_JS.read_text("utf-8"), "SPA: sem a dimensão origem"
+    assert any(d.get("id") == "origem" for d in dims), "backend: sem a dimensão sidraTabela"
+    assert "id: 'sidraTabela'" in SCHEMA_JS.read_text("utf-8"), "SPA: sem a dimensão sidraTabela"
 
 
 def test_the_product_filter_hint_does_not_promise_what_the_codes_do_not_cover() -> None:
