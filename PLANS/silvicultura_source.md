@@ -1,6 +1,22 @@
-# IBGE PEVS silviculture (SIDRA t291) — an `origem` axis on `gold_pevs_production`
+# IBGE PEVS silviculture (SIDRA t291) — telling the two halves apart on `gold_pevs_production`
 
-> Status: **IMPLEMENTED** (2026-08-29). Owner: Igor.
+> Status: **IMPLEMENTED** (2026-08-29), com o eixo **SUPERSEDED em v1.46.1**. Owner: Igor.
+>
+> ⚠ **O que mudou depois deste plano.** Ele especifica uma coluna `origem`
+> (`extrativa` | `silvicultura`) carimbada na união dos dois Silvers. Essa coluna **não
+> existe mais**: a identidade de um produto é `(banco, tabela, código)`, então quem
+> discrimina as duas metades passou a ser **`sidra_tabela`** — o id da tabela SIDRA (t289 |
+> t291) —, e os nomes "Extração vegetal" / "Silvicultura" são DERIVADOS dele onde aparecem.
+>
+> O motivo foi concreto: guardando só a prosa, o id existia apenas como *nome de tabela* no
+> Bronze (`sidra_t289_raw`), e quem exibia não alcançava a identidade — o gráfico "O que
+> ‹lugar› produz" fundia madeira/lenha/carvão (o mesmo nome nas duas metades) numa barra
+> só, com os dois rótulos por cima um do outro. O parâmetro de URL virou `tb`; o `or=` antigo
+> segue sendo decodificado para não quebrar permalinks.
+>
+> **Tudo o mais neste plano continua valendo** — o escopo da ingestão, o modelo de linhas,
+> os critérios de aceite e a razão de as duas metades nunca serem somadas em silêncio. Leia
+> "`origem`" abaixo como "a metade da pesquisa", hoje identificada pela tabela.
 >
 > Two numbers in the acceptance criteria below were WRONG when written and are corrected
 > in place: São Paulo 2023 is **R$ 4,15 bi**, not 4,45, and Brazil 2023 is **R$ 31,16 bi**,

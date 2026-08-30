@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.46.2] - 2026-08-30
+
+### Documentação
+
+- **`CLAUDE.md` e `PLANS/silvicultura_source.md` descreviam a `origem` como o eixo que
+  separa as duas metades do PEVS** — aposentada em v1.46.1. O CLAUDE.md passa a descrever
+  `sidra_tabela` e a regra que a sustenta: a identidade de um produto é
+  `(banco, tabela, código)`, então a tabela é uma COLUNA e todo nome humano de uma metade
+  é DERIVADO dela, nunca guardado ao lado. O plano da silvicultura ganhou uma nota de
+  superação no topo, mantendo o registro histórico intacto — o escopo da ingestão, o modelo
+  de linhas e os critérios de aceite continuam valendo.
+
+---
+
 ## [1.46.1] - 2026-08-30
 
 Passo 2 de 2. Os consumidores passam a ler a **tabela SIDRA**, e a `origem` sai da Gold.
