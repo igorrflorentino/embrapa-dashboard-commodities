@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.41.0] - 2026-08-30
+
+### Adicionado
+
+- **Coluna `Tabela` no Cadastro de produtos.** A identidade de um produto é
+  `banco + tabela + código`, e um terço dela estava escondido dentro de outro terço — um
+  selo dentro da célula do banco. Agora o trio lê da esquerda para a direita em colunas
+  próprias. Bancos de uma tabela só mostram travessão: a coluna não some, senão o leitor
+  não sabe se aquele banco não tem tabela ou se a tela deixou de mostrar.
+
+  Verificado no navegador: os quatro rótulos renderizam (*Extração vegetal*, *Silvicultura*,
+  *Rebanho (efetivo)*, *Produção animal*), **24 linhas com selo e 210 com travessão** —
+  soma 234, que é o total do catálogo. No empilhado do celular a coluna vira linha rotulada
+  entre o banco e o código.
+
+### Corrigido
+
+- **A coluna nova desalinhou todas as larguras.** Elas são posicionais (`nth-child`), então
+  inserir uma desloca as seguintes: "Código" herdou os 16% de "Descrição" e "Exibição" caiu
+  para **42px**, com o cabeçalho quebrando em "Ex/ib/iç/ão" e a tabela transbordando 35px
+  dentro de um wrapper que **corta** em vez de rolar. Redistribuídas para onze colunas;
+  transbordo agora é 4px de arredondamento.
+- **A `key` do React era `banco + código`** — sem a tabela, duas metades de um código
+  compartilhado colidiriam e o React reusaria a linha errada.
+- Duas frases que descreviam a chave com dois campos: a introdução da tela e o verbete
+  "Banco" da legenda.
+
+### Verificação
+
+`frontend/src/ui/ccTableWidths.test.js`: os índices `nth-child` têm de ser contíguos de 1 a
+N, sem repetir nem furo, e as larguras têm de somar 100%. O jsdom não aplica CSS, então o
+que quebrou de fato — o deslocamento — só era visível a olho; o arquivo, porém, é texto, e
+as três propriedades pegam qualquer inserção mal feita.
+
+---
+
 ## [1.40.2] - 2026-08-30
 
 ### Corrigido

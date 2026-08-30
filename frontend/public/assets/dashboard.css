@@ -3436,20 +3436,26 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
      break looks broken) over the <select> columns (Agrupamento/Ingestão/Exibição), which
      never wrap their own displayed value — a native <select> just clips internally when
      narrow, ordinary/expected <select> behavior, not the truncation this fix avoids.
-     At the narrowest desktop width (~1280px) the 10 headers do not all fit on one line;
+     At the narrowest desktop width (~1280px) the 11 headers do not all fit on one line;
      "Descrição (fonte)" is the one allowed to wrap because it breaks at its SPACE. Giving
      that percent to it instead makes "Agrupamento" — a single word — break mid-word
      ("Agrupame/nto"), which reads as broken. A slightly taller header row does not. */
-  .cc-table thead th:nth-child(1), .cc-table tbody td:nth-child(1) { width: 9%; }  /* Banco */
-  .cc-table thead th:nth-child(2), .cc-table tbody td:nth-child(2) { width: 9%; }  /* Código */
-  .cc-table thead th:nth-child(3), .cc-table tbody td:nth-child(3) { width: 16%; } /* Descrição (fonte) */
-  .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { width: 8%; }  /* Linhas */
-  .cc-table thead th:nth-child(5), .cc-table tbody td:nth-child(5) { width: 9%; }  /* Período */
-  .cc-table thead th:nth-child(6), .cc-table tbody td:nth-child(6) { width: 11%; } /* Status (derivado) */
-  .cc-table thead th:nth-child(7), .cc-table tbody td:nth-child(7) { width: 12%; } /* Agrupamento */
-  .cc-table thead th:nth-child(8), .cc-table tbody td:nth-child(8) { width: 11%; } /* Ingestão */
-  .cc-table thead th:nth-child(9), .cc-table tbody td:nth-child(9) { width: 11%; } /* Exibição */
-  .cc-table thead th:nth-child(10), .cc-table tbody td:nth-child(10) { width: 4%; } /* Ações */
+  /* ⚠ Estas larguras são posicionais: inserir uma coluna desloca TODAS as seguintes, e a
+     largura de cada uma passa a valer para a vizinha. Foi o que aconteceu ao acrescentar
+     "Tabela" — "Código" herdou os 16% de "Descrição" e "Exibição" caiu para 42px, com o
+     cabeçalho quebrando em "Ex/ib/iç/ão". Ao mexer na tabela, reveja o bloco inteiro; a
+     soma tem de dar 100%. */
+  .cc-table thead th:nth-child(1), .cc-table tbody td:nth-child(1) { width: 8%; }  /* Banco */
+  .cc-table thead th:nth-child(2), .cc-table tbody td:nth-child(2) { width: 9%; }  /* Tabela */
+  .cc-table thead th:nth-child(3), .cc-table tbody td:nth-child(3) { width: 8%; }  /* Código */
+  .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { width: 15%; } /* Descrição (fonte) */
+  .cc-table thead th:nth-child(5), .cc-table tbody td:nth-child(5) { width: 7%; }  /* Linhas */
+  .cc-table thead th:nth-child(6), .cc-table tbody td:nth-child(6) { width: 9%; }  /* Período */
+  .cc-table thead th:nth-child(7), .cc-table tbody td:nth-child(7) { width: 10%; } /* Status (derivado) */
+  .cc-table thead th:nth-child(8), .cc-table tbody td:nth-child(8) { width: 11%; } /* Agrupamento */
+  .cc-table thead th:nth-child(9), .cc-table tbody td:nth-child(9) { width: 10%; } /* Ingestão */
+  .cc-table thead th:nth-child(10), .cc-table tbody td:nth-child(10) { width: 10%; } /* Exibição */
+  .cc-table thead th:nth-child(11), .cc-table tbody td:nth-child(11) { width: 3%; } /* Ações */
   .cc-table tbody td .cc-group-select, .cc-table tbody td select { width: 100%; max-width: 100%; }
 }
 /* Collapsible reference legend for the Cadastro table (what each column means, what each
