@@ -202,3 +202,43 @@ def test_nenhum_doc_descreve_a_chave_sem_a_tabela(arquivo: str) -> None:
         r"row per \(source, code, version\)",
     ):
         assert not re.search(padrao, texto), f"{arquivo}: descreve a chave sem a tabela — {padrao}"
+
+
+# ── idempotência: o change_id só é replay do MESMO produto ────────────────────
+# Um `change_id` reusado entre as DUAS metades de um código compartilhado passaria por
+# replay e a segunda edição sumiria — sem erro, sem log, sem nada. As guardas comparam a
+# chave INTEIRA, e as chaves do frontend a compõem inteira.
+_GUARDAS = [
+    "src/embrapa_dashboard/serving/curation.py",
+    "src/embrapa_dashboard/serving/attribute_engineering.py",
+]
+
+
+@pytest.mark.parametrize("arquivo", _GUARDAS)
+def test_as_guardas_de_idempotencia_comparam_a_chave_inteira(arquivo: str) -> None:
+    texto = (_RAIZ / arquivo).read_text(encoding="utf-8")
+    tuplas = re.findall(r"ensure_no_change_id_conflict\(.*?\n\s*\(([^)]*)\)", texto, re.S)
+    # Só as que identificam um PRODUTO. Fica de fora, corretamente, a do eixo
+    # (aduana × fluxo): ela não fala de produto e não tem tabela SIDRA. O escopo é por
+    # CONTEÚDO da tupla, não por arquivo, para que um guarda novo entre sozinho.
+    de_produto = [t for t in tuplas if "codigo_produto" in t or '"code"' in t]
+    assert de_produto, f"{arquivo}: o varredor não achou guarda de produto"
+    for t in de_produto:
+        assert "sidra_tabela" in t, f"{arquivo}: guarda sem a tabela — ({t.strip()})"
+
+
+def test_as_chaves_de_idempotencia_do_frontend_incluem_a_tabela() -> None:
+    """`_saveKey` e a chave `rm:` viram change_ids. Sem a tabela, editar as duas metades com
+    os mesmos atributos gera a MESMA chave."""
+    jsx = (_RAIZ / "frontend/src/ui/ViewCadastroProdutos.jsx").read_text(encoding="utf-8")
+    for rotulo in ("save:", "rm:"):
+        linha = next(x for x in jsx.split("\n") if f"`{rotulo}" in x)
+        assert "sidra_tabela" in linha, f"chave {rotulo} sem a tabela — {linha.strip()[:80]}"
+
+
+def test_o_delete_envia_a_tabela_da_entrada() -> None:
+    """O backend resolve a tag quando omitida, mas resolver é escolher a ÚLTIMA escrita —
+    ambíguo se houver duas metades. A linha da tela já tem a tag (ela desenha o selo)."""
+    jsx = (_RAIZ / "frontend/src/ui/ViewCadastroProdutos.jsx").read_text(encoding="utf-8")
+    linha = next(x for x in jsx.split("\n") if "catalog/entry/remove" in x)
+    assert "sidra_tabela" in linha, "o delete não envia a tabela"

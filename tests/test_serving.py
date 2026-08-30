@@ -1392,6 +1392,12 @@ def test_record_code_industrialization_dedupes_on_repeated_change_id(monkeypatch
     from embrapa_dashboard.serving import attribute_engineering as curation
 
     monkeypatch.setattr(curation, "ensure_dataset", lambda *a, **k: None)
+    # Ver a nota nos demais testes deste escritor: a tabela SIDRA vem do catálogo, e
+    # desde v1.39.2 ela é resolvida ANTES do guarda de idempotência (ela faz parte da
+    # chave que decide se um change_id repetido é replay do MESMO produto).
+    monkeypatch.setattr(
+        "embrapa_dashboard.serving.curation.tabela_do_produto", lambda *a, **k: None
+    )
     # The dedup branch re-reads the stored row (read-after-write); None → fallback echo path.
     monkeypatch.setattr(curation, "_code_row_for_change_id", lambda *a, **k: None)
     client = _seen_client(exists=True)

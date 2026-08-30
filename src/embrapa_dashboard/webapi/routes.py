@@ -472,7 +472,13 @@ def catalog_entry_upsert():
         keep_blank=("descricao_produto",),
     )
     if not (body.get("codigo_produto") and body.get("banco")):
-        return jsonify(error="codigo_produto e banco são obrigatórios (a chave do catálogo)."), 400
+        return jsonify(
+            error=(
+                "codigo_produto e banco são obrigatórios. A chave do catálogo é "
+                "(banco, tabela SIDRA, código) — a tabela é opcional aqui e resolvida "
+                "pela entrada quando omitida."
+            )
+        ), 400
     logger.info(
         "catalog upsert by %s: %s/%s", author, body.get("banco"), body.get("codigo_produto")
     )
@@ -490,7 +496,13 @@ def catalog_entry_remove():
     body = _json_object()
     _coerce_str_fields(body, "codigo_produto", "banco", "change_id")
     if not (body.get("codigo_produto") and body.get("banco")):
-        return jsonify(error="codigo_produto e banco são obrigatórios (a chave do catálogo)."), 400
+        return jsonify(
+            error=(
+                "codigo_produto e banco são obrigatórios. A chave do catálogo é "
+                "(banco, tabela SIDRA, código) — a tabela é opcional aqui e resolvida "
+                "pela entrada quando omitida."
+            )
+        ), 400
     logger.info(
         "catalog remove by %s: %s/%s", author, body.get("banco"), body.get("codigo_produto")
     )
