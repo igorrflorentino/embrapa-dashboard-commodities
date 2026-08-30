@@ -525,14 +525,15 @@ describe('AppShell — SidebarResizer', () => {
 });
 
 describe('AppShell — mobile topbar: util overflow menu (⋯)', () => {
-  it('opens the overflow menu with the three actions on the "⋯" button', () => {
+  it('opens the overflow menu with the util actions on the "⋯" button', () => {
     const { container } = render(<AppShell {...baseProps()} />);
     expect(container.querySelector('.util-menu')).toBeNull();
     fireEvent.click(container.querySelector('.util-more'));
     const menu = container.querySelector('.util-menu');
     expect(menu).toBeTruthy();
     const labels = [...menu.querySelectorAll('.util-menu-item')].map((b) => b.textContent.trim());
-    expect(labels).toEqual(['Citar painel', 'Compartilhar', 'Enviar feedback']);
+    // "Exportar CSV" entrou no grupo em v1.43.0: as quatro levam o mesmo estado embora.
+    expect(labels).toEqual(['Citar painel', 'Compartilhar', 'Exportar CSV', 'Enviar feedback']);
     expect(container.querySelector('.util-more').getAttribute('aria-expanded')).toBe('true');
   });
 
@@ -545,6 +546,59 @@ describe('AppShell — mobile topbar: util overflow menu (⋯)', () => {
     fireEvent.click(reportItem);
     expect(container.querySelector('.util-menu')).toBeNull(); // menu closed
     expect(container.querySelector('.feedback-modal')).toBeTruthy(); // Enviar feedback opened the modal
+  });
+
+  it('esconde "Exportar CSV" (topbar e menu) numa view que não exporta', () => {
+    // O gate é `window.canExportView`, o MESMO que a faixa de filtros usava antes — uma view
+    // sem tabela por trás não tem o que baixar, e um botão que falha é pior que um ausente.
+    // A âncora vem de fora: quem decide é a função global, não uma lista repetida aqui.
+    window.canExportView = (v) => v !== 'overview';
+    try {
+      const { container } = render(<AppShell {...baseProps()} />);   // view: 'overview'
+      expect([...container.querySelectorAll('.util-action')]
+        .map((b) => b.textContent.trim())).not.toContain('Exportar CSV');
+      fireEvent.click(container.querySelector('.util-more'));
+      expect([...container.querySelectorAll('.util-menu-item')]
+        .map((b) => b.textContent.trim())).not.toContain('Exportar CSV');
+    } finally { delete window.canExportView; }
+  });
+
+  it('esconde "Exportar CSV" numa página de INFORMAÇÃO (não há dado em tela)', () => {
+    // Regressão real ao mover o botão para o topbar: a faixa de filtros só existia em views
+    // de dados, o que escondia o export nas páginas de informação sem ninguém precisar
+    // pensar nisso. No topbar — que é sempre visível — o gate passou a ser explícito, e
+    // vem de `isDataView`, calculado uma vez em main.jsx.
+    const { container } = render(<AppShell {...baseProps()} dataView={false} infoPage="about" />);
+    expect([...container.querySelectorAll('.util-action')]
+      .map((b) => b.textContent.trim())).not.toContain('Exportar CSV');
+    fireEvent.click(container.querySelector('.util-more'));
+    expect([...container.querySelectorAll('.util-menu-item')]
+      .map((b) => b.textContent.trim())).not.toContain('Exportar CSV');
+    // As outras três continuam: elas valem em qualquer página, o export não.
+    expect([...container.querySelectorAll('.util-menu-item')].map((b) => b.textContent.trim()))
+      .toEqual(['Citar painel', 'Compartilhar', 'Enviar feedback']);
+  });
+
+  it('"Exportar CSV" chama o exportador com as MESMAS quatro entradas do permalink', () => {
+    // view + banco + filtros + convenções: é por carregar exatamente o estado que o
+    // "Compartilhar" codifica na URL que o botão pertence a este grupo, e não à faixa de
+    // filtros (onde o recorte é só uma das quatro).
+    const chamadas = [];
+    window.exportActiveTableCSV = (arg) => chamadas.push(arg);
+    try {
+      const { container } = render(<AppShell {...baseProps()} />);
+      const botao = [...container.querySelectorAll('.util-action')]
+        .find((b) => b.textContent.includes('Exportar CSV'));
+      expect(botao).toBeTruthy();
+      fireEvent.click(botao);
+      expect(chamadas).toHaveLength(1);
+      expect(chamadas[0]).toEqual({
+        view: 'overview',
+        database: 'ibge_pevs',
+        summary: baseProps().summary,
+        conventions: baseProps().conventions,
+      });
+    } finally { delete window.exportActiveTableCSV; }
   });
 
   it('closes the overflow menu via the scrim and via Escape', () => {

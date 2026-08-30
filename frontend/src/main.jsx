@@ -582,6 +582,11 @@ function Dashboard() {
   // the cross-banco perspectives, which have no single-banco filter surface).
   const vm = window.viewById ? window.viewById(view) : null;
   const banco = window.bancoById ? window.bancoById(database) : null;
+  // Decidido AQUI, uma vez, e passado adiante: a faixa de filtros, a de convenções e o
+  // "Exportar CSV" do topbar dependem todos da mesma pergunta — há dado em tela? Numa página
+  // de informação (Sobre, Glossário, Cadastro…) não há o que filtrar nem o que baixar. O
+  // topbar recebe o valor em vez de recalcular a regra, senão seriam duas cópias que saem de
+  // sincronia na primeira vez que esta mudar.
   const isDataView = !infoPage && !(vm && vm.crossBanco) && !!banco;
   const displaySummary = isDataView ? withChips(summary, database, conventions) : summary;
 
@@ -595,16 +600,14 @@ function Dashboard() {
   const viewControls = (
     <>
       {isDataView && window.FilterTriggerBar && (
+        // O export saiu daqui para o topbar (AppShell), que já recebe as mesmas quatro
+        // entradas — {view, database, summary, conventions} — e é onde moram as outras
+        // ações que levam o estado atual embora (Citar painel, Compartilhar).
         <window.FilterTriggerBar
           summary={displaySummary}
           onOpen={() => setFilterOpen(true)}
-          onExport={() =>
-            window.exportActiveTableCSV &&
-            window.exportActiveTableCSV({ view, database, summary, conventions })
-          }
           live={banco.status === 'live'}
           banco={banco}
-          view={view}
         />
       )}
       {/* Convenções métricas strip: the ONLY UI path to change currency ×
@@ -642,6 +645,7 @@ function Dashboard() {
       crossState={crossState}
       mode={mode}
       setMode={changeMode}
+      dataView={isDataView}
     >
       <DataGate database={database} infoPage={infoPage} view={view}>
         <ViewErrorBoundary resetKey={`${view}|${database}|${infoPage}`}>

@@ -2683,15 +2683,21 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-1);
 }
+/* Duas áreas como .fm-trigger-bar (ver o comentário lá): informação à esquerda, que
+   quebra, e ação à direita, que não. `nowrap` + `flex-start` prendem "Editar métricas" /
+   "Recolher" no topo à direita, no MESMO ponto do "Editar filtros" da faixa de cima e no
+   mesmo ponto entre os dois estados — abrir e fechar não move o botão. */
 .mc-head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 12px;   /* same chip rhythm as .fm-trigger-bar */
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
-/* Collapsed-by-default summary row (chips + "Editar métricas") — center-aligned like
-   .fm-trigger-bar's chip row, not baseline like the expanded caption/checkbox row above. */
-.mc-head.mc-head-compact { align-items: center; }
+/* O estado EXPANDIDO alinha overline/legenda/checkbox pela linha de base, que é o que faz
+   três tipografias diferentes lerem como uma frase só; o recolhido (só chips) centraliza,
+   como a faixa de filtros. A diferença vive aqui dentro, não no pai. */
+.mc-head-info { align-items: baseline; }
+.mc-head.mc-head-compact { align-items: flex-start; }
 /* Mirrors .fm-trigger-bar .fm-tb-label exactly — same longhand, so neither picks up a
    different line-height from a `font:` shorthand reset. */
 .mc-overline {

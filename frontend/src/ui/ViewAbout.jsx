@@ -85,7 +85,7 @@ function ViewAbout() {
     },
     {
       title: 'Exportação de dados',
-      desc: 'O botão “Exportar CSV”, ao lado de “Editar filtros”, baixa a fatia de dados em tela — já com todos os filtros aplicados, na resolução máxima disponível — para você seguir a análise em planilha ou em outra ferramenta.',
+      desc: 'O botão “Exportar CSV” (canto superior direito, ao lado de “Compartilhar”) baixa a fatia de dados em tela — já com todos os filtros e convenções aplicados, na resolução máxima disponível — para você seguir a análise em planilha ou em outra ferramenta. Fica junto de “Citar painel” e “Compartilhar” porque os três levam o mesmo estado embora: como citação, como link e como arquivo.',
     },
   ];
 

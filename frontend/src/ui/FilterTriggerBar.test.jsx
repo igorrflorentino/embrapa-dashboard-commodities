@@ -16,7 +16,6 @@ let FilterTriggerBar;
 beforeEach(async () => {
   await import('./FilterTriggerBar.jsx'); // registers window.FilterTriggerBar
   FilterTriggerBar = window.FilterTriggerBar;
-  window.canExportView = () => false; // keep the CSV button out of the assertions
   window.flowOptionsFor = (id) =>
     id === 'mdic_comex'
       ? [{ value: 'export', label: 'Exportação' }, { value: 'import', label: 'Importação' }]
@@ -61,5 +60,45 @@ describe('FilterTriggerBar — capability-driven chips', () => {
     const restored = { ...SUMMARY, fluxo: undefined, flow: 'import' }; // no chip string, only raw flow
     const { container } = render(<FilterTriggerBar summary={restored} banco={banco} live />);
     expect(container.textContent).toContain('Importação'); // resolved via window.flowOptionsFor
+  });
+
+  // ── a ação fica FIXA à direita, não importa quantos chips o banco expõe ──────────────
+  //
+  // O jsdom não aplica CSS, então o que prende o comportamento aqui é a ESTRUTURA que o
+  // produz: chips num contêiner que quebra, ação em outro que não. Enquanto os dois eram
+  // irmãos numa `flex-wrap`, o botão descia de linha junto com o último chip — logo a
+  // posição do "Editar filtros" dependia do banco (10 chips no PEVS, 4 no COMTRADE).
+  it('a ação vive numa área própria, sempre a última, com QUALQUER número de chips', () => {
+    const bancos = [
+      { id: 'ibge_pevs',   short: 'IBGE PEVS',   provides: ['product', 'geo', 'quality'] },
+      { id: 'un_comtrade', short: 'UN COMTRADE', provides: ['product', 'flow', 'quality'] },
+      { id: 'mdic_comex',  short: 'MDIC COMEX',  provides: ['product', 'flow', 'geo', 'quality'] },
+    ];
+    const vistos = new Set();
+    for (const banco of bancos) {
+      const { container } = render(<FilterTriggerBar summary={SUMMARY} banco={banco} live />);
+      const bar = container.querySelector('.fm-trigger-bar');
+      // A barra tem exatamente duas áreas, nessa ordem — nenhum chip solto entre elas.
+      const areas = [...bar.children].map((n) => n.className);
+      expect(areas, `banco ${banco.id}`).toEqual(['fm-tb-chips', 'fm-tb-acoes']);
+      // O botão está DENTRO da área de ações, não na fila dos chips.
+      expect(bar.querySelector('.fm-tb-acoes .fm-edit-btn')).toBeTruthy();
+      expect(bar.querySelector('.fm-tb-chips .fm-edit-btn')).toBeNull();
+      vistos.add(bar.querySelectorAll('.fm-chip-filter').length);
+      cleanup();
+    }
+    // Guarda o próprio teste: se os três bancos rendessem o mesmo número de chips, ele não
+    // estaria provando "com qualquer número".
+    expect(vistos.size).toBeGreaterThan(1);
+  });
+
+  it('não desenha mais o "Exportar CSV" — ele foi para o topbar', () => {
+    // Sair da faixa foi a decisão: aqui ele era o único botão sólido de um bloco que só
+    // descreve estado, e o export é montado de {view, banco, filtros, convenções}. Se
+    // alguém o trouxer de volta, isto avisa antes de a faixa ter duas ações de novo.
+    const banco = { id: 'mdic_comex', short: 'MDIC COMEX', provides: ['product', 'flow', 'geo', 'quality'] };
+    const { container } = render(<FilterTriggerBar summary={SUMMARY} banco={banco} live />);
+    expect(container.textContent).not.toContain('Exportar');
+    expect(container.querySelectorAll('.fm-tb-acoes button')).toHaveLength(1);
   });
 });

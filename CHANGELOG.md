@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.43.0] - 2026-08-30
+
+### Alterado
+
+- **As ações de "Filtros ativos" e "Convenções métricas" ficam fixas no canto superior
+  direito do bloco.** Antes os chips e o botão eram irmãos numa mesma linha que quebrava,
+  então o "Editar filtros" descia junto com o último chip: a posição dele dependia de
+  **quantos chips o banco expõe** — dez no IBGE PEVS, quatro no UN COMTRADE — e mudava de
+  perspectiva para perspectiva. Agora cada bloco tem duas áreas: informação à esquerda,
+  que quebra, e ação à direita, que não. Medido no navegador: com 2, 3 e 6 linhas de
+  chips e a faixa indo de 98px a 266px de altura, o botão fica a **17px da borda direita
+  e 12px do topo** nos dois blocos. O "Recolher" do estado expandido das convenções ocupa
+  o lugar exato do "Editar métricas", então abrir e fechar não move o botão.
+
+- **"Exportar CSV" foi para o topbar, ao lado de "Compartilhar".** Ele era o único botão
+  sólido de uma faixa cujo trabalho é *descrever* estado, não agir; e o escopo não batia —
+  "Editar filtros" edita o bloco onde vive, enquanto o export é montado de
+  `{view, banco, filtros, convenções}`, das quais o recorte é só uma parte. No topbar ele
+  fica com "Citar painel" e "Compartilhar", que são a mesma família: os três levam o mesmo
+  estado embora — como citação, como link e como arquivo —, e o "Compartilhar" codifica na
+  URL exatamente as mesmas quatro entradas. Ganha posição fixa em todo o dashboard e entra
+  no menu "⋮" do celular. O texto do "Sobre o dashboard" foi atualizado para dizer onde
+  ele está.
+
+### Corrigido
+
+- **O "Exportar CSV" não aparece mais em páginas de informação.** Regressão introduzida
+  ao movê-lo: a faixa de filtros só existia em views de dados, o que escondia o botão em
+  "Sobre o dashboard", "Glossário" ou "Cadastro de produtos" sem ninguém precisar pensar
+  nisso. No topbar, que é sempre visível, o gate passou a ser explícito — e **derivado**
+  do `isDataView` já calculado uma vez em `main.jsx`, em vez de uma segunda cópia da regra
+  que sairia de sincronia na primeira vez que a primeira mudasse.
+
+---
+
 ## [1.42.0] - 2026-08-30
 
 ### Adicionado

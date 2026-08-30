@@ -88,6 +88,10 @@ function AppShell({
   conventions,
   crossState,
   mode = 'single', setMode,
+  // "há dado em tela?" — calculado uma vez em main.jsx (isDataView) e passado para cá, em
+  // vez de recalculado, para não existirem duas cópias da regra. Default `true` para não
+  // esconder a ação por omissão num call site que ainda não passe a prop.
+  dataView = true,
 }) {
   const [citeOpen, setCiteOpen] = React.useState(false);
   // Which reference detail level the modal shows. Defaults to 'tool': citing the
@@ -403,6 +407,22 @@ function AppShell({
     window.openFeedback = (prefill) => { setReportPrefill(prefill || null); setReportOpen(true); };
     return () => { if (window.openFeedback) { delete window.openFeedback; } };
   }, []);
+  // "Exportar CSV" mora no topbar junto de Citar/Compartilhar porque os três levam o MESMO
+  // estado embora — como citação, como URL e como arquivo — e o AppShell já recebe as quatro
+  // entradas que o export usa ({view, database, summary, conventions}), as mesmas que o
+  // permalink do Compartilhar codifica. Antes ele ficava na faixa de "Filtros ativos", onde
+  // era o único botão sólido de um bloco que só descreve estado, e sua posição vertical
+  // variava com a quantidade de chips que cada banco expõe.
+  // Nem toda view exporta (uma view sem tabela por trás não tem o que baixar): o gate é o
+  // mesmo `window.canExportView` que a faixa usava, então o botão some em vez de falhar.
+  // Dois gates, e são perguntas diferentes: `dataView` = há dado em tela (numa página de
+  // informação não há o que baixar); `canExportView` = ESTA view tem tabela por trás. Um
+  // botão que falha é pior que um botão ausente.
+  const canExport = dataView && (!window.canExportView || window.canExportView(view));
+  const onExport = () => {
+    if (!window.exportActiveTableCSV) return;
+    window.exportActiveTableCSV({ view, database, summary, conventions });
+  };
   const onShare = async () => {
     // Reuse the SAME permalink builder the citation uses (buildPermalink, above) —
     // one codec path, so the Share URL and the cite's "Disponível em:" can't drift.
@@ -593,6 +613,13 @@ function AppShell({
             <window.Icon name="link" size={16}/>
             <span>{shared ? 'URL copiada' : 'Compartilhar'}</span>
           </button>
+          {canExport && (
+            <button className="util-action" onClick={onExport}
+                    title="Baixar em CSV os dados desta tela, já com os filtros e as convenções aplicados">
+              <window.Icon name="download" size={16}/>
+              <span>Exportar CSV</span>
+            </button>
+          )}
           <button className="util-action" onClick={onReport} title="Relate um problema, tire uma dúvida ou envie uma sugestão">
             <window.Icon name="feedback" size={16}/>
             <span>Enviar feedback</span>
@@ -615,6 +642,11 @@ function AppShell({
                   <button role="menuitem" className="util-menu-item" onClick={() => { setUtilOpen(false); onShare(); }}>
                     <window.Icon name="link" size={18}/><span>{shared ? 'URL copiada' : 'Compartilhar'}</span>
                   </button>
+                  {canExport && (
+                    <button role="menuitem" className="util-menu-item" onClick={() => { setUtilOpen(false); onExport(); }}>
+                      <window.Icon name="download" size={18}/><span>Exportar CSV</span>
+                    </button>
+                  )}
                   <button role="menuitem" className="util-menu-item" onClick={() => { setUtilOpen(false); onReport(); }}>
                     <window.Icon name="feedback" size={18}/><span>Enviar feedback</span>
                   </button>
