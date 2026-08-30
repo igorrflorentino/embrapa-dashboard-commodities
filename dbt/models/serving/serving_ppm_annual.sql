@@ -36,6 +36,7 @@ with ppm as (
         product_code,
         family,
         any_value(product_description)  as product_description,
+        any_value(sidra_tabela)         as sidra_tabela,
         any_value(measure_kind)         as measure_kind,
         any_value(base_unit)            as base_unit,
         any_value(unit_native)          as unit_native,
@@ -65,7 +66,9 @@ with ppm as (
 
 ppm_codes as (
 
-    select distinct product_code
+    -- A tabela entra no distinct porque o join abaixo passou a usá-la: sem ela a CTE
+    -- colapsaria as duas metades num código só e o join perderia a chave que veio buscar.
+    select distinct product_code, sidra_tabela
     from ppm
 
 ),
@@ -84,16 +87,16 @@ ppm_xwalk as (
         x.agrupamento_nome,
         c.product_code as code
     from ppm_codes c
-    -- ⚠ Junta SEM a tabela SIDRA, e isso é uma SUPOSIÇÃO: a dim tem grão
-    -- (codigo_produto, source, sidra_tabela) desde v1.39.0, então um código presente nas
-    -- duas tabelas de um banco multi-tabela devolveria DUAS linhas e este join duplicaria
-    -- os valores do fato — em silêncio. O Gold daqui carrega um discriminador SEMÂNTICO
-    -- (measure_kind / origem), não o id da tabela, e escrever o mapeamento aqui seria uma
-    -- quarta cópia dele. A suposição está presa em
-    -- `tests/assert_catalog_join_cannot_fan_out.sql`.
+    -- Junta pela CHAVE INTEIRA (source, código, tabela), que é o grão da dim desde
+    -- v1.39.0. Até v1.46.0 este join omitia a tabela e isso era uma SUPOSIÇÃO documentada:
+    -- o Gold carregava um discriminador semântico (`measure_kind`), não o id da tabela, e
+    -- escrever o mapeamento `stock↔3939 / flow↔74` aqui teria sido uma quarta cópia dele.
+    -- Um código presente nas duas tabelas devolveria DUAS linhas e o join duplicaria os
+    -- valores do fato, em silêncio. Agora o id viaja no fato e a suposição some.
     join {{ ref('dim_produto_catalog') }} x
         on x.source = 'ppm'
         and c.product_code = x.codigo_produto
+        and c.sidra_tabela = x.sidra_tabela
 
 )
 
@@ -108,6 +111,7 @@ select
     x.agrupamento_nome,
     p.product_code,
     p.product_description,
+    p.sidra_tabela,
     p.measure_kind,
     p.family,
     p.base_unit,

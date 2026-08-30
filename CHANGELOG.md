@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.46.0] - 2026-08-30
+
+Primeiro de dois passos: a **tabela SIDRA passa a viajar no dado**. Este PR só mexe em
+dbt e não muda nenhum consumidor — a `origem` continua existindo e sendo lida como sempre.
+A migração dos consumidores vem no passo seguinte.
+
+### Adicionado
+
+- **`sidra_tabela` na Gold e nas marts do PEVS e do PPM.** A identidade de um produto é
+  `(banco, tabela, código)` — a mesma chave que o catálogo da curadoria usa desde v1.39.0
+  —, mas o id da tabela nunca foi uma coluna: existia como **nome de tabela no Bronze**
+  (`sidra_t289_raw`) e, na Gold, virava prosa carimbada na união
+  (`select 'extrativa' as origem, …`). Quem exibia não alcançava a identidade.
+
+  O carimbo agora é o **id**, lido das vars do dbt em paridade com o `config.py` (o mesmo
+  padrão dos códigos de variável, que o `doctor` valida). No PPM ele entra no Silver, de
+  onde `measure_kind` passa a ser **derivada** — ela continua existindo porque responde
+  "esta linha tem preço?", que é o que cinco telas perguntam, e não "de onde veio".
+
+### Alterado
+
+- **`origem` virou coluna DERIVADA da tabela**, em vez de um segundo fato guardado ao
+  lado. Nada muda para quem a lê: o filtro, o chip, a citação ABNT e o CSV seguem
+  idênticos. Ela sai no PR seguinte, junto com a migração dos consumidores.
+
+- **O join do catálogo em `serving_ppm_annual` passou a usar a chave inteira**
+  `(source, código, tabela)`. Ele omitia a tabela e o próprio modelo documentava isso com
+  um ⚠ como uma **suposição**, presa por `assert_catalog_join_cannot_fan_out.sql` — porque
+  o Gold carregava um discriminador semântico e não o id. O teste dizia: *"se ele acender,
+  o conserto é dar ao join a tabela"*. Foi o que se fez. No `serving_pam_annual` o
+  comentário foi corrigido: ali nunca foi suposição — o PAM é banco de tabela única.
+
+### Notas de operação
+
+⚠ **Este build exige `--full-refresh`.** `silver_ibge_ppm` é incremental com
+`on_schema_change='append_new_columns'`: um build normal acrescentaria a coluna mas só
+preencheria as linhas NOVAS, deixando o histórico com NULL — e o join novo as descartaria
+em silêncio.
+
+---
+
 ## [1.45.0] - 2026-08-30
 
 Auditoria completa do projeto (`docs/audits/full_audit_2026-08-30.md`) e a correção dos

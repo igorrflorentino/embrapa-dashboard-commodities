@@ -1,7 +1,7 @@
 {
   "name": "embrapa-dashboard-frontend",
   "private": true,
-  "version": "1.45.0",
+  "version": "1.46.0",
   "//engines": "CI and the Dockerfile build stage both read the Node major from /.nvmrc; keep the three in step. A newer local Node is what broke localStorage in the test env (see vitest.setup.js).",
   "engines": {
     "node": "^24"

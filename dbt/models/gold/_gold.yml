@@ -701,13 +701,15 @@ unit_tests:
   #   FX USD: avg(2000)=2.0, latest=5.0
   #     → val_yearfx_usd    = 1000 / 2.0          = 500   (year >= 1994)
   #     → val_real_ipca_usd = 3000 / 5.0          = 600
-  # ── The `origem` axis ─────────────────────────────────────────────────────
-  # gold_pevs_production carries BOTH halves of the survey, told apart by `origem`.
-  # A row must be stamped by WHICH SILVER IT CAME FROM — if the union ever tags by
-  # position, or a copy-paste swaps the two labels, every silviculture number would
-  # be published as extraction (and vice versa) with nothing else changing shape.
-  # Same product name in both halves on purpose: that is the confusable case.
-  - name: test_pevs_origem_is_stamped_from_the_source_half
+  # ── The `sidra_tabela` axis ───────────────────────────────────────────────
+  # gold_pevs_production carries BOTH halves of the survey, told apart by the SIDRA
+  # table each row came from. A row must be stamped by WHICH SILVER IT CAME FROM — if
+  # the union ever tags by position, or a copy-paste swaps the two ids, every
+  # silviculture number would be published as extraction (and vice versa) with nothing
+  # else changing shape. Same product NAME in both halves on purpose: that is the
+  # confusable case, and the one that used to merge two produtos into one bar before
+  # the id travelled with the row (v1.46.0).
+  - name: test_pevs_sidra_tabela_is_stamped_from_the_source_half
     model: gold_pevs_production
     given:
       - input: ref('silver_ibge_pevs')
@@ -722,8 +724,8 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {reference_year: 2023, state_acronym: "PA", product_code: "3435", origem: "extrativa",    val_yearfx_brl: 100}
-        - {reference_year: 2023, state_acronym: "SP", product_code: "3457", origem: "silvicultura", val_yearfx_brl: 900}
+        - {reference_year: 2023, state_acronym: "PA", product_code: "3435", sidra_tabela: "289", val_yearfx_brl: 100}
+        - {reference_year: 2023, state_acronym: "SP", product_code: "3457", sidra_tabela: "291", val_yearfx_brl: 900}
 
   - name: test_pevs_deflation_and_fx_arithmetic
     model: gold_pevs_production
@@ -736,7 +738,7 @@ unit_tests:
           - {reference_year: 2000, state_acronym: "PA", city_code: "1500800", city_name: "Belém", product_code: "0001", product_description: "Açaí", is_monetary_value: false, numeric_value: 5,    qty_native: 5, qty_base: 5, family: "massa", unit_native: "t", base_unit: "t", ingestion_timestamp: "2024-01-01 00:00:00"}
       # The model now unions BOTH halves of the survey; dbt requires every ref to be
       # given. Empty here on purpose — this test is about the deflation arithmetic, and
-      # the origem axis has its own case below.
+      # the sidra_tabela axis has its own case below.
       - input: ref('silver_ibge_silvicultura')
         rows: []
       - input: ref('silver_bcb_inflation')
