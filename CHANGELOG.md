@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.40.2] - 2026-08-30
+
+### Corrigido
+
+- **O `uv.lock` estava em 1.40.0 no `main` com o `pyproject.toml` em 1.40.1.** Os três
+  arquivos que já tinham teste de sincronia (`pyproject`, `package.json`,
+  `package-lock.json`) foram bumpados; o lock não. Não é cosmético: o lock é o que uma
+  instalação reproduzível lê para saber que versão está construindo.
+
+### Adicionado
+
+- **`uv lock --check` como PRIMEIRA linha do `make lint`.** A posição é a regra, não um
+  detalhe: qualquer `uv run` abaixo **re-sincroniza** o lock, e aí a divergência some antes
+  de ser vista. Foi assim que ela chegou ao `main` sem o CI notar.
+
+  Um teste em pytest **não serve** de guarda aqui, e eu escrevi um antes de descobrir isso:
+  o `uv run pytest` cura o arquivo antes de o teste lê-lo, então a asserção nunca falha.
+  Foi removido — um teste que não pode falhar é pior que teste nenhum, porque parece
+  cobertura.
+
+---
+
 ## [1.40.1] - 2026-08-30
 
 ### Corrigido

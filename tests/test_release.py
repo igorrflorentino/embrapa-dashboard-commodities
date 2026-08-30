@@ -133,29 +133,3 @@ def test_the_real_changelog_dates_the_shipped_version():
         f"CHANGELOG.md has no '## [{shipped}] - YYYY-MM-DD' section — "
         "add one when bumping the version in pyproject.toml."
     )
-
-
-def test_uv_lock_version_matches_pyproject():
-    """O `uv.lock` grava a versão do próprio projeto, e ela sai de sincronia sem ninguém
-    notar: em v1.40.1 o lock ficou em 1.40.0 no `main`, porque o bump tocou
-    `pyproject.toml`, `package.json` e `package-lock.json` — os três que já tinham teste —
-    e não este. O CI passou porque `uv sync` reescreve o arquivo localmente, o que esconde
-    a divergência em vez de acusá-la.
-
-    Não é cosmético: o lock é o que uma instalação reproduzível lê para saber que versão
-    está construindo.
-    """
-    import re
-    from pathlib import Path
-
-    raiz = Path(__file__).resolve().parents[1]
-    pyproject = (raiz / "pyproject.toml").read_text(encoding="utf-8")
-    esperada = re.search(r'^version = "([^"]+)"', pyproject, re.M).group(1)
-
-    lock = (raiz / "uv.lock").read_text(encoding="utf-8")
-    # O bloco do próprio projeto — não o de uma dependência que por acaso tenha a versão.
-    bloco = re.search(r'name = "embrapa-dashboard"\nversion = "([^"]+)"', lock)
-    assert bloco, "não achei o bloco do projeto no uv.lock — o teste ficou obsoleto"
-    assert bloco.group(1) == esperada, (
-        f"uv.lock diz {bloco.group(1)}, pyproject diz {esperada} — rode `uv lock`"
-    )
