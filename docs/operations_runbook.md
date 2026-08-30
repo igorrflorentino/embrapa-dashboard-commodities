@@ -219,6 +219,30 @@ Override columns: `maturity`, `maturity_note`, `maturity_date`, `cobertura_years
   itself**: it has no registry fallback, so an emptied row leaves the banco showing the
   neutral "…" loading tag forever. Clear the `cobertura_*` / note columns, keep the row.
 
+## Um ✓ verde do `doctor` que diz `skipped:` — leia com atenção
+
+`embrapa doctor` distingue **duas** razões para um check não produzir veredito, e desde a
+v1.46.4 elas têm cores diferentes:
+
+- **`skipped:` (verde)** — não há dado para julgar. A tabela não existe, falta permissão de
+  leitura, não há ADC, ou o BigQuery está fora do ar. Legítimo numa instalação fria ou numa
+  máquina de dev sem acesso ao prod; não é defeito do projeto.
+- **`CHECK QUEBRADO (…)` (vermelho)** — o check em si falhou: a consulta não compila porque
+  uma coluna foi renomeada, ou o código levantou `TypeError`/`KeyError`. **O doctor está
+  degradado**, e o número de ✓ no rodapé não significa o que parece.
+
+Vale inclusive para os checks *advisory*: "advisory" governa o que o check faz quando
+**consegue** julgar. Quando não consegue rodar, o operador precisa saber.
+
+**Por que a distinção existe.** Até a v1.46.3, seis checks devolviam verde para qualquer
+exceção. Um deles — `Shared code across SIDRA tables` — consultava a coluna `origem`,
+removida do Gold na v1.46.1. Passou a receber `400 Unrecognized name`, respondeu com um ✓
+verde e um `skipped:` ao lado, e ficou assim por três versões: o guarda do invariante
+daquela própria migração, cegado por ela. Num relatório de 27 linhas verdes, um `skipped:`
+não se lê.
+
+Se você vir `CHECK QUEBRADO`, o conserto é no check, não no ambiente.
+
 ## Is a source still arriving? — `embrapa doctor` § Source data freshness
 
 The ingestion alert (`deploy/ingestion/alert_policy.json`) fires on a **failed** Cloud Run

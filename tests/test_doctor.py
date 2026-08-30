@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 import re
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import google.auth
 import pytest
 import responses
-from google.cloud.exceptions import NotFound
+from google.api_core.exceptions import BadRequest
+from google.cloud.exceptions import Forbidden, NotFound
 
 from embrapa_dashboard import doctor
 from embrapa_dashboard.config import Settings
@@ -744,10 +748,12 @@ def test_check_orphan_lifecycle_all_marked(monkeypatch, settings: Settings) -> N
 
 
 def test_check_orphan_lifecycle_error_degrades_to_skipped(monkeypatch, settings: Settings) -> None:
-    """Any fault (tables absent / perms) degrades to an advisory 'skipped', never failing."""
+    """Tabelas ausentes / sem permissão degradam para 'skipped'. A exceção aqui é uma
+    NotFound de verdade, e não um RuntimeError qualquer: desde a v1.46.4 só a AUSÊNCIA de
+    dado vale verde — um check que simplesmente quebrou fica vermelho."""
 
     def _boom(s):
-        raise RuntimeError("no dataset")
+        raise NotFound("no dataset")
 
     monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", _boom)
 
@@ -803,7 +809,7 @@ def test_check_catalog_data_arrival_degrades_on_error(monkeypatch, settings: Set
     """A missing table / permission fault degrades to 'skipped' — doctor must not blow up
     over an advisory probe."""
     client = MagicMock()
-    client.query.side_effect = RuntimeError("no such table")
+    client.query.side_effect = NotFound("no such table")
     monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", lambda s: client)
 
     r = doctor._check_catalog_data_arrival(settings)
@@ -841,7 +847,7 @@ def test_check_catalog_resolver_parity_is_advisory_when_the_catalog_read_faults(
     make the pipeline's health look broken."""
     monkeypatch.setattr(
         "embrapa_dashboard.ibge.catalog_resolver.read_catalog_codes",
-        MagicMock(side_effect=RuntimeError("research_inputs absent")),
+        MagicMock(side_effect=NotFound("research_inputs absent")),
     )
 
     r = doctor._check_catalog_resolver_parity(settings)
@@ -957,7 +963,7 @@ def test_silvicultura_variable_codes_check_fails_when_one_is_mistyped(
     settings.silvicultura_variable_value_code = "1443"  # transposed
     result = doctor._check_silvicultura_variable_codes(settings)
     assert result.ok is False
-    assert "143" in result.detail and "origem" in result.detail
+    assert "143" in result.detail and "sidra_tabela='291'" in result.detail
 
 
 def test_silvicultura_variable_codes_check_reports_an_unexpected_error() -> None:
@@ -1086,7 +1092,7 @@ def test_curation_integrity_error_degrades_to_skipped(monkeypatch, settings: Set
     """A cold install has no logs to read and must not report a red integrity check."""
 
     def _boom(s):
-        raise RuntimeError("no dataset")
+        raise NotFound("no dataset")
 
     monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", _boom)
 
@@ -1224,7 +1230,7 @@ def test_curation_backup_degrades_to_skipped_on_any_fault(monkeypatch, settings)
     """No perms / no bucket must not paint the check red — it has no data to judge."""
 
     def _boom(s):
-        raise RuntimeError("sem credencial")
+        raise google.auth.exceptions.DefaultCredentialsError("sem credencial")
 
     monkeypatch.setattr(doctor, "get_credentials", _boom)
 
@@ -1263,12 +1269,40 @@ def test_shared_code_fails_and_names_the_banco(monkeypatch, settings: Settings) 
 
     assert r.ok is False
     assert "ibge_pevs: 3405" in r.detail
-    assert "não consegue representar" in r.detail
+    assert "esconderia as duas" in r.detail
+
+
+_RAIZ = Path(__file__).resolve().parents[1]
+
+
+def test_the_discriminator_column_is_one_the_gold_models_actually_produce() -> None:
+    """A coluna que o doctor consulta tem de ser uma coluna que o dbt ENTREGA.
+
+    A versão anterior deste teste percorria `_BANCOS_MULTI_TABELA` e afirmava que o SQL
+    continha o discriminador tirado *dessa mesma constante* — uma tautologia: qualquer nome
+    que a constante trouxesse apareceria no SQL, inclusive `origem` depois de a v1.46.1
+    removê-la do Gold. Ele ficou verde enquanto o check estava morto em produção.
+
+    A âncora agora é externa ao doctor: o próprio modelo Gold, mantido pelo pipeline e não
+    por este teste. Renomear a coluna lá sem atualizar o doctor quebra AQUI, que é onde
+    precisava ter quebrado."""
+    comentario_de_linha = re.compile(r"--.*")
+    for _banco, tabela in doctor._BANCOS_MULTI_TABELA:
+        modelo = _RAIZ / "dbt" / "models" / "gold" / f"{tabela}.sql"
+        fonte = modelo.read_text(encoding="utf-8")
+        # comentários fora: a coluna `origem` sobrevive na PROSA de vários modelos, contando
+        # o que mudou, e um grep cru passaria verde por causa dela.
+        codigo = comentario_de_linha.sub("", fonte)
+        assert doctor._COLUNA_DISCRIMINADORA in codigo, (
+            f"{tabela}.sql não produz a coluna {doctor._COLUNA_DISCRIMINADORA!r} que o "
+            f"doctor consulta — o check viraria um 400 silencioso"
+        )
 
 
 def test_shared_code_query_groups_by_the_discriminator(monkeypatch, settings: Settings) -> None:
-    """Cada banco tem a SUA coluna discriminadora (origem / measure_kind). Agrupar pela
-    errada devolveria zero para sempre — o silêncio que este check existe para evitar."""
+    """Agrupar pela coluna errada devolveria zero para sempre — o silêncio que este check
+    existe para evitar. (Que a coluna EXISTE no Gold é o teste acima; este só garante que
+    ela é de fato usada no group-by de cada banco.)"""
     client = MagicMock()
     client.query.return_value.result.return_value = []
     monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", lambda s: client)
@@ -1276,21 +1310,42 @@ def test_shared_code_query_groups_by_the_discriminator(monkeypatch, settings: Se
     doctor._check_shared_code_across_tables(settings)
 
     sqls = [c.args[0] for c in client.query.call_args_list]
-    for _banco, tabela, discriminador in doctor._BANCOS_MULTI_TABELA:
-        assert any(f"count(distinct {discriminador})" in q and tabela in q for q in sqls), (
-            f"{tabela} não foi consultada pelo seu discriminador {discriminador}"
-        )
+    for _banco, tabela in doctor._BANCOS_MULTI_TABELA:
+        assert any(
+            f"count(distinct {doctor._COLUNA_DISCRIMINADORA})" in q and tabela in q for q in sqls
+        ), f"{tabela} não foi consultada pelo discriminador"
 
 
 def test_shared_code_degrades_to_skipped(monkeypatch, settings: Settings) -> None:
+    """Sem permissão de leitura não há o que julgar — verde."""
+
     def _boom(s):
-        raise RuntimeError("sem permissão")
+        raise Forbidden("sem permissão")
 
     monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", _boom)
 
     r = doctor._check_shared_code_across_tables(settings)
 
     assert r.ok is True and "skipped" in r.detail
+
+
+def test_shared_code_query_that_does_not_compile_is_red_not_skipped(
+    monkeypatch, settings: Settings
+) -> None:
+    """A regressão real da v1.46.1→v1.46.3, como teste.
+
+    O check consultava a coluna `origem`, que o Gold tinha deixado de ter. O BigQuery
+    devolvia `400 Unrecognized name`, o `except Exception` engolia e o doctor imprimia um
+    ✓ verde com um `skipped:` ao lado — em três versões ninguém leu. Uma consulta que não
+    compila é o CHECK quebrado, nunca falta de dado: tem de ser vermelha e dizer isso."""
+    client = MagicMock()
+    client.query.side_effect = BadRequest("400 Unrecognized name: origem")
+    monkeypatch.setattr("embrapa_dashboard.gcp.clients.resolve_bq_client", lambda s: client)
+
+    r = doctor._check_shared_code_across_tables(settings)
+
+    assert r.ok is False, "consulta quebrada não pode passar por 'sem dado para julgar'"
+    assert "CHECK QUEBRADO" in r.detail
 
 
 def test_the_multi_table_registry_matches_the_curation_validator() -> None:
@@ -1310,8 +1365,103 @@ def test_the_multi_table_registry_matches_the_curation_validator() -> None:
     # v1.40.1 e este teste acusou a mudança, que é o que se espera dele.
     fonte = inspect.getsource(curation._tabelas_validas_por_banco)
     do_validador = {b for b in ("ppm", "pevs", "pam", "comex", "comtrade") if f'"{b}":' in fonte}
-    do_doctor = {b.removeprefix("ibge_") for b, _t, _d in doctor._BANCOS_MULTI_TABELA}
+    do_doctor = {b.removeprefix("ibge_") for b, _t in doctor._BANCOS_MULTI_TABELA}
 
     assert do_doctor == do_validador, (
         f"doctor vigia {sorted(do_doctor)} e a validação conhece {sorted(do_validador)}"
+    )
+
+
+# ── a política de degradação, depois da v1.46.4 ───────────────────────────────
+@pytest.mark.parametrize(
+    "exc",
+    [
+        NotFound("dataset ausente"),
+        Forbidden("sem permissão"),
+        google.auth.exceptions.DefaultCredentialsError("sem ADC"),
+        google.auth.exceptions.RefreshError("credencial expirada"),
+    ],
+    ids=["not_found", "forbidden", "sem_adc", "credencial_expirada"],
+)
+def test_skip_ou_quebra_trata_ausencia_de_dado_como_verde(exc: BaseException) -> None:
+    """Instalação fria, máquina de dev sem acesso ao prod, credencial vencida: o check não
+    tem o que julgar. Verde com `skipped:` — e nunca vermelho, que assustaria o operador
+    por uma condição que não é defeito do projeto.
+
+    A âncora é externa: as classes vêm de `google.api_core` / `google.auth`, mantidas fora
+    deste repositório e por outro motivo. Um teste que inventasse a própria hierarquia de
+    exceções estaria medindo a si mesmo."""
+    r = doctor._skip_ou_quebra("X", exc)
+
+    assert r.ok is True
+    assert r.detail.startswith("skipped:")
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        BadRequest("400 Unrecognized name: origem"),
+        RuntimeError("o que quer que seja"),
+        TypeError("assinatura mudou"),
+        KeyError("coluna"),
+        AttributeError("atributo removido"),
+    ],
+    ids=["sql_nao_compila", "runtime", "tipo", "chave", "atributo"],
+)
+def test_skip_ou_quebra_trata_check_quebrado_como_vermelho(exc: BaseException) -> None:
+    """O caso que custou três versões: `origem` saiu do Gold, a consulta virou um 400, e o
+    check devolvia verde. Um guarda que não consegue rodar não está dizendo 'tudo bem' —
+    está dizendo 'não sei', e num relatório 27/27 essas duas coisas não podem ter a mesma
+    cor."""
+    r = doctor._skip_ou_quebra("X", exc)
+
+    assert r.ok is False
+    assert "CHECK QUEBRADO" in r.detail
+    assert type(exc).__name__ in r.detail, "o operador precisa saber O QUE quebrou"
+
+
+def test_no_check_returns_a_literal_green_from_a_broad_except() -> None:
+    """Varredura do domínio, não da função que eu consertei.
+
+    O defeito da v1.46.1 não foi um `except` distraído: foram SEIS, todos devolvendo
+    `CheckResult(..., True, f"skipped: {exc}")` de dentro de um `except Exception`. Bastava
+    um deles quebrar para o doctor mentir. Este teste percorre a AST do módulo inteiro, de
+    modo que um check NOVO com o mesmo atalho falhe aqui em vez de morrer em silêncio anos
+    depois.
+
+    Verde saindo de um `except` ESTREITO continua permitido: `GCS bucket` responde
+    `except NotFound` com um veredito real ('será criado na primeira ingestão'), o que é
+    julgar, não engolir. O que a regra proíbe é o verde que vem de um `except Exception`,
+    onde o autor não sabe — e não pode saber — o que está sendo suprimido."""
+    fonte = Path(inspect.getfile(doctor)).read_text(encoding="utf-8")
+    arvore = ast.parse(fonte)
+
+    def _e_amplo(h: ast.ExceptHandler) -> bool:
+        # `except:` nu ou `except Exception`/`BaseException` — largo demais para julgar.
+        if h.type is None:
+            return True
+        nomes = (
+            [h.type] if not isinstance(h.type, ast.Tuple) else list(h.type.elts)  # type: ignore[list-item]
+        )
+        return any(getattr(n, "id", None) in {"Exception", "BaseException"} for n in nomes)
+
+    infratores: list[str] = []
+    for no in ast.walk(arvore):
+        if not (isinstance(no, ast.ExceptHandler) and _e_amplo(no)):
+            continue
+        for sub in ast.walk(no):
+            if not (isinstance(sub, ast.Return) and isinstance(sub.value, ast.Call)):
+                continue
+            chamada = sub.value
+            alvo = getattr(chamada.func, "id", getattr(chamada.func, "attr", ""))
+            if alvo != "CheckResult" or len(chamada.args) < 2:
+                continue
+            ok = chamada.args[1]
+            if isinstance(ok, ast.Constant) and ok.value is True:
+                infratores.append(f"linha {sub.lineno}: {ast.unparse(chamada)[:70]}")
+
+    assert not infratores, (
+        "check(es) devolvendo verde literal de dentro de um `except Exception` — use "
+        "`_skip_ou_quebra`, que separa falta de dado (verde) de check quebrado "
+        "(vermelho):\n  " + "\n  ".join(infratores)
     )

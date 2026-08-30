@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 import google.auth
 import requests
 from google.cloud import bigquery, storage
-from google.cloud.exceptions import NotFound
+from google.cloud.exceptions import Forbidden, NotFound
 
 from embrapa_dashboard.backup import BACKUP_PREFIX, SUCCESS_MARKER
 from embrapa_dashboard.bcb.client import SGS_URL
@@ -37,6 +37,48 @@ class CheckResult:
     name: str
     ok: bool
     detail: str
+
+
+# Exceções que significam "não há dado para julgar" — instalação fria, máquina sem acesso
+# ao prod, BigQuery fora do ar. Qualquer OUTRA exceção significa que o próprio check está
+# quebrado. `google.auth` é importado no topo; as demais são as classes canônicas do
+# api_core (`google.cloud.exceptions.NotFound` É `api_core.NotFound`, verificado).
+_SEM_DADO_PARA_JULGAR: tuple[type[BaseException], ...] = (
+    NotFound,  # tabela/dataset não existe
+    Forbidden,  # sem permissão de leitura
+    google.auth.exceptions.DefaultCredentialsError,  # sem ADC
+    google.auth.exceptions.RefreshError,  # credencial expirada
+)
+
+
+def _skip_ou_quebra(nome: str, exc: BaseException) -> CheckResult:
+    """Traduz a exceção de um check em CheckResult, separando duas coisas que um
+    ``except Exception`` amplo confundia numa só.
+
+    * **Ausência de dado** (tabela inexistente, sem permissão, sem credencial, BQ fora do
+      ar): o check não tem o que julgar. Verde, ``skipped:`` — é o caso legítimo de uma
+      instalação fria ou de uma máquina de dev sem acesso ao prod, e não pode pintar o
+      doctor de vermelho.
+    * **Check quebrado** (a consulta não compila porque uma coluna foi renomeada, ou o
+      código levantou TypeError/KeyError): aqui o verde é uma MENTIRA. O guarda parou de
+      guardar e informa que está tudo bem.
+
+    Não é hipotético. ``Shared code across SIDRA tables`` consultava a coluna ``origem``,
+    removida na v1.46.1, e passou a devolver verde com um ``skipped: 400 Unrecognized
+    name`` que ninguém leu — o guarda do invariante daquela própria migração, cegado por
+    ela, durante três versões. Um ``skipped`` verde é invisível num relatório 27/27.
+
+    Nota deliberada: um check *advisory* quebrado também fica VERMELHO. "Advisory" governa
+    o que o check faz quando CONSEGUE julgar; quando não consegue rodar, o operador precisa
+    saber que o doctor está degradado — senão a próxima renomeação repete isto em silêncio.
+    """
+    if isinstance(exc, _SEM_DADO_PARA_JULGAR):
+        return CheckResult(nome, True, f"skipped: {str(exc)[:100]}")
+    return CheckResult(
+        nome,
+        False,
+        f"CHECK QUEBRADO (não é falta de dado) — {type(exc).__name__}: {str(exc)[:110]}",
+    )
 
 
 def _check_env(settings: Settings) -> CheckResult:
@@ -274,7 +316,7 @@ def _check_silvicultura_variable_codes(settings: Settings) -> CheckResult:
                 f"not configured: {missing} "
                 f"(quantity={settings.silvicultura_variable_quantity_code!r}, "
                 f"value={settings.silvicultura_variable_value_code!r}) "
-                "→ that Gold column would be empty for origem='silvicultura'",
+                "→ that Gold column would be empty for sidra_tabela='291' (silvicultura)",
             )
         return CheckResult(
             "IBGE silvicultura variable codes",
@@ -336,8 +378,8 @@ def _check_catalog_resolver_parity(settings: Settings) -> CheckResult:
         return CheckResult(
             "Catalog↔env product codes", True, f"[authoritative={flag}] {prefix}{' · '.join(parts)}"
         )
-    except Exception as exc:  # never fail — this is an advisory diff
-        return CheckResult("Catalog↔env product codes", True, f"skipped: {str(exc)[:100]}")
+    except Exception as exc:  # sem dado → verde; check quebrado → vermelho
+        return _skip_ou_quebra("Catalog↔env product codes", exc)
 
 
 def _check_orphan_lifecycle(settings: Settings) -> CheckResult:
@@ -412,8 +454,8 @@ def _check_orphan_lifecycle(settings: Settings) -> CheckResult:
         return CheckResult(
             "Catalog orphan lifecycle", True, "no orphans (no removal left Gold data behind)"
         )
-    except Exception as exc:  # never fail — advisory
-        return CheckResult("Catalog orphan lifecycle", True, f"skipped: {str(exc)[:100]}")
+    except Exception as exc:  # sem dado → verde; check quebrado → vermelho
+        return _skip_ou_quebra("Catalog orphan lifecycle", exc)
 
 
 def _check_adc(settings: Settings) -> CheckResult:
@@ -896,7 +938,7 @@ def _check_curation_backup(settings: Settings) -> CheckResult:
             )
         return CheckResult("Curation backup coverage", True, "skipped: no sealed snapshot")
     except Exception as exc:
-        return CheckResult("Curation backup coverage", True, f"skipped: {str(exc)[:100]}")
+        return _skip_ou_quebra("Curation backup coverage", exc)
 
 
 def _check_source_data_freshness(settings: Settings) -> CheckResult:
@@ -1179,8 +1221,8 @@ def _check_catalog_data_arrival(settings: Settings) -> CheckResult:
             "after a registration; if it persists past an ingest + dbt build, that banco's "
             "pipeline is not picking the code up.",
         )
-    except Exception as exc:  # never fail — advisory
-        return CheckResult("Catalog → Gold arrival", True, f"skipped: {str(exc)[:100]}")
+    except Exception as exc:  # sem dado → verde; check quebrado → vermelho
+        return _skip_ou_quebra("Catalog → Gold arrival", exc)
 
 
 def _check_curation_referential_integrity(settings: Settings) -> CheckResult:
@@ -1277,15 +1319,24 @@ def _check_curation_referential_integrity(settings: Settings) -> CheckResult:
             True,
             "every agrupamento_id registered, every level within the scale",
         )
-    except Exception as exc:  # cold install / no perms — never a red check without data
-        return CheckResult("Curation referential integrity", True, f"skipped: {str(exc)[:100]}")
+    except Exception as exc:  # sem dado → verde; check quebrado → vermelho
+        return _skip_ou_quebra("Curation referential integrity", exc)
 
 
-# Os bancos que unem DUAS tabelas SIDRA sob um token só, e a coluna que as distingue no
-# Gold. Uma terceira entrada aqui é tudo o que um novo banco multi-tabela precisa.
+# A coluna que distingue as duas tabelas SIDRA de um banco multi-tabela. É `sidra_tabela`
+# em TODO banco, por definição: a identidade de um produto é `(banco, tabela, código)`, e a
+# tabela é o dado — não um rótulo derivado dela. Constante, e não um campo por banco, de
+# propósito: enquanto cada entrada trazia o seu próprio discriminador, o PEVS trazia
+# `origem` (prosa) e o PPM `measure_kind` (prosa), e quando a v1.46.1 removeu `origem` este
+# check virou uma consulta a uma coluna inexistente. Um campo por banco torna representável
+# exatamente o erro que a v1.46.x foi corrigir.
+_COLUNA_DISCRIMINADORA = "sidra_tabela"
+
+# Os bancos que unem DUAS tabelas SIDRA sob um token só. Uma segunda entrada aqui é tudo o
+# que um novo banco multi-tabela precisa.
 _BANCOS_MULTI_TABELA = (
-    ("ibge_pevs", "gold_pevs_production", "origem"),
-    ("ibge_ppm", "gold_ppm_production", "measure_kind"),
+    ("ibge_pevs", "gold_pevs_production"),
+    ("ibge_ppm", "gold_ppm_production"),
 )
 
 
@@ -1299,10 +1350,13 @@ def _check_shared_code_across_tables(settings: Settings) -> CheckResult:
     1. O teste de unicidade do Gold — chave sem o discriminador, severidade `error` — falha,
        e como o prod roda ``dbt build`` os modelos downstream são pulados. O número errado
        NÃO chega ao dashboard.
-    2. A curadoria não consegue representar o caso: catálogo, gate de visibilidade e nível
-       de industrialização identificam um produto por ``(banco, código)`` e nenhum conhece
-       a tabela. Seriam UM agrupamento, UMA visibilidade e UM nível cobrindo as duas
-       metades — e a tag da tela mostraria uma delas, arbitrária.
+    2. O **gate de visibilidade** não consegue representar o caso — e só ele. Catálogo
+       (grão ``(banco, sidra_tabela, código)``) e nível de industrialização (grão
+       ``(source, code, sidra_tabela, version)``) já carregam a tabela na chave. A view
+       ``dim_produto_visibility`` também é única em ``(source, code, sidra_tabela)``, mas o
+       PREDICADO que a consome casa só ``source`` e ``code`` — nos dois lados, a macro
+       ``hidden_code_predicate`` e o espelho Python ``serving/sql.visibility_clause``.
+       Esconder uma metade esconderia as DUAS, em silêncio. Medido em 2026-08-30.
     3. Com ``catalog_authoritative_ingestion`` ligado, o resolver filtra por
        ``sidra_tabela``: a metade não marcada deixaria de ser buscada em silêncio.
 
@@ -1320,10 +1374,10 @@ def _check_shared_code_across_tables(settings: Settings) -> CheckResult:
 
         bq = resolve_bq_client(settings)
         achados: list[str] = []
-        for banco, tabela, discriminador in _BANCOS_MULTI_TABELA:
+        for banco, tabela in _BANCOS_MULTI_TABELA:
             ref = sqlbuild.table_ref(settings, "bq_gold_dataset", tabela)
             sql = f"""
-                select product_code, count(distinct {discriminador}) as n
+                select product_code, count(distinct {_COLUNA_DISCRIMINADORA}) as n
                 from `{ref}`
                 group by product_code
                 having n > 1
@@ -1338,18 +1392,18 @@ def _check_shared_code_across_tables(settings: Settings) -> CheckResult:
                 False,
                 "código(s) presente(s) nas DUAS tabelas de um banco — "
                 + "; ".join(achados)
-                + ". A curadoria identifica um produto por (banco, código) e não consegue "
-                "representar isso: agrupamento, visibilidade e nível ficariam ambíguos, e a "
-                "ingestão dirigida pelo catálogo perderia uma metade. Ver "
-                "PLANS/silvicultura_source.md antes de mexer na chave.",
+                + ". O gate de visibilidade casa só (source, code): esconder uma metade "
+                "esconderia as duas, sem aviso. Catálogo e nível de industrialização já "
+                "trazem a tabela na chave e aguentam o caso. Ver "
+                "PLANS/silvicultura_source.md antes de mexer no predicado do gate.",
             )
         return CheckResult(
             "Shared code across SIDRA tables",
             True,
             f"nenhum código compartilhado em {len(_BANCOS_MULTI_TABELA)} banco(s) multi-tabela",
         )
-    except Exception as exc:  # tabela ausente / sem permissão — sem dado para julgar
-        return CheckResult("Shared code across SIDRA tables", True, f"skipped: {str(exc)[:100]}")
+    except Exception as exc:  # sem dado → verde; check quebrado → vermelho
+        return _skip_ou_quebra("Shared code across SIDRA tables", exc)
 
 
 _POSTCHECKS: list[tuple[str, Callable[[Settings], CheckResult]]] = [
