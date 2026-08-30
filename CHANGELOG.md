@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.46.5] - 2026-08-30
+
+### Corrigido
+
+- **O gate de visibilidade escondia as DUAS metades de um produto multi-tabela.** A view
+  `dim_produto_visibility` é única em `(source, code, sidra_tabela)`, mas o predicado que a
+  consome casava só `source` e `code` — nos dois lados que precisam concordar, a macro
+  `hidden_code_predicate` e o espelho `serving/sql.visibility_clause`. A identidade de um
+  produto é `(banco, tabela, código)`: marcar a metade extração (289) como indisponível
+  tinha de deixar a metade silvicultura (291) visível, e escondia as duas. Era **latente** —
+  os códigos das duas tabelas são disjuntos hoje, então o caso nunca chegou a ocorrer — e
+  foi registrado como achado na v1.46.4, com o check `Shared code across SIDRA tables`
+  avisando no instante em que deixasse de ser.
+
+  Uma linha do gate **sem tabela é coringa** (esconde as duas metades): `sidra_tabela` é
+  opcional numa entrada de PEVS, e uma tag ausente tem de continuar escondendo tudo. Sem
+  essa regra a correção seria *fail-open* — um produto escondido reapareceria.
+
+  **A armadilha que quase entrou junto.** Dentro do `NOT EXISTS`, um `sidra_tabela` sem
+  qualificação resolve para o escopo **interno**: `v.sidra_tabela = sidra_tabela` vira
+  tautologia e volta a esconder as duas metades, com aparência de correto. Medido contra o
+  BigQuery antes de escrever a correção — a forma ingênua fez a metade 291 desaparecer
+  junto. Os dois lados expõem a coluna do gate como `_vis_sidra_tabela`, e o nome
+  `sidra_tabela` deixa de existir no escopo interno.
+
+  **Comportamento de hoje inalterado, medido linha a linha** nos cinco bancos contra o Gold
+  de prod: pevs 1.351.477 · ppm 3.538.360 · pam 2.516.602 · comex 382.959 de 389.647 ·
+  comtrade 2.053.708 — idêntico ao predicado anterior. O comex não é vácuo: os 3 códigos
+  escondidos filtram 6.688 linhas, e o novo predicado filtra exatamente as mesmas.
+
+### Adicionado
+
+- **Dois testes unitários dbt** (`_gold.yml`, sobre `gold_source_metadata`) que executam o
+  SQL de verdade no BigQuery — é lá que a armadilha tinha de ser guardada, porque quem
+  decide a resolução de nome é o BigQuery, não a leitura que eu faço dela. Um prova que
+  esconder a metade 289 deixa a 291 visível; o outro, que uma linha sem tabela esconde as
+  duas. Validados por injeção: remover o rename reprova o primeiro, remover o coringa
+  reprova o segundo.
+- Macro `bancos_multi_tabela()` — a lista de bancos com duas tabelas SIDRA, do lado dbt,
+  com `test_the_multi_table_banco_list_agrees_between_dbt_and_python` guardando a sincronia
+  com `serving.curation._BANCOS_MULTI_TABELA`.
+- `test_visibility_clause_renames_the_gate_column_to_avoid_the_shadowing_tautology` — a
+  condição estrutural no espelho Python, que nenhum teste dbt alcança.
+
+### Corrigido (documentação atrasada em relação aos dados)
+
+- `dim_produto_visibility` **não declarava a coluna `sidra_tabela`** no `_core.yml`, embora
+  a view a selecione e o teste de unicidade a referencie — o que bloqueava qualquer fixture
+  de teste unitário sobre ela.
+- Três afirmações de que o gate está vazio / é um "no-op steady state" (`_core.yml`, o
+  cabeçalho da view, e `PLANS/quality_outliers_and_visibility_gate.md` em dois pontos).
+  Prod tem 3 códigos comex escondidos, filtrando 6.688 linhas de Gold.
+
+---
+
 ## [1.46.4] - 2026-08-30
 
 ### Corrigido

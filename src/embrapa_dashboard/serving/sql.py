@@ -469,13 +469,33 @@ def visibility_clause(settings, source_short: str, code_column: str) -> str:
     commodity a researcher marked "indisponível" (``dim_produto_visibility``) — the SAME
     single source of truth as the dbt ``hidden_code_predicate`` macro, never re-derived.
     ``source_short`` is the short banco token (pevs/pam/ppm/comex/comtrade); ``code_column``
-    is this Gold table's product/NCM/HS code. A no-op while the view is empty (nothing
-    hidden). Identifiers come from fixed gateway maps (never user input) → injection-safe.
+    is this Gold table's product/NCM/HS code. Identifiers come from fixed gateway maps
+    (never user input) → injection-safe.
+
+    Nos bancos multi-tabela o predicado casa TAMBÉM a tabela: a identidade de um produto é
+    (banco, tabela, código), então esconder a metade extração (289) precisa deixar a metade
+    silvicultura (291) visível. Uma linha do gate sem tabela é CORINGA — esconde as duas —,
+    que é o comportamento anterior preservado para as entradas sem tag.
+
+    ⚠ O subselect renomeia a coluna do gate para ``_vis_sidra_tabela`` por necessidade, não
+    por estilo: dentro do NOT EXISTS um ``sidra_tabela`` sem qualificação resolve para o
+    escopo INTERNO e a comparação vira tautologia, escondendo as duas metades de novo com
+    aparência de correto (medido contra o BigQuery em 2026-08-30). Mantido idêntico ao da
+    macro ``hidden_code_predicate`` — os dois lados nunca podem divergir.
     """
+    from embrapa_dashboard.serving.curation import _BANCOS_MULTI_TABELA
+
     vis = table_ref(settings, "bq_gold_dataset", "dim_produto_visibility")
+    tabela_casada = (
+        " and (v._vis_sidra_tabela is null or v._vis_sidra_tabela = ''"
+        " or v._vis_sidra_tabela = sidra_tabela)"
+        if source_short in _BANCOS_MULTI_TABELA
+        else ""
+    )
     return (
-        f"not exists (select 1 from `{vis}` v "
-        f"where v.source = '{source_short}' and {code_column} = v.code)"
+        "not exists (select 1 from (select source, code, sidra_tabela as _vis_sidra_tabela "
+        f"from `{vis}`) v "
+        f"where v.source = '{source_short}' and {code_column} = v.code{tabela_casada})"
     )
 
 

@@ -181,13 +181,14 @@ models:
 
   - name: dim_produto_visibility
     description: |
-      The HIDDEN-code registry for the Ciclo de Vida visibility gate (F7). Emits ONLY
-      (source, code) of commodities a researcher set to "Fazer Ingestão mas deixar
-      indisponível" (latest-wins, active). The gate is a NOT EXISTS predicate over this
-      view (macros/hidden_code_predicate + serving/sql.visibility_clause), applied at every
-      researcher-facing Gold read (serving marts, quality donut, cross-source picker). Kept
-      SEPARATE from dim_produto_catalog so the admin editor + crosswalk still see
-      hidden-but-active rows. Empty in the no-op steady state (nothing hidden). VIEW.
+      The HIDDEN-code registry for the Ciclo de Vida visibility gate (F7). Emits the
+      (source, code, sidra_tabela) of commodities a researcher set to "Fazer Ingestão mas
+      deixar indisponível" (latest-wins, active). The gate is a NOT EXISTS predicate over
+      this view (macros/hidden_code_predicate + serving/sql.visibility_clause), applied at
+      every researcher-facing Gold read (serving marts, quality donut, cross-source picker).
+      Kept SEPARATE from dim_produto_catalog so the admin editor + crosswalk still see
+      hidden-but-active rows. NOT empty: 3 comex codes are hidden in prod (medido
+      2026-08-30) — a leitura "no-op steady state" ficou para trás dos dados. VIEW.
     tests:
       # One row per hidden (source, code) — the documented grain. The gate is a NOT EXISTS
       # over this view, so a duplicate is harmless for correctness but signals a
@@ -206,6 +207,14 @@ models:
       - name: code
         description: "The hidden commodity's exact code (matched by equality: code = v.code)."
         tests: [not_null]
+      - name: sidra_tabela
+        description: |
+          A tabela SIDRA da metade escondida, nos bancos multi-tabela (pevs: 289 extração /
+          291 silvicultura; ppm: 3939 rebanho / 74 produção animal). Parte da identidade do
+          produto — (banco, tabela, código) —, e desde a v1.46.5 o predicado do gate a casa:
+          esconder a metade extração deixa a silvicultura visível. NULL é CORINGA (esconde
+          as duas metades), que é o comportamento das entradas sem tag e dos bancos de uma
+          tabela só, onde a coluna não carrega informação. Sem `not_null` por isso.
 
   - name: dim_code_industrialization_scd2
     description: |
