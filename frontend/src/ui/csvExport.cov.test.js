@@ -28,6 +28,9 @@ function installDownloadCapture() {
   global.Blob = class {
     constructor(parts) {
       lastCsv = (parts || []).join('');
+      // `size` porque prepareTableCSV mede o arquivo REAL com `new Blob([csv]).size` para
+      // mostrar o tamanho na confirmação; sem isto ele sairia `undefined` no teste.
+      this.size = lastCsv.length;
     }
   };
   window.URL.createObjectURL = vi.fn(() => 'blob:mock');
@@ -134,6 +137,109 @@ describe('exportActiveTableCSV — guards (no download)', () => {
   });
 });
 
+// ── prepareTableCSV: monta SEM baixar, e o baixar() grava o que foi montado ──
+describe('prepareTableCSV — o descritor que a janela de confirmação mostra', () => {
+  const FILTRADO = {
+    products: PRODUCTS,
+    ts: [
+      { y: 2020, v: 1.5, q_mass: 10, q_vol: 2, q_count: 0 },
+      { y: 2021, v: 2.0, q_mass: 12, q_vol: 3, q_count: 0 },
+    ],
+  };
+
+  it('MONTA sem baixar — o clique não pode gravar nada por si', () => {
+    stubRegistry(FILTRADO);
+    const p = window.prepareTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' });
+    expect(p.erro).toBe(false);
+    // Quem sinaliza "gravou" é o clique no <a download>, não o Blob: `prepareTableCSV`
+    // constrói um Blob de propósito, só para medir o tamanho real que a janela mostra.
+    expect(lastDownloadName, 'preparar não pode gravar arquivo').toBeUndefined();
+    expect(p.bytes).toBe(lastCsv.length);   // e o tamanho é o do arquivo montado
+  });
+
+  it('descreve o que SERÁ gravado: linhas, colunas, banco e nome do arquivo', () => {
+    stubRegistry(FILTRADO);
+    const p = window.prepareTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' });
+    expect(p.linhas).toBe(2);                                   // uma por ano em `ts`
+    expect(p.colunas).toEqual(['ano', 'valor_BRL', 'qtd_massa_t', 'qtd_volume_m3', 'qtd_contagem_un']);
+    expect(p.banco).toBe('IBGE PEVS');
+    expect(p.assunto).toMatch(/Série anual agregada/);
+    expect(p.arquivo).toBe('ibge_pevs_serie_agregada_2020-2021.csv');
+  });
+
+  // ── o período do NOME vem dos dados, não da intenção ─────────────────────────────────
+  it('o período no nome é o do ARQUIVO, mesmo sem filtro de período', () => {
+    // Antes o nome saía "…_completo.csv" enquanto o chip dizia "1986–2024" — coerente, mas
+    // lado a lado na janela de confirmação lê como contradição. A âncora é a coluna `ano`
+    // do próprio arquivo: é a única que não pode discordar do conteúdo.
+    stubRegistry(FILTRADO);                                       // ts: 2020 e 2021
+    const p = window.prepareTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' });
+    p.baixar();
+    const anos = lastCsv.replace('\uFEFF', '').split('\n').slice(1).map((l) => l.split(';')[0]);
+    expect(anos).toEqual(['2020', '2021']);                       // o que o arquivo contém
+    expect(lastDownloadName).toContain('2020-2021');              // e o que o nome diz
+    expect(lastDownloadName).not.toContain('completo');
+  });
+
+  it('um único ano no arquivo vira um ano só no nome, não "2024-2024"', () => {
+    stubRegistry({ products: PRODUCTS, ts: [{ y: 2024, v: 1, q_mass: 1, q_vol: 1, q_count: 0 }] });
+    const p = window.prepareTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' });
+    expect(p.arquivo).toBe('ibge_pevs_serie_agregada_2024.csv');
+  });
+
+  it('sem coluna `ano` (qualidade), cai no período do filtro — e nunca no travessão', () => {
+    // O chip da tela usa "–" (travessão), que não é caractere para nome de arquivo; o
+    // fallback normaliza. Sem nenhuma fonte, "completo" continua sendo a resposta honesta.
+    stubRegistry({ products: PRODUCTS, qualityFlags: [{ id: 'OK', label: 'Íntegra', count: 5, share: 1 }] });
+    const comChip = window.prepareTableCSV({
+      view: 'quality', summary: { period: '1997–2024' }, database: 'ibge_pevs' });
+    expect(comChip.arquivo).toBe('ibge_pevs_qualidade_1997-2024.csv');
+
+    const semNada = window.prepareTableCSV({ view: 'quality', summary: {}, database: 'ibge_pevs' });
+    expect(semNada.arquivo).toBe('ibge_pevs_qualidade_completo.csv');
+  });
+
+  it('o baixar() grava EXATAMENTE o que o descritor descreveu', () => {
+    // O ponto da confirmação: a janela mostra uma coisa e o arquivo é outra se o download
+    // remontar. Aqui a asserção é externa ao descritor — conta as linhas do CSV escrito e
+    // lê o cabeçalho dele, e confronta com o que o descritor prometeu.
+    stubRegistry(FILTRADO);
+    const p = window.prepareTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' });
+    p.baixar();
+    const linhas = lastCsv.replace('\uFEFF', '').split('\n');
+    expect(lastDownloadName).toBe(p.arquivo);
+    expect(linhas[0].split(';')).toEqual(p.colunas);
+    expect(linhas.length - 1).toBe(p.linhas);                   // menos o cabeçalho
+  });
+
+  it('a mudança do estado ENTRE preparar e baixar não altera o arquivo', () => {
+    // É o que "nada é recalculado no download" quer dizer. Se `baixar()` remontasse, o
+    // arquivo sairia com os dados novos e a janela teria mentido.
+    stubRegistry(FILTRADO);
+    const p = window.prepareTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' });
+    stubRegistry({ products: PRODUCTS, ts: [{ y: 1999, v: 9, q_mass: 9, q_vol: 9, q_count: 0 }] });
+    p.baixar();
+    const linhas = lastCsv.replace('\uFEFF', '').split('\n');
+    expect(linhas.length - 1).toBe(2);            // os 2 anos preparados, não o 1 novo
+    expect(lastCsv).not.toContain('1999');
+  });
+
+  it('devolve o MOTIVO quando não há o que baixar, em vez de só avisar no console', () => {
+    // Antes isto era um console.warn: o botão simplesmente não fazia nada, e quem usava
+    // não tinha como saber por quê. A janela precisa do motivo para dizer o que houve.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    stubRegistry({ ts: [], products: PRODUCTS });
+    expect(window.prepareTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' }))
+      .toMatchObject({ erro: true, motivo: 'sem-linhas' });
+
+    window.bancoById = () => ({ short: 'SEFAZ NFe', status: 'pending' });
+    expect(window.prepareTableCSV({ view: 'overview', summary: {}, database: 'sefaz_nf' }))
+      .toMatchObject({ erro: true, motivo: 'banco-indisponivel', banco: 'SEFAZ NFe' });
+    expect(lastDownloadName).toBeUndefined();
+    warn.mockRestore();
+  });
+});
+
 // ── overview / value: annual aggregate series ────────────────────────────────
 describe('exportActiveTableCSV — overview/value aggregate series', () => {
   const FILTERED = {
@@ -162,20 +268,30 @@ describe('exportActiveTableCSV — overview/value aggregate series', () => {
     expect(lastCsv).toContain('valor_BRL');
   });
 
-  it('filename carries banco short, subject and a period when summary has dates', () => {
+  it('o nome carrega o período do ARQUIVO, não o do filtro, quando os dois diferem', () => {
+    // Mudança deliberada (v1.44.1). O filtro pede 2005–2021, mas os dados só cobrem
+    // 2020–2021: nomear o arquivo "2005-2021" prometeria uma cobertura que o conteúdo não
+    // entrega — o rótulo nomeando o todo enquanto o número é a parte, que é a regra que
+    // este projeto já registrou. O filtro descreve a INTENÇÃO; a coluna `ano` descreve o
+    // que saiu, e é o arquivo que o pesquisador vai abrir seis meses depois.
     stubRegistry(FILTERED);
     window.exportActiveTableCSV({
       view: 'overview',
       summary: { startDate: '2005-01-01', endDate: '2021-12-31' },
       database: 'ibge_pevs',
     });
-    expect(lastDownloadName).toBe('ibge_pevs_serie_agregada_2005-2021.csv');
+    const anos = lastCsv.replace('\uFEFF', '').split('\n').slice(1).map((l) => l.split(';')[0]);
+    expect(anos[0]).toBe('2020');                          // o que o arquivo realmente tem
+    expect(anos[anos.length - 1]).toBe('2021');
+    expect(lastDownloadName).toBe('ibge_pevs_serie_agregada_2020-2021.csv');
   });
 
-  it("filename falls back to 'completo' when summary has no startDate", () => {
-    stubRegistry(FILTERED);
-    window.exportActiveTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' });
-    expect(lastDownloadName).toBe('ibge_pevs_serie_agregada_completo.csv');
+  it("'completo' fica só para quando NENHUMA fonte de período existe", () => {
+    // Sem filtro, sem chip e sem coluna `ano` não há o que afirmar — e inventar seria pior
+    // que admitir. Com coluna `ano`, o nome passa a trazê-la (ver os testes de período).
+    stubRegistry({ products: PRODUCTS, qualityFlags: [{ id: 'OK', label: 'Íntegra', count: 1, share: 1 }] });
+    window.exportActiveTableCSV({ view: 'quality', summary: {}, database: 'ibge_pevs' });
+    expect(lastDownloadName).toBe('ibge_pevs_qualidade_completo.csv');
   });
 });
 
@@ -224,7 +340,8 @@ describe('exportActiveTableCSV — per-product series with per-family units', ()
     stubRegistry(FILTERED);
     window.exportActiveTableCSV({ view: 'product_profile', summary: {}, database: 'ibge_pevs' });
     expect(lastCsv).toContain('series_por_produto'.slice(0, 0) || 'codigo'); // header present
-    expect(lastDownloadName).toBe('ibge_pevs_series_por_produto_completo.csv');
+    // O nome traz o ano do arquivo (a série por produto tem coluna `ano`), não "completo".
+    expect(lastDownloadName).toBe('ibge_pevs_series_por_produto_2020.csv');
   });
 });
 

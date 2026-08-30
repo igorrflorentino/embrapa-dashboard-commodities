@@ -99,8 +99,13 @@ function MainScreen({ filters, view = 'overview', database = 'ibge_pevs', infoPa
     const _infoTitle = _INFO_TITLES[infoPage] || _INFO_TITLES.health;
     const _infoSub = _INFO_SUBS[infoPage] || _INFO_SUBS.health;
     const _infoOverline = infoPage === 'cadastro_produtos' ? 'Curadoria' : 'Informações';
+    // O Cadastro é uma TABELA de 11 colunas, não prosa: ele ganha a largura que a medida de
+    // leitura (~65 caracteres) reserva para as telas de texto. Sem isso as colunas se
+    // espremem e o cabeçalho quebra no meio das palavras. Só esta tela — as demais são
+    // texto corrido e a largura menor é a escolha certa lá.
+    const _infoWide = infoPage === 'cadastro_produtos' ? ' screen--wide' : '';
     return (
-      <div className="screen">
+      <div className={'screen' + _infoWide}>
         <div className="page-hero">
           <div>
             <div className="overline">{_infoOverline}</div>

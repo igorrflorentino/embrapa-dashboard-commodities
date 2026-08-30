@@ -88,6 +88,10 @@ function AppShell({
   conventions,
   crossState,
   mode = 'single', setMode,
+  // "há dado em tela?" — calculado uma vez em main.jsx (isDataView) e passado para cá, em
+  // vez de recalculado, para não existirem duas cópias da regra. Default `true` para não
+  // esconder a ação por omissão num call site que ainda não passe a prop.
+  dataView = true,
 }) {
   const [citeOpen, setCiteOpen] = React.useState(false);
   // Which reference detail level the modal shows. Defaults to 'tool': citing the
@@ -403,6 +407,27 @@ function AppShell({
     window.openFeedback = (prefill) => { setReportPrefill(prefill || null); setReportOpen(true); };
     return () => { if (window.openFeedback) { delete window.openFeedback; } };
   }, []);
+  // "Exportar CSV" mora no topbar junto de Citar/Compartilhar porque os três levam o MESMO
+  // estado embora — como citação, como URL e como arquivo — e o AppShell já recebe as quatro
+  // entradas que o export usa ({view, database, summary, conventions}), as mesmas que o
+  // permalink do Compartilhar codifica. Antes ele ficava na faixa de "Filtros ativos", onde
+  // era o único botão sólido de um bloco que só descreve estado, e sua posição vertical
+  // variava com a quantidade de chips que cada banco expõe.
+  // Nem toda view exporta (uma view sem tabela por trás não tem o que baixar): o gate é o
+  // mesmo `window.canExportView` que a faixa usava, então o botão some em vez de falhar.
+  // Dois gates, e são perguntas diferentes: `dataView` = há dado em tela (numa página de
+  // informação não há o que baixar); `canExportView` = ESTA view tem tabela por trás. Um
+  // botão que falha é pior que um botão ausente.
+  const canExport = dataView && (!window.canExportView || window.canExportView(view));
+  // O clique MONTA o arquivo e abre a confirmação; quem baixa é a janela, chamando o
+  // `baixar()` que veio junto do descritor. Assim a tela e o arquivo saem do mesmo objeto:
+  // se a janela remontasse o CSV no "Baixar", ela poderia estar descrevendo uma coisa e
+  // gravando outra — exatamente o que a confirmação existe para impedir.
+  const [csvPreview, setCsvPreview] = React.useState(null);
+  const onExport = () => {
+    if (!window.prepareTableCSV) return;
+    setCsvPreview(window.prepareTableCSV({ view, database, summary, conventions }));
+  };
   const onShare = async () => {
     // Reuse the SAME permalink builder the citation uses (buildPermalink, above) —
     // one codec path, so the Share URL and the cite's "Disponível em:" can't drift.
@@ -585,6 +610,22 @@ function AppShell({
         </nav>
 
         <div className="util">
+          {/* Fora do trio, não no meio dele. O export é CONDICIONAL — some nas páginas de
+              informação e nas views sem tabela —, então no meio do grupo ele empurrava
+              "Enviar feedback" de lugar a cada troca de tela. O grupo `.util` é alinhado à
+              direita, então um item no INÍCIO cresce para a esquerda e os três não se
+              movem. O separador diz o que a posição já sugere: são famílias vizinhas, não
+              a mesma. */}
+          {canExport && (
+            <>
+              <button className="util-action" onClick={onExport}
+                      title="Conferir e baixar em CSV os dados desta tela, com filtros e convenções aplicados">
+                <window.Icon name="download" size={16}/>
+                <span>Exportar CSV</span>
+              </button>
+              <span className="util-sep" aria-hidden="true"></span>
+            </>
+          )}
           <button className="util-action" onClick={onCite} title="Citar este painel no estado atual">
             <window.Icon name="format_quote" size={16}/>
             <span>Citar painel</span>
@@ -609,6 +650,14 @@ function AppShell({
               <>
                 <div className="util-scrim" onClick={() => setUtilOpen(false)}></div>
                 <div className="util-menu" role="menu">
+                  {canExport && (
+                    <>
+                      <button role="menuitem" className="util-menu-item" onClick={() => { setUtilOpen(false); onExport(); }}>
+                        <window.Icon name="download" size={18}/><span>Exportar CSV</span>
+                      </button>
+                      <span className="util-menu-sep" role="separator"></span>
+                    </>
+                  )}
                   <button role="menuitem" className="util-menu-item" onClick={() => { setUtilOpen(false); onCite(); }}>
                     <window.Icon name="format_quote" size={18}/><span>Citar painel</span>
                   </button>
@@ -747,6 +796,19 @@ function AppShell({
           {children}
         </main>
       </div>
+
+      {csvPreview && window.CsvExportModal && (
+        <window.CsvExportModal
+          preview={csvPreview}
+          // O recorte vem do MESMO resolvedor que desenha a faixa de chips na tela; a janela
+          // não relê o estado por conta própria, senão poderia contradizer a faixa acima dela.
+          chips={window.activeFilterChips
+            ? window.activeFilterChips(summary, window.bancoById && window.bancoById(database))
+            : []}
+          conventions={conventions}
+          onClose={() => setCsvPreview(null)}
+        />
+      )}
 
       {citeOpen && (
         <div className="cite-backdrop" onClick={() => setCiteOpen(false)}>

@@ -7,6 +7,208 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.44.1] - 2026-08-30
+
+### Corrigido
+
+- **O nome do arquivo CSV passa a trazer o período dos dados.** Saía
+  `..._completo.csv` sempre que ninguém tinha mexido no filtro de período, ao lado de um
+  chip dizendo "1986–2024". Era coerente ("completo" = sem recorte), mas a janela de
+  confirmação passou a mostrar as duas coisas juntas, e juntas elas leem como contradição.
+  Agora sai `ibge_pevs_serie_agregada_1986-2024.csv`.
+
+  A fonte do período é a **coluna `ano` do próprio arquivo**, não o filtro: é a única que
+  não pode discordar do conteúdo. A diferença aparece quando as duas divergem — filtro
+  2005–2021 sobre dados que só cobrem 2020–2021 nomeia o arquivo `2020-2021`, porque
+  nomeá-lo `2005-2021` prometeria uma cobertura que o arquivo não entrega. O filtro
+  descreve a intenção; o arquivo é o que o pesquisador vai abrir seis meses depois.
+
+  Um ano só não vira `2024-2024`. Um assunto sem coluna `ano` (qualidade) cai no período
+  do filtro e, na falta dele, no chip da tela — com o travessão normalizado, que não é
+  caractere para nome de arquivo. `completo` fica só para quando não existe fonte nenhuma.
+
+- Removida a classe `util-action-export`, aplicada ao botão e sem regra de CSS
+  correspondente — achada na varredura final de classes declaradas × usadas.
+
+---
+
+## [1.44.0] - 2026-08-30
+
+### Adicionado
+
+- **Confirmação antes de baixar o CSV.** O clique em "Exportar CSV" passa a abrir uma
+  janela que mostra **o que vai ser baixado** antes de o navegador perguntar onde salvar:
+  quantas linhas, quantas colunas e o tamanho do arquivo; o conteúdo em uma frase
+  ("Série anual agregada", "Distribuição por município", …); o nome do arquivo; a lista
+  exata das colunas — é ela que responde se vem `valor_BRL` ou `valor_USD` —; e o recorte
+  e as convenções aplicados.
+
+  A garantia que faz isso valer alguma coisa é estrutural: a janela é montada a partir do
+  **mesmo objeto** que o "Baixar" grava. O exportador foi partido em `prepareTableCSV`
+  (monta e devolve um descritor, com um `baixar()` que escreve a string **já pronta**) e
+  `exportActiveTableCSV` (o caminho direto, sem confirmação, mantido). Se o download
+  remontasse o arquivo, a tela poderia descrever uma coisa e gravar outra — exatamente o
+  que a confirmação existe para impedir.
+
+  Como efeito colateral, **"não há o que baixar" virou uma resposta em tela**. Antes um
+  banco não liberado ou um recorte sem linhas produzia um `console.warn` e um botão que
+  não fazia nada — invisível para quem usa. Agora a janela diz o motivo e o que fazer.
+
+### Alterado
+
+- **"Exportar CSV" saiu do meio do trio fixo e foi para o lado dele**, separado por um
+  risquinho. O botão é condicional — some nas páginas de informação e nas views sem tabela
+  —, então no meio do grupo ele empurrava "Enviar feedback" de lugar a cada troca de tela.
+  Como `.util` é alinhado à direita, um item no **início** cresce para a esquerda: medido
+  no navegador, "Citar painel", "Compartilhar" e "Enviar feedback" ficam em 1003, 1127 e
+  1261 com ou sem o export — **zero deslocamento**. Mesma ordem no menu "⋯" do celular.
+
+- **A lista de chips do recorte mudou-se para `scopeChips.js`** (`activeFilterChips`).
+  Ela morava dentro do `FilterTriggerBar`, o que fazia da faixa o único lugar capaz de
+  dizer qual é o recorte; a janela do CSV precisa dizer a mesma coisa, e duas cópias da
+  regra é como duas superfícies passam a descrever uma seleção só de dois jeitos — a mesma
+  razão pela qual `axisScopeChips` já vivia ali.
+
+---
+
+## [1.43.1] - 2026-08-30
+
+### Corrigido
+
+- **"Editar filtros" e "Editar métricas" passam a ter as mesmas dimensões.** A altura já
+  era igual — a classe é compartilhada —, mas a largura vinha do texto: 122px contra 138px,
+  medidos no navegador. Como os dois ficam no mesmo canto de dois blocos empilhados,
+  larguras diferentes os faziam ler como dois controles distintos, quando são o mesmo
+  controle de dois blocos. Um `min-width` na classe compartilhada iguala pelo maior, e
+  agora eles alinham nos **dois** lados, formando uma coluna. "Recolher" (o mesmo botão no
+  estado expandido das convenções) entra junto de propósito: sem isso o botão encolheria ao
+  abrir o bloco. "Ver dimensões previstas" é naturalmente maior e não é afetado — vive
+  sozinho na barra de preview, nunca lado a lado com os outros.
+
+  O guarda possível em teste não é a medida (o jsdom não aplica CSS), e sim as duas coisas
+  de que ela depende: que a regra seja **uma só** — se cada botão ganhar a sua, elas
+  divergem em silêncio — e que o **conjunto de rótulos** seja o que foi medido, já que um
+  valor em px não sabe o que o texto mede e um rótulo mais longo estouraria o `min-width`
+  sem erro nenhum.
+
+---
+
+## [1.43.0] - 2026-08-30
+
+### Alterado
+
+- **As ações de "Filtros ativos" e "Convenções métricas" ficam fixas no canto superior
+  direito do bloco.** Antes os chips e o botão eram irmãos numa mesma linha que quebrava,
+  então o "Editar filtros" descia junto com o último chip: a posição dele dependia de
+  **quantos chips o banco expõe** — dez no IBGE PEVS, quatro no UN COMTRADE — e mudava de
+  perspectiva para perspectiva. Agora cada bloco tem duas áreas: informação à esquerda,
+  que quebra, e ação à direita, que não. Medido no navegador: com 2, 3 e 6 linhas de
+  chips e a faixa indo de 98px a 266px de altura, o botão fica a **17px da borda direita
+  e 12px do topo** nos dois blocos. O "Recolher" do estado expandido das convenções ocupa
+  o lugar exato do "Editar métricas", então abrir e fechar não move o botão.
+
+- **"Exportar CSV" foi para o topbar, ao lado de "Compartilhar".** Ele era o único botão
+  sólido de uma faixa cujo trabalho é *descrever* estado, não agir; e o escopo não batia —
+  "Editar filtros" edita o bloco onde vive, enquanto o export é montado de
+  `{view, banco, filtros, convenções}`, das quais o recorte é só uma parte. No topbar ele
+  fica com "Citar painel" e "Compartilhar", que são a mesma família: os três levam o mesmo
+  estado embora — como citação, como link e como arquivo —, e o "Compartilhar" codifica na
+  URL exatamente as mesmas quatro entradas. Ganha posição fixa em todo o dashboard e entra
+  no menu "⋮" do celular. O texto do "Sobre o dashboard" foi atualizado para dizer onde
+  ele está.
+
+### Corrigido
+
+- **O "Exportar CSV" não aparece mais em páginas de informação.** Regressão introduzida
+  ao movê-lo: a faixa de filtros só existia em views de dados, o que escondia o botão em
+  "Sobre o dashboard", "Glossário" ou "Cadastro de produtos" sem ninguém precisar pensar
+  nisso. No topbar, que é sempre visível, o gate passou a ser explícito — e **derivado**
+  do `isDataView` já calculado uma vez em `main.jsx`, em vez de uma segunda cópia da regra
+  que sairia de sincronia na primeira vez que a primeira mudasse.
+
+---
+
+## [1.42.0] - 2026-08-30
+
+### Adicionado
+
+- **Cada agrupamento agora abre e fecha.** A tela mostrava as 31 tabelas de uma vez —
+  234 linhas, 702 `<select>` e 8.190 `<option>` montados no carregamento — quando quem
+  chega aqui quer **um** produto. Os cartões nascem recolhidos: o cartão fechado não
+  renderiza a tabela, então o custo some junto com a poluição visual, em vez de ficar
+  apenas escondido por CSS. Um botão **Expandir/Recolher todos** cobre o caso de quem
+  quer a lista inteira. O nome do agrupamento inteiro é o alvo de clique (não só a
+  setinha); Renomear e Excluir ficam fora dele, senão recolheriam o cartão junto — é
+  por isso que não é um `<details>/<summary>`.
+
+- **Busca por código ou descrição**, no topo da lista. Responde a pergunta "esse produto
+  já está cadastrado?" sem obrigar a percorrer 31 agrupamentos. Procura no código, nas
+  duas descrições (a da fonte e a anotação do pesquisador), no banco e no agrupamento;
+  todos os termos precisam bater, então `arroz 1006` funciona. Dobra acento, caixa e
+  pontuação — `castanha do para` acha *Castanha do Pará*, e `castanha-do-pará` também.
+  Durante a busca os resultados ficam sempre visíveis (um acerto escondido atrás de um
+  toggle é o mesmo que nenhum acerto), e o cabeçalho diz quantos bateram de quantos há
+  (`Arroz (5 de 15)`). Uma busca sem resultado **diz** que não achou: "0 produtos"
+  responde "não está cadastrado", coisa que uma área em branco não responde.
+
+### Alterado
+
+- **A coluna `Tabela` mostra o código da tabela SIDRA (`289`, `291`, `3939`, `74`), não
+  o nome por extenso.** É o identificador que a fonte usa e que aparece na URL do SIDRA,
+  e lido junto com a coluna vizinha forma a chave do produto. Passa a usar a mesma fonte,
+  cor e tamanho do resto da tabela em vez de um selo colorido: o selo dizia "isto é outra
+  coisa", quando é apenas mais um pedaço da identidade. O nome por extenso vira `title`,
+  e o seletor do formulário passa a mostrar `289 — Extração vegetal`, para ninguém
+  precisar decorar a correspondência.
+
+- **Larguras das colunas refeitas** sobre a medição nova. `Tabela` caiu de 105px para
+  62px ao trocar o nome pelo código, e essa folga foi para *Descrição (fonte)*, que subiu
+  de 160px para 201px — a única coluna de prosa. As necessidades somam 1024px contra
+  1089px disponíveis.
+
+---
+
+## [1.41.1] - 2026-08-30
+
+### Corrigido
+
+- **As 11 colunas do Cadastro cabem, e todos os cartões usam a mesma grade.** Com a
+  coluna `Tabela` a mais, faltava largura: o cabeçalho quebrava no meio das palavras
+  (`Ingestã/o`), o pill de status virava `OCULT/O` e números partiam em `251.7/77`.
+  Cada largura agora é uma necessidade **medida** — a maior string que a coluna precisa
+  renderizar numa linha, mais o padding — e não um palpite. O conteúdo real pede 884px;
+  o resto era padding, então 20px por coluna viraram 16px (devolve 44px) e a tela do
+  Cadastro recupera 40px de recuo lateral do `.content` e do `.card`. Sobra vai toda
+  para *Descrição (fonte)*, a única coluna de prosa.
+
+- **A barra de rolagem vertical desalinhava os cartões maiores.** O `max-height: 640px`
+  do `.dt-wrap` só disparava nos grupos com muitas linhas, e a barra roubava 15px **deles**:
+  7 dos 31 cartões mediam 1074px contra 1089px dos outros. Isso anulava justamente o que o
+  `table-layout: fixed` existe para garantir — a mesma grade em todos os cartões — e era a
+  razão de `Ingestã/o` e `OCULT/O` quebrarem só ali. Sem o scroll interno, os 31 cartões
+  medem 1089px. A página inteira já rolava.
+
+- **Quebra no meio da palavra onde não havia palavra longa.** `overflow-wrap: anywhere`
+  estava em todas as células, para a Descrição poder quebrar; era ele que partia número,
+  sigla e rótulo. Agora vale só na coluna de prosa. Em 1280px — onde a tabela ainda
+  comprime, comportamento que já existia — a quebra no meio da palavra passou de dezenas
+  de células a **zero**: o que não tem espaço nem hífen vaza alguns pixels em vez de virar
+  duas sílabas.
+
+### Notas de medição
+
+Três instrumentos deram resultado errado antes do repositório estar errado, e a correção
+de cada um mudou a conta: `measureText` do canvas **ignora `letter-spacing`** (subestimava
+todo piso); um `<select>` foi medido pela opção mais longa do **menu**, que abre em popup
+com largura própria, quando só o valor **selecionado** precisa caber; e `scrollWidth` não
+enxerga déficit **já absorvido por uma quebra** — devolvia exatamente a largura alocada,
+isto é, lia de volta a própria conta. A medição que vale usa uma cópia da tabela sem
+larguras impostas. `ccTableWidths.test.js` ganhou a âncora que faltava: uma largura por
+`<th>` do cabeçalho, contado no **JSX** — o arquivo que muda quando alguém acrescenta uma
+coluna e esquece o CSS.
+
+---
+
 ## [1.41.0] - 2026-08-30
 
 ### Adicionado

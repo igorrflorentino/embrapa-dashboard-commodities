@@ -98,43 +98,55 @@ function MetricConventions({ value, onChange, families, banco, expanded, onToggl
   return (
     <div className="mc-bar">
       {!expanded ? (
+        // Mesmas duas áreas de .fm-trigger-bar (chips que quebram · ação que não quebra),
+        // para que "Editar métricas" e "Editar filtros" ancorem no MESMO ponto do bloco.
+        // As duas faixas ficam uma sobre a outra: um botão em altura diferente da outra
+        // lê como hierarquia que não existe.
         <div className="mc-head mc-head-compact">
-          <span className="mc-overline">Convenções métricas</span>
-          {chips.map((c, i) => (
-            <span key={i} className="fm-chip-filter">
-              <span className="fm-chip-k">{c.k}</span>{c.v}
-            </span>
-          ))}
-          <span className="fm-spacer"></span>
-          <button type="button" className="fm-edit-btn" aria-expanded="false" onClick={onToggleExpanded}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M4 20h4l10-10-4-4L4 16zM14 6l4 4"/>
-            </svg>
-            Editar métricas
-          </button>
+          <div className="fm-tb-chips">
+            <span className="mc-overline">Convenções métricas</span>
+            {chips.map((c, i) => (
+              <span key={i} className="fm-chip-filter">
+                <span className="fm-chip-k">{c.k}</span>{c.v}
+              </span>
+            ))}
+          </div>
+          <div className="fm-tb-acoes">
+            <button type="button" className="fm-edit-btn" aria-expanded="false" onClick={onToggleExpanded}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 20h4l10-10-4-4L4 16zM14 6l4 4"/>
+              </svg>
+              Editar métricas
+            </button>
+          </div>
         </div>
       ) : (
         <>
+          {/* Expandido usa as MESMAS duas áreas do recolhido: "Recolher" ocupa o lugar exato
+              de onde "Editar métricas" estava, então abrir e fechar não move o botão. */}
           <div className="mc-head">
-            <span className="mc-overline">Convenções métricas</span>
-            <span className="mc-caption">
-              Como os valores e quantidades são exibidos — não altera quais linhas entram na visualização.
-            </span>
-            <label className="mc-check" title="Reescala automaticamente entre mil/mi/bi para evitar números longos">
-              <input type="checkbox"
-                     checked={!!value.autoScale}
-                     onChange={(e) => set({ autoScale: e.target.checked })} />
-              <span>Auto-escala (mil/mi/bi)</span>
-            </label>
-            <span className="fm-spacer"></span>
-            <button type="button" className="fm-edit-btn" aria-expanded="true" onClick={onToggleExpanded}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                   strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <polyline points="18 15 12 9 6 15"/>
-              </svg>
-              Recolher
-            </button>
+            <div className="fm-tb-chips mc-head-info">
+              <span className="mc-overline">Convenções métricas</span>
+              <span className="mc-caption">
+                Como os valores e quantidades são exibidos — não altera quais linhas entram na visualização.
+              </span>
+              <label className="mc-check" title="Reescala automaticamente entre mil/mi/bi para evitar números longos">
+                <input type="checkbox"
+                       checked={!!value.autoScale}
+                       onChange={(e) => set({ autoScale: e.target.checked })} />
+                <span>Auto-escala (mil/mi/bi)</span>
+              </label>
+            </div>
+            <div className="fm-tb-acoes">
+              <button type="button" className="fm-edit-btn" aria-expanded="true" onClick={onToggleExpanded}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="18 15 12 9 6 15"/>
+                </svg>
+                Recolher
+              </button>
+            </div>
           </div>
 
           <div className="mc-groups">

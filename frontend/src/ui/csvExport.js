@@ -188,23 +188,102 @@
     }
   }
 
-  // Public entry — called by the "Exportar CSV" button.
-  window.exportActiveTableCSV = function (ctx) {
+  // O que cada `subject` significa em português, para a janela de confirmação poder dizer
+  // ao pesquisador O QUE ele vai baixar. Fica ao lado dos `return { subject }` acima, de
+  // modo que um assunto novo sem verbete apareça como o próprio identificador — feio, mas
+  // honesto — em vez de sumir.
+  const ASSUNTO = {
+    serie_agregada: 'Série anual agregada (valor e quantidade por ano)',
+    series_por_produto: 'Série anual por produto',
+    distribuicao_geografica: 'Distribuição por UF',
+    distribuicao_por_regiao: 'Distribuição por região',
+    distribuicao_por_municipio: 'Distribuição por município',
+    concentracao: 'Concentração por UF, da maior para a menor',
+    qualidade: 'Contagem de linhas por marca de qualidade',
+  };
+
+  /**
+   * O período que vai no NOME do arquivo, lido dos próprios dados.
+   *
+   * Antes vinha de `summary.startDate`, que é vazio enquanto ninguém mexe no filtro de
+   * período — então o arquivo saía "…_completo.csv" ao lado de um chip dizendo "1986–2024".
+   * Coerente ("completo" = sem recorte de período), mas a janela de confirmação passou a
+   * mostrar as duas coisas juntas, e juntas elas leem como contradição.
+   *
+   * A coluna `ano` do arquivo é a fonte certa porque é a única que NÃO pode discordar do
+   * conteúdo: qualquer outra (o filtro, o chip) descreve a intenção, não o que saiu. Em
+   * `geo` o ano vem como "2024 (parcial)", daí extrair os 4 dígitos em vez de converter a
+   * célula inteira. Um assunto sem coluna `ano` (qualidade) cai nos fallbacks abaixo.
+   */
+  function periodoDosDados(headers, rows) {
+    const i = headers.indexOf('ano');
+    if (i < 0) return null;
+    let min = Infinity, max = -Infinity;
+    for (const r of rows) {                       // laço, não Math.min(...anos): a versão
+      const m = /\d{4}/.exec(String(r[i] ?? ''));  // espalhada estoura a pilha em arquivos
+      if (!m) continue;                            // grandes (município pode passar de 10k)
+      const y = Number(m[0]);
+      if (y < min) min = y;
+      if (y > max) max = y;
+    }
+    if (!isFinite(min)) return null;
+    return min === max ? String(min) : `${min}-${max}`;
+  }
+
+  /**
+   * MONTA o arquivo e devolve um descritor — sem baixar nada.
+   *
+   * O `baixar()` que volta aqui escreve o CSV JÁ MONTADO, byte a byte. É de propósito: a
+   * janela de confirmação mostra estes mesmos números, e reconstruir na hora do "Baixar"
+   * abriria a porta para a tela dizer uma coisa e o arquivo trazer outra — o oposto do que
+   * a confirmação existe para garantir.
+   *
+   * Devolve `null` quando não há o que baixar, com `motivo` dizendo por quê: um banco ainda
+   * não liberado não tem linhas, e uma view pode render zero linhas sob o recorte atual.
+   */
+  window.prepareTableCSV = function (ctx) {
     const banco = window.bancoById ? window.bancoById(ctx.database) : null;
     // Only live bancos hold real rows; soon bancos have nothing to export.
     if (!banco || banco.status !== 'live') {
       console.warn('[csv] banco not available for export:', ctx.database);
-      return;
+      return { erro: true, motivo: 'banco-indisponivel', banco: banco ? banco.short : ctx.database };
     }
     const built = buildRows(ctx);
     if (!built || !built.rows.length) {
       console.warn('[csv] nothing to export for view', ctx.view);
-      return;
+      return { erro: true, motivo: 'sem-linhas', banco: banco.short };
     }
-    const period = (ctx.summary && ctx.summary.startDate)
-      ? `${ctx.summary.startDate.slice(0,4)}-${(ctx.summary.endDate||'').slice(0,4)}`
-      : 'completo';
+    // Ordem de preferência: o que o arquivo REALMENTE contém; depois as datas do filtro;
+    // depois o chip de período já formatado na tela (normalizando o travessão, que não é
+    // um caractere para nome de arquivo); e só então "completo".
+    const doChip = (ctx.summary && ctx.summary.period || '')
+      .replace(/[–—]/g, '-').replace(/\s+/g, '');
+    const period = periodoDosDados(built.headers, built.rows)
+      || ((ctx.summary && ctx.summary.startDate)
+            ? `${ctx.summary.startDate.slice(0,4)}-${(ctx.summary.endDate||'').slice(0,4)}`
+            : null)
+      || (/^\d{4}(-\d{4})?$/.test(doChip) ? doChip : null)
+      || 'completo';
     const fname = `${banco.short.replace(/\s+/g,'_').toLowerCase()}_${built.subject}_${period}.csv`;
-    download(fname, toCSV(built.headers, built.rows));
+    const csv = toCSV(built.headers, built.rows);
+    return {
+      erro: false,
+      arquivo: fname,
+      banco: banco.short,
+      assunto: ASSUNTO[built.subject] || built.subject,
+      colunas: built.headers,
+      linhas: built.rows.length,
+      // Tamanho do arquivo REAL (a string já montada), não uma estimativa por linha.
+      bytes: new Blob([csv]).size,
+      baixar: () => download(fname, csv),
+    };
+  };
+
+  // Entrada direta — monta E baixa, sem confirmação. Mantida para quem chama o export por
+  // fora da janela (e é o caminho que os testes do exportador exercitam).
+  window.exportActiveTableCSV = function (ctx) {
+    const p = window.prepareTableCSV(ctx);
+    if (!p || p.erro) return;
+    p.baixar();
   };
 })();

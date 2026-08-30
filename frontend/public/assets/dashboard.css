@@ -301,6 +301,15 @@
   font-size: 12px;
   flex-shrink: 0;
 }
+/* Risquinho entre o "Exportar CSV" e o trio fixo. O export é CONDICIONAL — some nas
+   páginas de informação e nas views sem tabela — e no meio do grupo empurrava "Enviar
+   feedback" de lugar a cada troca de tela. Como `.util` tem `margin-left: auto`, um item no
+   INÍCIO cresce para a esquerda e os três nunca se movem. O separador diz o que a posição
+   já sugere: famílias vizinhas, não a mesma. */
+.util-sep {
+  width: 1px; align-self: stretch; margin: 6px 2px;
+  background: rgba(255, 255, 255, 0.22);
+}
 .util-action {
   display: inline-flex;
   align-items: center;
@@ -392,6 +401,76 @@
 }
 .cite-head .caption { color: var(--fg-3); }
 .cite-body { padding: 18px 22px 22px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+
+/* ====================================================================
+   Confirmação do CSV — reaproveita a casca do modal de citação (.cite-backdrop
+   /.cite-modal/.cite-head/.cite-body), para não existir um segundo desenho de janela no
+   produto; o que é próprio daqui são as três métricas, a lista de colunas e o rodapé.
+   ==================================================================== */
+.csv-modal { max-width: 620px; }
+.csv-body { gap: 16px; }
+/* O tamanho do que vem é o que se confere primeiro: "3 linhas" onde se esperava milhares
+   responde a pergunta antes de qualquer outra leitura. Daí virem em números grandes, no
+   topo, e não como mais uma linha de lista. */
+.csv-numeros {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  padding: 14px 4px; border-radius: var(--radius-md);
+  background: var(--bg-surface-2); border: 1px solid var(--border-subtle);
+}
+.csv-num { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.csv-num-v {
+  font: 500 22px var(--font-display, var(--font-body)); color: var(--fg-1);
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.csv-num-k {
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-3);
+}
+.csv-lista { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.csv-lista > div { display: flex; gap: 12px; align-items: baseline; }
+.csv-lista dt {
+  flex: 0 0 88px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--fg-3);
+}
+.csv-lista dd { margin: 0; font-size: 13px; color: var(--fg-1); min-width: 0; }
+/* `anywhere` porque o nome do arquivo é uma palavra só, longa, sem espaço onde quebrar —
+   sem isto ele estoura a janela em vez de passar para a linha de baixo. */
+.csv-arquivo {
+  font-family: var(--font-mono, monospace); font-size: 12px; color: var(--embrapa-green-darker);
+  background: color-mix(in srgb, var(--embrapa-green) 8%, transparent);
+  padding: 2px 6px; border-radius: 4px; overflow-wrap: anywhere;
+}
+.csv-secao { display: flex; flex-direction: column; gap: 8px; }
+.csv-h {
+  margin: 0; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--fg-3); font-weight: 500;
+}
+.csv-colunas, .csv-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.csv-col {
+  font-family: var(--font-mono, monospace); font-size: 11.5px; color: var(--fg-2);
+  background: var(--bg-surface-2); border: 1px solid var(--border-subtle);
+  padding: 3px 8px; border-radius: 4px;
+}
+.csv-nota { margin: 0; }
+/* Rodapé fixo: a lista de colunas pode rolar, mas o par Cancelar/Baixar não sai da vista —
+   a decisão que a janela pede tem de estar sempre ao alcance. */
+.csv-foot {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 14px 22px 18px; border-top: 1px solid var(--border-subtle); flex-shrink: 0;
+}
+.csv-baixar { display: inline-flex; align-items: center; gap: 7px; }
+.csv-baixar svg { color: rgba(255, 255, 255, 0.92); }
+@media (max-width: 560px) {
+  /* As três métricas continuam lado a lado: 375px/3 ≈ 125px cabe "1 kB"/"TAMANHO", e
+     empilhá-las gastava três vezes a altura no aparelho que menos tem altura. */
+  .csv-numeros { gap: 4px; padding: 12px 2px; }
+  .csv-num-v { font-size: 19px; }
+  /* Em coluna, `flex: 0 0 88px` do <dt> deixa de ser LARGURA e vira ALTURA — o rótulo
+     ganhava 88px de caixa e abria um vão enorme antes do valor. */
+  .csv-lista > div { flex-direction: column; gap: 2px; }
+  .csv-lista dt { flex: none; }
+  .csv-foot { flex-direction: column-reverse; }
+  .csv-foot button { width: 100%; justify-content: center; }
+}
 .cite-text {
   font: 400 13.5px var(--font-body);
   color: var(--fg-1);
@@ -1676,6 +1755,27 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
   }
   .hs-status-pill { white-space: nowrap; }
 }
+/* Uma tela de TABELA larga sai do limite de leitura que `.content` impõe (max-width 1280px,
+   pensado para prosa a ~65 caracteres). O Cadastro tem 11 colunas que precisam de 884px só
+   de TEXTO; o resto do orçamento é padding. Duas medições corrigiram versões anteriores
+   desta conta: (1) `measureText` do canvas IGNORA `letter-spacing`, então o piso medido por
+   ele saía baixo e o texto quebrava no meio da palavra mesmo com a conta "fechando" — o
+   piso real vem de um Range sobre o nó de texto; (2) um `<select>` não precisa caber a
+   opção mais longa do MENU, que abre em popup com largura própria, só o valor SELECIONADO —
+   exigir a opção mais longa inflava "Agrupamento" em ~20px sem necessidade.
+   Em 1440px o teto de 1280 não é o limite ativo (o ativo é shell − sidebar), então o
+   max-width sozinho não devolvia nada: quem devolve largura de fato é o padding lateral. */
+/* `:has()` porque quem precisa mudar é o PAI: `.screen--wide` está dentro de `.content` e
+   um filho não excede o teto do pai. Onde `:has()` não existir, a regra simplesmente não
+   aplica e a tela volta ao limite de 1280px — degradação silenciosa e aceitável, porque as
+   colunas ainda cabem nos seus pisos ali, só com a Descrição mais quebrada. */
+.content:has(.screen--wide) { max-width: 1600px; }
+/* Só no desktop: sob 768px a tabela vira cartões empilhados e o padding normal é o certo. */
+@media (min-width: 769px) {
+  .content:has(.screen--wide) { padding-left: 20px; padding-right: 20px; }  /* 32 → 20: +24px */
+  .screen--wide .card { padding-left: 16px; padding-right: 16px; }          /* 24 → 16: +16px */
+}
+
 /* ---------- Content ---------- */
 .content {
   padding: 28px 32px 48px;
@@ -2662,15 +2762,21 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-1);
 }
+/* Duas áreas como .fm-trigger-bar (ver o comentário lá): informação à esquerda, que
+   quebra, e ação à direita, que não. `nowrap` + `flex-start` prendem "Editar métricas" /
+   "Recolher" no topo à direita, no MESMO ponto do "Editar filtros" da faixa de cima e no
+   mesmo ponto entre os dois estados — abrir e fechar não move o botão. */
 .mc-head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 12px;   /* same chip rhythm as .fm-trigger-bar */
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
-/* Collapsed-by-default summary row (chips + "Editar métricas") — center-aligned like
-   .fm-trigger-bar's chip row, not baseline like the expanded caption/checkbox row above. */
-.mc-head.mc-head-compact { align-items: center; }
+/* O estado EXPANDIDO alinha overline/legenda/checkbox pela linha de base, que é o que faz
+   três tipografias diferentes lerem como uma frase só; o recolhido (só chips) centraliza,
+   como a faixa de filtros. A diferença vive aqui dentro, não no pai. */
+.mc-head-info { align-items: baseline; }
+.mc-head.mc-head-compact { align-items: flex-start; }
 /* Mirrors .fm-trigger-bar .fm-tb-label exactly — same longhand, so neither picks up a
    different line-height from a `font:` shorthand reset. */
 .mc-overline {
@@ -3375,14 +3481,57 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
 .cc-hint-ok { color: var(--ok, #1b7f3b); font-weight: 600; }
 .cc-hint-bad { color: var(--err, #b71c1c); font-weight: 600; }
 .cc-add-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
-/* Which SIDRA table a PPM row came from (rebanho 3939 / produção animal 74) — source
-   metadata qualifying the BANCO, so it sits under the banco name, tinted like source
-   info rather than looking like another description line. Wraps instead of truncating. */
-.cc-sidra-tag {
-  display: block; margin-top: 2px;
-  font: 500 10px var(--font-body); letter-spacing: 0.02em; line-height: 1.25;
-  color: var(--embrapa-blue); white-space: normal;
+/* ── Cadastro: busca + agrupamento recolhível ──────────────────────────────────────────
+   Com 31 agrupamentos abertos a tela abria com ~234 linhas, e quem chega aqui quer UM
+   produto. Os cartões passam a nascer recolhidos e a busca vira o caminho principal — daí
+   ela ocupar a primeira linha inteira da barra, e não um canto. */
+.cc-busca-barra { align-items: center; }
+.cc-busca {
+  display: flex; align-items: center; gap: 6px; flex: 1 1 320px; min-width: 220px;
+  padding: 0 10px; border: 1px solid var(--border-default); border-radius: 999px;
+  background: var(--bg-surface); transition: border-color 120ms, box-shadow 120ms;
 }
+.cc-busca:focus-within {
+  border-color: var(--embrapa-green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--embrapa-green) 18%, transparent);
+}
+.cc-busca-icone { color: var(--fg-4); font-size: 15px; line-height: 1; flex-shrink: 0; }
+/* Sem borda/fundo próprios: quem desenha o campo é o `.cc-busca` em volta, senão aparecem
+   duas molduras concêntricas. `appearance:none` some com o X nativo do type=search, que
+   duplicaria o nosso botão de limpar. */
+.cc-busca-input {
+  flex: 1; min-width: 0; border: none; background: none; outline: none;
+  padding: 7px 0; font: inherit; font-size: 12.5px; color: var(--fg-1);
+  appearance: none; -webkit-appearance: none;
+}
+.cc-busca-input::-webkit-search-cancel-button { display: none; }
+.cc-busca-input::placeholder { color: var(--fg-4); }
+.cc-busca-limpar {
+  border: none; background: none; cursor: pointer; flex-shrink: 0;
+  color: var(--fg-3); font-size: 16px; line-height: 1; padding: 0 2px;
+}
+.cc-busca-limpar:hover { color: var(--fg-1); }
+.cc-busca-saldo { white-space: nowrap; }
+/* O NOME INTEIRO é o alvo de clique, não só a setinha — área de toque decente e alvo óbvio.
+   Fica com `flex:1` porque herdou esse papel do <strong> que substituiu: é ele que empurra
+   Renomear/Excluir para a direita do cabeçalho. */
+.cc-group-toggle {
+  display: flex; align-items: center; gap: 7px; flex: 1; min-width: 160px;
+  border: none; background: none; padding: 3px 4px; margin: -3px -4px; border-radius: 6px;
+  cursor: pointer; text-align: left; color: inherit; font: inherit;
+}
+.cc-group-toggle:hover:not(:disabled) { background: var(--bg-surface-2); }
+.cc-group-toggle:disabled { cursor: default; }
+.cc-group-toggle:focus-visible {
+  outline: 2px solid var(--embrapa-green); outline-offset: 1px;
+}
+/* Largura fixa para a seta: sem ela o nome dança 3px para o lado a cada expandir/recolher. */
+.cc-group-chevron {
+  width: 11px; flex-shrink: 0; color: var(--fg-3); font-size: 10px; line-height: 1;
+}
+/* Recolhido o cartão é só o cabeçalho: sem o respiro de baixo ele fica alto e vazio. */
+.cc-group-card { transition: padding 120ms; }
+.cc-group-card:not(:has(.cc-table)) { padding-top: 12px; padding-bottom: 12px; }
 /* Inline "sua descrição" editor in the catalog table — borderless/transparent at rest so it
    reads as text (not a form) until the researcher hovers/focuses it, then it looks editable. */
 .cc-descricao-wrap { display: flex; align-items: center; gap: 3px; }
@@ -3418,6 +3567,10 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
 .cc-descricao-input:disabled { cursor: not-allowed; }
 /* status cells in the catalog table */
 .cc-table th.num, .cc-table td.num { text-align: right; }
+/* `overflow-wrap: anywhere` (posto nas células para a Descrição poder quebrar) descia até
+   dentro do pill e partia "OCULT/O" no meio. Um rótulo de status é uma unidade: se algum dia
+   faltar largura, é melhor ele vazar do que virar duas sílabas. */
+.cc-status { white-space: nowrap; overflow-wrap: normal; }
 /* Fixed, IDENTICAL column widths across every agrupamento's table (one <table> per group
    card) — with the default auto layout, each table sized its own columns from its own
    content, so the same column landed at a different x-position in every card, forcing the
@@ -3429,33 +3582,57 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
    never fight the mobile layout's own `width:100%` reset on td/th — nth-child width rules
    are MORE specific than that reset and would otherwise win even under 768px. */
 @media (min-width: 769px) {
-  .cc-dt-wrap { overflow-x: hidden; overflow-y: auto; }
+  /* Sem `max-height`: o scroll vertical do `.dt-wrap` (640px) só disparava nos grupos
+     maiores e a barra roubava 15px DELES — 7 dos 31 cartões mediam 1074px contra 1089px
+     dos outros. Ou seja, a barra desalinhava exatamente a grade que o `table-layout:
+     fixed` abaixo existe para igualar, e apertava "Ingestã/o" e o pill "OCUL/TO" só nos
+     cartões grandes. A página inteira já rola; um scroll aninhado dentro dela não pagava
+     esse preço. `overflow: hidden` fica para preservar o border-radius. */
+  .cc-dt-wrap { overflow: hidden; max-height: none; }
   .cc-table { table-layout: fixed; width: 100%; }
-  .cc-table thead th, .cc-table tbody td { white-space: normal; overflow-wrap: anywhere; vertical-align: top; }
-  /* Percentages favor the columns that WRAP (plain text/numbers — an awkward mid-number
-     break looks broken) over the <select> columns (Agrupamento/Ingestão/Exibição), which
-     never wrap their own displayed value — a native <select> just clips internally when
-     narrow, ordinary/expected <select> behavior, not the truncation this fix avoids.
-     At the narrowest desktop width (~1280px) the 11 headers do not all fit on one line;
-     "Descrição (fonte)" is the one allowed to wrap because it breaks at its SPACE. Giving
-     that percent to it instead makes "Agrupamento" — a single word — break mid-word
-     ("Agrupame/nto"), which reads as broken. A slightly taller header row does not. */
+  .cc-table thead th, .cc-table tbody td {
+    /* `overflow-wrap: anywhere` só na coluna de PROSA (4). Aplicado a todas as células, era
+       ele que partia "251.7/77", "COMTRAD/E" e "Ex/ib/iç/ão" no meio quando faltava largura
+       — uma quebra dentro do número/palavra lê como defeito, e nas outras colunas nunca há
+       palavra longa demais para justificá-la. Fora dali, `normal`: quebra em espaço e
+       hífen, e no pior caso vaza alguns pixels em vez de partir a palavra. */
+    white-space: normal; overflow-wrap: normal; vertical-align: top;
+    /* 20px de padding horizontal × 11 colunas comiam 220px — um quinto da tabela. 16px
+       devolvem 44px ao conteúdo sem apertar a leitura. Escopo `.cc-table`: a `.dt-table`
+       compartilhada (ViewDados) fica intacta. */
+    padding-left: 8px; padding-right: 8px;
+  }
+  /* Each percentage is a MEASURED need, not a guess: the widest string the column must
+     render on one line (longest word for the columns that wrap; the widest SELECTED value,
+     plus ~30px for the arrow, for the <select> columns), plus 16px of padding. Measured on
+     the real 234-row catalog at 1440px, they come to 1024px against 1089px available. Most
+     of that slack was freed by "Tabela" when it went from the table's NAME to its CODE
+     (105px → 62px); it goes to "Descrição (fonte)", the only column whose content is
+     open-ended prose, with small margins to Banco/Código/Período.
+     Two traps this replaced, both of which made an earlier allocation "add up" and still
+     break on screen: canvas measureText ignores letter-spacing (understating every floor),
+     and a <select> was being sized to its longest MENU option rather than its selected
+     value. Re-measure with a Range over the text node if these ever need revisiting.
+     Below ~1089px of table width the columns squeeze proportionally again — that is the
+     pre-existing behavior on narrow desktops, deliberately kept: one horizontal scrollbar
+     PER agrupamento card would break the shared column grid these widths exist to create. */
   /* ⚠ Estas larguras são posicionais: inserir uma coluna desloca TODAS as seguintes, e a
      largura de cada uma passa a valer para a vizinha. Foi o que aconteceu ao acrescentar
      "Tabela" — "Código" herdou os 16% de "Descrição" e "Exibição" caiu para 42px, com o
      cabeçalho quebrando em "Ex/ib/iç/ão". Ao mexer na tabela, reveja o bloco inteiro; a
      soma tem de dar 100%. */
-  .cc-table thead th:nth-child(1), .cc-table tbody td:nth-child(1) { width: 8%; }  /* Banco */
-  .cc-table thead th:nth-child(2), .cc-table tbody td:nth-child(2) { width: 9%; }  /* Tabela */
-  .cc-table thead th:nth-child(3), .cc-table tbody td:nth-child(3) { width: 8%; }  /* Código */
-  .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { width: 15%; } /* Descrição (fonte) */
-  .cc-table thead th:nth-child(5), .cc-table tbody td:nth-child(5) { width: 7%; }  /* Linhas */
-  .cc-table thead th:nth-child(6), .cc-table tbody td:nth-child(6) { width: 9%; }  /* Período */
-  .cc-table thead th:nth-child(7), .cc-table tbody td:nth-child(7) { width: 10%; } /* Status (derivado) */
-  .cc-table thead th:nth-child(8), .cc-table tbody td:nth-child(8) { width: 11%; } /* Agrupamento */
-  .cc-table thead th:nth-child(9), .cc-table tbody td:nth-child(9) { width: 10%; } /* Ingestão */
-  .cc-table thead th:nth-child(10), .cc-table tbody td:nth-child(10) { width: 10%; } /* Exibição */
-  .cc-table thead th:nth-child(11), .cc-table tbody td:nth-child(11) { width: 3%; } /* Ações */
+  .cc-table thead th:nth-child(1), .cc-table tbody td:nth-child(1) { width: 10.47%; }           /* Banco · 114px · a frase "UN COMTRADE" inteira, com respiro */
+  .cc-table thead th:nth-child(2), .cc-table tbody td:nth-child(2) { width: 5.69%; }            /* Tabela · 62px · o CÓDIGO da tabela (3939), não o nome por extenso */
+  .cc-table thead th:nth-child(3), .cc-table tbody td:nth-child(3) { width: 7.16%; }            /* Código · 78px · NCM de 8 dígitos, com respiro */
+  .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { width: 18.45%; }           /* Descrição (fonte) · 201px · piso 151 + quase toda a folga — é a única coluna de prosa */
+  .cc-table thead th:nth-child(5), .cc-table tbody td:nth-child(5) { width: 6.34%; }            /* Linhas · 69px · "251.777" */
+  .cc-table thead th:nth-child(6), .cc-table tbody td:nth-child(6) { width: 7.71%; }            /* Período · 84px · "1974–2024" sem quebrar no travessão */
+  .cc-table thead th:nth-child(7), .cc-table tbody td:nth-child(7) { width: 6.89%; }            /* Status · 75px · o pill "Oculto" INTEIRO, com o padding dele */
+  .cc-table thead th:nth-child(8), .cc-table tbody td:nth-child(8) { width: 18.46%; }           /* Agrupamento · 201px · "Casulos do bicho-da-seda" selecionado + a seta */
+  .cc-table thead th:nth-child(9), .cc-table tbody td:nth-child(9) { width: 7.07%; }            /* Ingestão · 77px · o rótulo, mais largo que "Pausada" */
+  .cc-table thead th:nth-child(10), .cc-table tbody td:nth-child(10) { width: 7.90%; }          /* Exibição · 86px · "Visível" + a seta */
+  .cc-table thead th:nth-child(11), .cc-table tbody td:nth-child(11) { width: 3.86%; }          /* Ações · 42px · o botão da lixeira com o padding dele */
+  .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { overflow-wrap: anywhere; }
   .cc-table tbody td .cc-group-select, .cc-table tbody td select { width: 100%; max-width: 100%; }
 }
 /* Collapsible reference legend for the Cadastro table (what each column means, what each
@@ -3842,6 +4019,7 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
     color: var(--fg-1); font: 500 14px var(--font-body); text-align: left; cursor: pointer;
   }
   .util-menu-item:hover { background: var(--bg-surface-2); }
+  .util-menu-sep { display: block; height: 1px; margin: 4px 8px; background: var(--border-subtle); }
   .util-menu-item svg { color: var(--embrapa-green); stroke: currentColor; flex-shrink: 0; }
 
   /* The mode toggle, now at the top of the drawer (light surface → restyle off the
