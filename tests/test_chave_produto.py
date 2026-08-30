@@ -172,3 +172,33 @@ def test_o_ciclo_de_vida_grava_a_tabela_que_o_catalogo_resolveu(monkeypatch) -> 
     )
     params = {p.name: p.value for p in bq.query.call_args.kwargs["job_config"].query_parameters}
     assert params["sidra_tabela"] == "291", "o evento não levou a tabela resolvida"
+
+
+# ── a documentação do grão ────────────────────────────────────────────────────
+_DOCS_DE_GRAO = [
+    "dbt/models/core/dim_produto_catalog.sql",
+    "dbt/models/core/dim_produto_visibility.sql",
+    "dbt/models/core/dim_code_industrialization_scd2.sql",
+    "dbt/models/core/_core.yml",
+    "PLANS/curadoria_catalogo.md",
+]
+
+
+@pytest.mark.parametrize("arquivo", _DOCS_DE_GRAO)
+def test_nenhum_doc_descreve_a_chave_sem_a_tabela(arquivo: str) -> None:
+    """Trocar a chave e deixar a prosa para trás faz o doc mentir sobre o modelo — e um
+    leitor concluiria que dois produtos com o mesmo código colidem. Aconteceu: as três dims
+    e a spec da Curadoria seguiram declarando `(codigo_produto, banco)` e `(source, code)`
+    horas depois da mudança. Só o texto imediatamente ao redor da chave é verificável
+    mecanicamente; é pouco, e é exatamente o que apodreceu."""
+    texto = (_RAIZ / arquivo).read_text(encoding="utf-8")
+    for padrao in (
+        # Sem lookahead: a forma CORRETA é `(codigo_produto, banco, sidra_tabela)`, que não
+        # contém `(codigo_produto, banco)` — o parêntese de fechar é o que separa as duas.
+        # A versão anterior punha um `(?!,)` DEPOIS do parêntese e não pegava a injeção.
+        r"per \(codigo_produto, banco\)",
+        r"per \(source, code\)",
+        r"key `\(codigo_produto, banco\)`",
+        r"row per \(source, code, version\)",
+    ):
+        assert not re.search(padrao, texto), f"{arquivo}: descreve a chave sem a tabela — {padrao}"

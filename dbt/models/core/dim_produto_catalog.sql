@@ -9,7 +9,7 @@
 -- source code (`codigo_produto`; no prefixes). Written append-only by the
 -- dashboard's admin editor (the Python data-access layer, never dbt) to
 -- research_inputs.produto_catalog_log; this view derives the CURRENT catalog = the
--- latest row per (codigo_produto, banco), keeping only active rows (a row with
+-- latest row per (codigo_produto, banco, sidra_tabela), keeping only active rows (a row with
 -- active=false is a tombstone — the entry has LEFT the catalog, so its Gold data
 -- becomes an orphan, handled non-destructively downstream).
 --
@@ -25,7 +25,8 @@
 -- the first write / the cutover backfill; a fresh project must backfill it (fail loud
 -- if absent — never silently fall back to the retired seed).
 --
--- ⚠ Grain: one row per (codigo_produto, banco). Because every code is exact (no
+-- ⚠ Grain: one row per (codigo_produto, banco, sidra_tabela) — a TABELA entra na chave
+-- porque PEVS e PPM unem duas tabelas SIDRA sob um token de banco só. Because every code is exact (no
 -- prefixes), a Gold code resolves to AT MOST one commodity, so the cross-source join
 -- cannot fan out — guarded at build time by the unique_combination_of_columns(source,
 -- code) test on gold_produto_agrupamento.
@@ -79,6 +80,8 @@ select
     agrupamento     as agrupamento_nome,
     banco           as source,
     codigo_produto,
+    -- Parte da identidade: (banco, TABELA, código).
+    sidra_tabela,
     descricao_produto,
     -- The lifecycle, as the two EFFECTIVE coded axes (legacy prose already translated by
     -- the catalog_lifecycle macros). ciclo_de_vida is kept for history/audit only.

@@ -63,7 +63,7 @@ final cleanup phase. The reorg is otherwise **code-only, zero data migration**.
 
 ## commodity_crosswalk → editable catalog
 
-- Target: `research_inputs.produto_catalog`, key `(codigo_produto, banco)`, columns prioritizing
+- Target: `research_inputs.produto_catalog`, key `(codigo_produto, banco, sidra_tabela)` — a tabela SIDRA entra na chave desde 2026-08-29 (v1.39.0), porque PEVS e PPM unem duas tabelas sob um token de banco só; ver `docs/migration_history.md`, columns prioritizing
   Cadastro: `codigo_produto, banco, agrupamento, descricao_produto, industrializacao,
   ciclo_de_vida` + stored `agrupamento_id` slug + explicit **`code_prefix`** (kept — coarse prefixes
   are deliberate auto-absorb, NOT lossy). Edit grain for the in/out flag = **per Agrupamento**
