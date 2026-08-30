@@ -223,35 +223,19 @@ describe('applyFilters — quality flags', () => {
   });
 });
 
-// ── _shares provenance counter (valueShareForRange via VALUE_PRESETS) ─────────
-describe('applyFilters — _shares provenance (value/flag/year/state)', () => {
+// ── _shares provenance counter ───────────────────────────────────────────────
+// `valueShare` saiu daqui na v1.45.0 junto com a dimensão inteira: nada escrevia
+// valueMin/valueMax, então os quatro testes que existiam aqui afirmavam que uma constante
+// valia 1.00 — guardavam código morto, não comportamento.
+describe('applyFilters — _shares provenance (flag/year/state)', () => {
   beforeEach(() => installGlobals(makeSnapshot()));
 
-  it('no value filter → valueShare 1.00', () => {
+  it('não publica mais um valueShare — a dimensão não existe', () => {
     const out = window.applyFilters({ basket: null }, 'ibge_pevs');
-    expect(out._shares.valueShare).toBe(1.0);
-  });
-
-  it('min:0/max:null is treated as "no threshold" → 1.00', () => {
-    const out = window.applyFilters({ basket: null, valueMin: 0, valueMax: null }, 'ibge_pevs');
-    expect(out._shares.valueShare).toBe(1.0);
-  });
-
-  it('a known VALUE_PRESETS threshold resolves to that preset rowShare', () => {
-    // The 100k preset has rowShare 1.00 (HONESTY #7) — exercises the preset.find branch.
-    const out = window.applyFilters(
-      { basket: null, valueMin: 100_000, valueMax: null },
-      'ibge_pevs',
+    expect(out._shares).not.toHaveProperty('valueShare');
+    expect(Object.keys(out._shares).sort()).toEqual(
+      ['flagShare', 'productShare', 'stateShare', 'yearShare'],
     );
-    expect(out._shares.valueShare).toBe(1.0);
-  });
-
-  it('a custom (non-preset) range falls back to 1.00 (no fabricated share)', () => {
-    const out = window.applyFilters(
-      { basket: null, valueMin: 12_345, valueMax: 99_999 },
-      'ibge_pevs',
-    );
-    expect(out._shares.valueShare).toBe(1.0);
   });
 
   it('state + year shares reflect the active selection sizes; flagShare sums the filtered flags', () => {

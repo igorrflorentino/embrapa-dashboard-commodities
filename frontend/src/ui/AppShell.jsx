@@ -307,7 +307,6 @@ function AppShell({
   // not apply, or is not known yet, says nothing.
   if (summary?.geoApplies && summary?.geo) scopeBits.push(`Território: ${summary.geo}`);
   if (summary?.flags && summary.flags.length && summary.quality) scopeBits.push(`Qualidade: ${summary.quality}`);
-  if ((summary?.valueMin != null || summary?.valueMax != null) && summary.valueRange) scopeBits.push(`Faixa de valor: ${summary.valueRange}`);
   const scopeStr = scopeBits.length ? `${scopeBits.join('. ')}. ` : '';
 
   // ── Reference detail levels (ABNT NBR 6023:2025) ──────────────────────────

@@ -134,12 +134,6 @@ function readStateFromURL() {
     inters: window.urlDecodeArr(q, 'it'),
     imediatas: window.urlDecodeArr(q, 'im'),
     munis: window.urlDecodeArr(q, 'mn'),
-    // Value-range is INTENTIONALLY non-backed (no row-level filter path): the
-    // FilterMenu forces it to null on open, so a stale/hand-edited URL carrying
-    // vmn/vmx must NOT restore a phantom range (which the ABNT citation would then
-    // assert as a real "Faixa de valor"). Force null here, mirroring the menu.
-    valueMin: null,
-    valueMax: null,
     startDate: q.get('sd') || null,
     endDate: q.get('ed') || null,
     // Server-side flow filter (export/import); absent → all flows.
@@ -293,7 +287,6 @@ function withChips(summary, database, conventions) {
     ...s,
     products: window.chipFmt.products(basket ? basket.length : null, total, firstName),
     period: window.chipFmt.period(yearStart, yearEnd),
-    valueRange: window.chipFmt.valueRange(s.valueMin, s.valueMax, sym),
     geo: geoChip,
     // The very `hasGeo` that produced `geo` above, carried alongside it. The ABNT
     // citation quotes the chip, so it must know when the chip is the "Não se aplica"

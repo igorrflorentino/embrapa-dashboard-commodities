@@ -140,6 +140,41 @@ def _active_member_rows(bq: bigquery.Client, catalog_fqn: str, group_id: str) ->
         return list(job.result())
 
 
+def _validate_group_name(group_name: str) -> None:
+    """O nome do agrupamento: presente e dentro do teto.
+
+    Análogo — e deliberadamente SEPARADO — de ``curation._validate_agrupamento``. Aquele
+    guarda os campos de uma ENTRADA do catálogo (agrupamento + agrupamento_id + descrição);
+    este guarda a identidade do REGISTRO de grupos. Compartilham só o teto (``MAX_NOTE_LEN``,
+    já o mesmo módulo de constantes); unificar as duas funções amarraria dois portões que
+    não têm a mesma regra nem a mesma mensagem."""
+    if not group_name:
+        raise ValueError("O nome do agrupamento é obrigatório.")
+    if len(group_name) > MAX_NOTE_LEN:
+        raise ValueError(f"O nome do agrupamento excede {MAX_NOTE_LEN} caracteres.")
+
+
+def _validate_group_uniqueness(
+    group_id: str, group_name: str, current: Mapping[str, str], *, renaming: bool
+) -> None:
+    """As três regras de identidade contra o registro ativo, num lugar só.
+
+    * RENAME de um id que não existe — nada a renomear.
+    * CREATE de um id que já existe — duplicata.
+    * RENAME que colidiria com o NOME de outro grupo ativo. O create já bloqueia isso de
+      graça (``group_id == slug(name)``), mas o rename mantém o id antigo; sem esta terceira
+      regra dois grupos ativos poderiam dividir um nome — e a tela (que rotula grupos pelo
+      nome) e ``catalog_worklist.by_agrupamento`` (indexado por nome) os FUNDIRIAM num só,
+      em silêncio."""
+    if renaming and group_id not in current:
+        raise ValueError(f"O agrupamento {group_id!r} não existe (nada a renomear).")
+    if not renaming and group_id in current:
+        raise ValueError(f"O agrupamento {group_name!r} já existe.")
+    chave = group_name.strip().lower()
+    if any(gid != group_id and gname.strip().lower() == chave for gid, gname in current.items()):
+        raise ValueError(f"Já existe um agrupamento chamado {group_name!r}.")
+
+
 def record_group(
     group_name: str,
     headers: Mapping[str, str],
@@ -157,10 +192,7 @@ def record_group(
     change_id idempotency. Raises ValueError (→ HTTP 400) on a bad/duplicate name."""
     cfg = settings or get_settings()
     group_name = (group_name or "").strip()
-    if not group_name:
-        raise ValueError("O nome do agrupamento é obrigatório.")
-    if len(group_name) > MAX_NOTE_LEN:
-        raise ValueError(f"O nome do agrupamento excede {MAX_NOTE_LEN} caracteres.")
+    _validate_group_name(group_name)
 
     edited_by = author_email_from_headers(
         headers, dev_fallback=cfg.dev_author, audience=cfg.iap_audience
@@ -208,19 +240,7 @@ def record_group(
             return stored
         return _group_row(group_id, group_name, True, edited_by, change_id, deduped=True)
 
-    if renaming and group_id not in current:
-        raise ValueError(f"O agrupamento {group_id!r} não existe (nada a renomear).")
-    if not renaming and group_id in current:
-        raise ValueError(f"O agrupamento {group_name!r} já existe.")
-    # Reject a RENAME that would collide with ANOTHER active group's name. The create path
-    # already blocks a duplicate (group_id == slug(name)), but a rename keeps the old id, so
-    # without this two active groups could share a name — which the UI (labels groups by name)
-    # and ``catalog_worklist.by_agrupamento`` (keyed by name) would silently MERGE into one.
-    _name_key = group_name.strip().lower()
-    if any(
-        gid != group_id and gname.strip().lower() == _name_key for gid, gname in current.items()
-    ):
-        raise ValueError(f"Já existe um agrupamento chamado {group_name!r}.")
+    _validate_group_uniqueness(group_id, group_name, current, renaming=renaming)
 
     _insert_group_row(bq, table_fqn, group_id, group_name, True, edited_by, change_id)
     logger.info("Group: %s -> %r by %s", group_id, group_name, edited_by)

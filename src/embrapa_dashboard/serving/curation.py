@@ -620,6 +620,102 @@ def _check_code_status(
         )
 
 
+def _validate_agrupamento(
+    agrupamento: str | None, agrupamento_id: str | None, descricao_produto: str | None
+) -> None:
+    """The researcher-supplied text fields: present where required, and within caps.
+
+    ``agrupamento`` names the commodity (``agrupamento_nome``) AND seeds ``agrupamento_id``;
+    both are NOT NULL downstream (``dim_produto_catalog`` → ``gold_produto_agrupamento``).
+    A blank one yields NULLs that fail the nightly prod ``dbt build`` not_null tests — so
+    fail loud HERE (a 400 the researcher can fix), never at build time.
+
+    ``agrupamento_id`` is user-writable (a client may send it directly, winning over the
+    ``_slug`` default), so it is capped too — a slug is short, MAX_STAGE_LEN is headroom."""
+    if not agrupamento_id or not agrupamento:
+        raise ValueError("agrupamento é obrigatório (nomeia o produto e gera o agrupamento_id).")
+    if len(agrupamento) > MAX_NOTE_LEN:
+        raise ValueError(f"agrupamento excede {MAX_NOTE_LEN} caracteres.")
+    if len(agrupamento_id) > MAX_STAGE_LEN:
+        raise ValueError(f"agrupamento_id excede {MAX_STAGE_LEN} caracteres.")
+    if descricao_produto is not None and len(descricao_produto) > MAX_NOTE_LEN:
+        raise ValueError(f"descricao_produto excede {MAX_NOTE_LEN} caracteres.")
+
+
+def _validate_group_registered(
+    agrupamento: str | None, agrupamento_id: str | None, grupos: set[str]
+) -> None:
+    """E o agrupamento tem de EXISTIR no registro de grupos.
+
+    Sem esta guarda, uma escrita pode apontar para um agrupamento_id que nenhum grupo
+    respalda — e nada quebra: o catálogo aceita, a Gold materializa o id, e o produto some
+    numa seção "Sem agrupamento registrado" que só um humano olhando a tela nota. Foi
+    exatamente o que aconteceu em 2026-08-29: uma reorganização escreveu 37 entradas
+    apontando para `lenha` e `carvao_vegetal`, grupos que nunca foram criados.
+
+    A tela já sabia dizer "registrado"; o que faltava era isto recusar antes. O ``grupos``
+    vazio (registro ainda não materializado) não bloqueia — não há o que conferir contra."""
+    if grupos and agrupamento_id not in grupos:
+        raise ValueError(
+            f"O agrupamento {agrupamento!r} (id {agrupamento_id!r}) não existe no registro "
+            "de agrupamentos. Crie-o primeiro — um produto apontando para um agrupamento "
+            "inexistente fica fora de toda análise cruzada sem nenhum erro visível."
+        )
+
+
+def _preserve_omitted_fields(
+    bq: bigquery.Client,
+    table_fqn: str,
+    codigo_produto: str,
+    banco: str,
+    *,
+    is_active: bool,
+    sidra_tabela: str | None,
+    descricao_produto: str | None,
+    ingestao: str | None,
+    visibilidade: str | None,
+) -> tuple[str | None, str | None, str, str]:
+    """Fill in every field the caller OMITTED, reading the stored entry when there is one.
+
+    This is one policy, not four coincidences — the writer's docstring states it: every
+    field a researcher OWNS is preserve-on-omit. The write is an append-only whole-row
+    overwrite, so a caller that sends only the field it means to change would otherwise
+    NULL the rest. ``None`` means "leave it alone"; only an explicit value (including ``''``
+    for the note) changes it. That makes a partial write from any client safe by
+    construction, and it is why the four live together instead of scattered along the flow.
+
+    Returns ``(sidra_tabela, descricao_produto, ingestao, visibilidade)``. Validation of the
+    resulting tag stays with the CALLER: it is a gate, and a gate belongs in the main flow
+    where it can be read.
+
+    ``sidra_tabela`` preservation applies to every multi-table banco, not to a named one.
+    It was once closed over ``banco == "ppm"`` and pevs escaped: an update that did not
+    re-send the tag DROPPED it, moving the entry to the ``sql.SEM_TABELA`` sentinel — a
+    produto that vanishes from both halves. That is the "conditional naming ONE banco"
+    pattern: it encodes a census of the world, and the world grew when silviculture
+    arrived."""
+    if banco in _BANCOS_MULTI_TABELA and sidra_tabela is None and is_active:
+        sidra_tabela = _current_sidra_tabela(bq, table_fqn, codigo_produto, banco)
+    if descricao_produto is None and is_active:
+        descricao_produto = _current_descricao(bq, table_fqn, codigo_produto, banco)
+    # On an UPDATE, keeping what is stored (an unrelated edit must never un-hide a produto
+    # or resume a paused one); on a NEW entry, the safe defaults — ingest it (that is why it
+    # was registered) and show it (hiding is an explicit act).
+    if ingestao is None or visibilidade is None:
+        stored_ingestao, stored_visibilidade = (
+            _current_lifecycle(bq, table_fqn, codigo_produto, banco) if is_active else (None, None)
+        )
+        # `is None`, não `or`: um `''` seria falsy e cairia no default. Hoje o chamador
+        # normaliza `''` para None antes de chegar aqui, mas depender disso amarraria esta
+        # função a uma linha quarenta acima — e "omitido" é o que None significa, não o que
+        # falsy significa.
+        if ingestao is None:
+            ingestao = stored_ingestao or INGESTAO_ATIVA
+        if visibilidade is None:
+            visibilidade = stored_visibilidade or VISIBILIDADE_VISIVEL
+    return sidra_tabela, descricao_produto, ingestao, visibilidade
+
+
 def record_produto_catalog(
     codigo_produto: str,
     banco: str,
@@ -681,42 +777,14 @@ def record_produto_catalog(
     _validate_sidra_tabela(banco, sidra_tabela, cfg, require_for_ppm=False)
     agrupamento = agrupamento.strip() if agrupamento else agrupamento
     agrupamento_id = (agrupamento_id or _slug(agrupamento)).strip() or None
-    # agrupamento names the commodity (agrupamento_nome) AND seeds agrupamento_id; both
-    # are NOT NULL downstream (dim_produto_catalog → gold_produto_agrupamento). A
-    # blank one yields NULLs that fail the nightly prod ``dbt build`` not_null tests —
-    # so fail loud HERE (a 400 the researcher can fix), never at build time.
-    if not agrupamento_id or not agrupamento:
-        raise ValueError("agrupamento é obrigatório (nomeia o produto e gera o agrupamento_id).")
-    if len(agrupamento) > MAX_NOTE_LEN:
-        raise ValueError(f"agrupamento excede {MAX_NOTE_LEN} caracteres.")
-    # agrupamento_id is user-writable (a client may send it directly, winning over the _slug
-    # default), so cap it too — a slug is short, MAX_STAGE_LEN is generous headroom.
-    if len(agrupamento_id) > MAX_STAGE_LEN:
-        raise ValueError(f"agrupamento_id excede {MAX_STAGE_LEN} caracteres.")
-    if descricao_produto is not None and len(descricao_produto) > MAX_NOTE_LEN:
-        raise ValueError(f"descricao_produto excede {MAX_NOTE_LEN} caracteres.")
+    _validate_agrupamento(agrupamento, agrupamento_id, descricao_produto)
 
     edited_by = author_email_from_headers(
         headers, dev_fallback=cfg.dev_author, audience=cfg.iap_audience
     )
     change_id, supplied = _resolve_change_id(change_id)
     bq = client or _bq_client(cfg)
-    # E o agrupamento tem de EXISTIR no registro de grupos.
-    #
-    # Sem esta guarda, uma escrita pode apontar para um agrupamento_id que nenhum grupo
-    # respalda — e nada quebra: o catálogo aceita, a Gold materializa o id, e o produto
-    # some numa seção "Sem agrupamento registrado" que só um humano olhando a tela nota.
-    # Foi exatamente o que aconteceu em 2026-08-29: uma reorganização escreveu 37 entradas
-    # apontando para `lenha` e `carvao_vegetal`, grupos que nunca foram criados.
-    #
-    # A tela já sabia dizer "registrado"; o que faltava era isto recusar antes.
-    grupos = _registered_group_ids(cfg, bq)
-    if grupos and agrupamento_id not in grupos:
-        raise ValueError(
-            f"O agrupamento {agrupamento!r} (id {agrupamento_id!r}) não existe no registro "
-            "de agrupamentos. Crie-o primeiro — um produto apontando para um agrupamento "
-            "inexistente fica fora de toda análise cruzada sem nenhum erro visível."
-        )
+    _validate_group_registered(agrupamento, agrupamento_id, _registered_group_ids(cfg, bq))
     table_fqn = _catalog_log_ref(cfg)
     ensure_produto_catalog_log_table(cfg, bq)
 
@@ -725,38 +793,22 @@ def record_produto_catalog(
     # Validate the banco and note whether the code already has Gold data (a not-yet-
     # ingested code is accepted as *pendente de ingestão*). Read state AFTER ensure.
     _check_code_status(bq, table_fqn, codigo_produto, banco, is_active=is_active)
-    if banco in _BANCOS_MULTI_TABELA:
-        # Vale para TODO banco multi-tabela, não só o ppm. Estava fechado em `banco == "ppm"`
-        # e o pevs escapava das duas metades desta regra:
-        #   • PRESERVAR a tag num update que não a reenvia (os edits inline de
-        #     agrupamento/ciclo na tabela do admin). Sem isso a escrita append-only DERRUBA
-        #     a tag e move a entrada para a sentinela — um produto que some das duas metades.
-        #   • EXIGIR a tag numa entrada nova: sem ela a entrada não pertence a metade
-        #     nenhuma. Uma sonda HTTP registrou `9999999` na sentinela para provar.
-        # É o padrão "condicional que nomeia UM banco": ela codifica um censo do mundo, e o
-        # mundo cresceu quando a silvicultura entrou.
-        if sidra_tabela is None and is_active:
-            sidra_tabela = _current_sidra_tabela(bq, table_fqn, codigo_produto, banco)
-        _validate_sidra_tabela(banco, sidra_tabela, cfg, require_for_ppm=not is_active)
-
-    # PRESERVE the researcher's own annotation on an update that doesn't re-send it —
-    # same rule as sidra_tabela above. `None` = omitted (keep it); `''` = an explicit
-    # clear (write it through), which is how the ✎ field empties a note.
-    if descricao_produto is None and is_active:
-        descricao_produto = _current_descricao(bq, table_fqn, codigo_produto, banco)
-
-    # PRESERVE an axis the caller didn't send. On an UPDATE that means keeping what is
-    # stored (an unrelated edit must never un-hide a produto or resume a paused one); on a
-    # NEW entry it means the safe defaults — ingest it (that is why it was registered) and
-    # show it (hiding is an explicit act).
-    if ingestao is None or visibilidade is None:
-        stored_ingestao, stored_visibilidade = (
-            _current_lifecycle(bq, table_fqn, codigo_produto, banco) if is_active else (None, None)
-        )
-        if ingestao is None:
-            ingestao = stored_ingestao or INGESTAO_ATIVA
-        if visibilidade is None:
-            visibilidade = stored_visibilidade or VISIBILIDADE_VISIVEL
+    sidra_tabela, descricao_produto, ingestao, visibilidade = _preserve_omitted_fields(
+        bq,
+        table_fqn,
+        codigo_produto,
+        banco,
+        is_active=is_active,
+        sidra_tabela=sidra_tabela,
+        descricao_produto=descricao_produto,
+        ingestao=ingestao,
+        visibilidade=visibilidade,
+    )
+    # O portão fica AQUI, no fluxo principal, e não dentro do preservador: exigir a tag numa
+    # entrada nova é uma recusa, e uma recusa tem de ser legível onde a escrita acontece.
+    # Roda para todo banco — num de tabela única `_validate_sidra_tabela` só recusa uma tag
+    # indevida, que a checagem antecipada lá em cima já teria pego.
+    _validate_sidra_tabela(banco, sidra_tabela, cfg, require_for_ppm=not is_active)
 
     if supplied and _change_id_seen(bq, table_fqn, change_id):
         logger.info(

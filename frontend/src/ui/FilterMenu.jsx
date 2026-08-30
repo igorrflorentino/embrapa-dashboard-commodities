@@ -705,10 +705,13 @@ function FilterMenu({ open = false, banco = 'ibge_pevs', value, onClose, onApply
   const [startDate,  setStartDate]  = useState(`${yearStart}-01`);
   const [endDate,    setEndDate]    = useState(`${yearEnd}-12`);
 
-  // (The per-row value-range filter was removed: it has no backend filter path, so its
-  // state/chip/normalization was vestigial plumbing that misled the next reader into
-  // thinking "Faixa de valor" was activatable — N1. VALUE_PRESETS/valueShareForRange
-  // stay in filtersSchema/dataFilters only where the "Linhas" counter still reads them.)
+  // (O filtro por faixa de valor NÃO existe: a fonte tem a coluna, mas não há caminho de
+  // filtro por trás dela. O controle saiu daqui primeiro; o resto do encanamento —
+  // valueMin/valueMax no estado, o chip `valueRange`, VALUE_PRESETS e valueShareForRange —
+  // saiu na v1.45.0, quando a auditoria mostrou que era um laço fechado: nada escrevia os
+  // campos, o contador sempre lia 1.00 deles, e só a citação ABNT ainda os declararia.
+  // A dimensão segue DOCUMENTADA em filtersSchema, com `backed: false`, que é onde dizer
+  // "a fonte tem, o dashboard não filtra" é honesto em vez de enganoso.)
 
   // Fluxo (export/import) — a SERVER-SIDE filter: the trade snapshot is pre-aggregated
   // over flow, so picking a direction re-fetches (the data layer's setFlow bridge).

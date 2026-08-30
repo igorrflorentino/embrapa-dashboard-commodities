@@ -38,14 +38,6 @@ window.chipFmt = {
     return `${startYear}\u2013${endYear}`;
   },
 
-  // Value range → chip. sym is the active currency symbol.
-  valueRange(min, max, sym = 'R$') {
-    const f = (v) => window.fmtCompactValue(v, sym);
-    if (min == null && max == null) return 'Sem limite';
-    if (min != null && max != null) return `${f(min)} \u2013 ${f(max)}`;
-    if (min != null)                return `\u2265 ${f(min)}`;
-    return `\u2264 ${f(max)}`;
-  },
 
   // Quality flags → chip. count null = no filter = all; labelOf maps id→label.
   quality(ids, total, labelOf) {
