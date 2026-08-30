@@ -3706,7 +3706,12 @@ def test_purge_plan_requires_descontinuado_and_builds_scoped_deletes(monkeypatch
     assert plan["backup_ok"] is True
     # The DELETE matches the EXACT code (equality, no prefix LIKE).
     assert any("gold_comex_flows" in s and "= '20079926'" in s for s in plan["statements"])
-    assert all(s.strip().startswith("DELETE FROM") for s in plan["statements"])
+    # Toda linha executável é um DELETE; a primeira é um comentário SQL de aviso — o plano
+    # é lido por um humano antes de rodar, e a ressalva (o DELETE casa por CÓDIGO, não pela
+    # chave inteira) tem de estar onde ele lê, não só no docstring.
+    executaveis = [s for s in plan["statements"] if not s.strip().startswith("--")]
+    assert executaveis and all(s.strip().startswith("DELETE FROM") for s in executaveis)
+    assert any("não pela chave" in s for s in plan["statements"]), "o plano perdeu o aviso"
 
 
 def test_purge_plan_rejects_injection_in_code():

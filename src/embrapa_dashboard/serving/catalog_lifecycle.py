@@ -310,7 +310,15 @@ def purge_plan(banco: str, code: str, settings: Settings | None = None) -> dict:
 
     ``code`` is the codigo_produto — the orphan worklist identity AND the exact Gold
     code (commodities are registered by exact code now; no prefixes), so the DELETE is a
-    plain equality that matches exactly what orphan detection flagged — never over-purging."""
+    plain equality that matches exactly what orphan detection flagged.
+
+    ⚠ O DELETE casa por CÓDIGO, não pela chave inteira. Desde v1.39.0 a identidade de um
+    produto é (banco, tabela SIDRA, código), e o Gold destes bancos carrega um
+    discriminador semântico (`measure_kind` / `origem`), não o id da tabela — então um
+    código presente nas DUAS metades de um banco multi-tabela seria purgado por inteiro,
+    incluindo a metade que NÃO foi marcada como órfã. Não há caso hoje (`embrapa doctor` →
+    `shared-code` vigia), e o plano é impresso para revisão humana antes de qualquer
+    execução — mas quem revisar precisa saber disso, então o aviso vai no plano."""
     cfg = settings or get_settings()
     banco = (banco or "").strip()
     code = (code or "").strip()
@@ -327,9 +335,14 @@ def purge_plan(banco: str, code: str, settings: Settings | None = None) -> dict:
             "(only orphans that were detected + marked may be purged)."
         )
     _refuse_if_re_added(cfg, banco, code)
+    # O aviso vai NO PLANO, não só no docstring: quem executa lê isto, não o código.
     statements = [
-        f"DELETE FROM `{sqlbuild.table_ref(cfg, dataset_attr, table)}` WHERE {col} = '{code}';"
-        for dataset_attr, table, col in _PURGE_TARGETS.get(banco, [])
+        "-- ⚠ casa por CÓDIGO, não pela chave (banco, tabela SIDRA, código). Se este código "
+        "existir nas DUAS tabelas do banco, o DELETE leva as duas metades.",
+        *(
+            f"DELETE FROM `{sqlbuild.table_ref(cfg, dataset_attr, table)}` WHERE {col} = '{code}';"
+            for dataset_attr, table, col in _PURGE_TARGETS.get(banco, [])
+        ),
     ]
     backup_ok, backup_msg = _backup_status(cfg)
     return {

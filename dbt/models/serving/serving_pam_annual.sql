@@ -91,6 +91,13 @@ pam_xwalk as (
         x.agrupamento_nome,
         c.product_code as code
     from pam_codes c
+    -- ⚠ Junta SEM a tabela SIDRA, e isso é uma SUPOSIÇÃO: a dim tem grão
+    -- (codigo_produto, source, sidra_tabela) desde v1.39.0, então um código presente nas
+    -- duas tabelas de um banco multi-tabela devolveria DUAS linhas e este join duplicaria
+    -- os valores do fato — em silêncio. O Gold daqui carrega um discriminador SEMÂNTICO
+    -- (measure_kind / origem), não o id da tabela, e escrever o mapeamento aqui seria uma
+    -- quarta cópia dele. A suposição está presa em
+    -- `tests/assert_catalog_join_cannot_fan_out.sql`.
     join {{ ref('dim_produto_catalog') }} x
         on x.source = 'pam'
         and c.product_code = x.codigo_produto
