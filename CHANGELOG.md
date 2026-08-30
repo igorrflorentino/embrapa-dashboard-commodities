@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.46.7] - 2026-08-30
+
+### Corrigido (documentação que mandava o operador atrás de ação impossível)
+
+Contexto: a build completa de prod fecha em `PASS=369 WARN=4 ERROR=0` — e os relatórios
+desta série vinham citando só `ERROR=0`. Os quatro avisos foram investigados contra prod.
+Nenhum indica defeito, e as duas linhas do PAM (área plantada < colhida) conferem por
+IDENTIDADE com as duas documentadas: 1990 Manaus/Mandioca e 1993 Goiás/Cana — a contagem
+bater com 2 seria compatível com uma ter sumido e outra nova ter aparecido. Os outros dois
+tinham texto errado:
+
+- **`meso_code` / `micro_code` do mesh municipal** (`seeds/_seeds.yml`). O comentário dizia
+  que o aviso existia "for a seed refresh". Nenhum refresh resolve: meso/micro são a
+  divisão **congelada de 1990**, que o IBGE substituiu em 2017 pelas regiões
+  intermediária/imediata, e um município criado depois disso nunca as recebe. Vale para
+  exatamente UM município (medido 2026-08-30): `5101837 · Boa Esperança do Norte (MT)` —
+  que tem `intermediaria_code=5103` e `imediata_code=510008`, ou seja, **é** plenamente
+  filtrável nos níveis modernos. O comentário passa a separar os dois pares: meso/micro é
+  permanente por natureza, intermediária/imediata é a divisão viva e um nulo lá seria
+  acionável de verdade. Registra também a forma estrita (avisar sobre meso/micro só quando
+  intermediária/imediata também forem nulas), NÃO aplicada — mudaria o comportamento do
+  teste, não só o texto.
+
+- **`assert_unconvertible_quantities_for_curation`**. O comentário listava duas causas,
+  "ambas precisando de ação humana", e encaminhava o operador a `unit_family_conversions`.
+  A causa que realmente dispara é uma **terceira**: `unit_native` **nula** — a fonte
+  informou um número de quantidade e nenhuma unidade. Não é unidade não mapeada, é unidade
+  ausente; nenhuma tabela de conversão resolve, e inventar uma seria inventar o dado. São
+  871 linhas de `gold_comtrade_flows` (0,04% do banco), e o tratamento atual já é o certo
+  (`qty_base` nulo, então nunca entram num agregado). O comentário agora traz as três
+  causas e diz como separá-las na leitura do resultado.
+
+Só comentários — nenhum teste, modelo ou seed muda de comportamento.
+
+### Notas
+
+- Uma varredura anterior desta sessão relatou "2 testes `severity: warn`, nenhum
+  disparando". Ela olhou apenas `dbt/models` e passou ao largo de `dbt/seeds/` e do
+  `{{ config(severity=\'warn\') }}` embutido nos `.sql` de `dbt/tests/`. **São 12
+  configurados, 4 disparando.**
+- Verificações que vieram limpas na mesma passagem: o Cloud Run serve a imagem `653a7e4`,
+  idêntica ao HEAD de `main` (revisão criada 80 s após o merge), e `embrapa
+  reconcile-check` conferiu **19.658 pontos com zero divergências** — nenhuma revisão a
+  montante escapou da janela delta.
+
+---
+
 ## [1.46.6] - 2026-08-30
 
 ### Modificado
