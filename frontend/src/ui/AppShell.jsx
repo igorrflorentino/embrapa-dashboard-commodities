@@ -419,9 +419,14 @@ function AppShell({
   // informação não há o que baixar); `canExportView` = ESTA view tem tabela por trás. Um
   // botão que falha é pior que um botão ausente.
   const canExport = dataView && (!window.canExportView || window.canExportView(view));
+  // O clique MONTA o arquivo e abre a confirmação; quem baixa é a janela, chamando o
+  // `baixar()` que veio junto do descritor. Assim a tela e o arquivo saem do mesmo objeto:
+  // se a janela remontasse o CSV no "Baixar", ela poderia estar descrevendo uma coisa e
+  // gravando outra — exatamente o que a confirmação existe para impedir.
+  const [csvPreview, setCsvPreview] = React.useState(null);
   const onExport = () => {
-    if (!window.exportActiveTableCSV) return;
-    window.exportActiveTableCSV({ view, database, summary, conventions });
+    if (!window.prepareTableCSV) return;
+    setCsvPreview(window.prepareTableCSV({ view, database, summary, conventions }));
   };
   const onShare = async () => {
     // Reuse the SAME permalink builder the citation uses (buildPermalink, above) —
@@ -605,6 +610,22 @@ function AppShell({
         </nav>
 
         <div className="util">
+          {/* Fora do trio, não no meio dele. O export é CONDICIONAL — some nas páginas de
+              informação e nas views sem tabela —, então no meio do grupo ele empurrava
+              "Enviar feedback" de lugar a cada troca de tela. O grupo `.util` é alinhado à
+              direita, então um item no INÍCIO cresce para a esquerda e os três não se
+              movem. O separador diz o que a posição já sugere: são famílias vizinhas, não
+              a mesma. */}
+          {canExport && (
+            <>
+              <button className="util-action util-action-export" onClick={onExport}
+                      title="Conferir e baixar em CSV os dados desta tela, com filtros e convenções aplicados">
+                <window.Icon name="download" size={16}/>
+                <span>Exportar CSV</span>
+              </button>
+              <span className="util-sep" aria-hidden="true"></span>
+            </>
+          )}
           <button className="util-action" onClick={onCite} title="Citar este painel no estado atual">
             <window.Icon name="format_quote" size={16}/>
             <span>Citar painel</span>
@@ -613,13 +634,6 @@ function AppShell({
             <window.Icon name="link" size={16}/>
             <span>{shared ? 'URL copiada' : 'Compartilhar'}</span>
           </button>
-          {canExport && (
-            <button className="util-action" onClick={onExport}
-                    title="Baixar em CSV os dados desta tela, já com os filtros e as convenções aplicados">
-              <window.Icon name="download" size={16}/>
-              <span>Exportar CSV</span>
-            </button>
-          )}
           <button className="util-action" onClick={onReport} title="Relate um problema, tire uma dúvida ou envie uma sugestão">
             <window.Icon name="feedback" size={16}/>
             <span>Enviar feedback</span>
@@ -636,17 +650,20 @@ function AppShell({
               <>
                 <div className="util-scrim" onClick={() => setUtilOpen(false)}></div>
                 <div className="util-menu" role="menu">
+                  {canExport && (
+                    <>
+                      <button role="menuitem" className="util-menu-item" onClick={() => { setUtilOpen(false); onExport(); }}>
+                        <window.Icon name="download" size={18}/><span>Exportar CSV</span>
+                      </button>
+                      <span className="util-menu-sep" role="separator"></span>
+                    </>
+                  )}
                   <button role="menuitem" className="util-menu-item" onClick={() => { setUtilOpen(false); onCite(); }}>
                     <window.Icon name="format_quote" size={18}/><span>Citar painel</span>
                   </button>
                   <button role="menuitem" className="util-menu-item" onClick={() => { setUtilOpen(false); onShare(); }}>
                     <window.Icon name="link" size={18}/><span>{shared ? 'URL copiada' : 'Compartilhar'}</span>
                   </button>
-                  {canExport && (
-                    <button role="menuitem" className="util-menu-item" onClick={() => { setUtilOpen(false); onExport(); }}>
-                      <window.Icon name="download" size={18}/><span>Exportar CSV</span>
-                    </button>
-                  )}
                   <button role="menuitem" className="util-menu-item" onClick={() => { setUtilOpen(false); onReport(); }}>
                     <window.Icon name="feedback" size={18}/><span>Enviar feedback</span>
                   </button>
@@ -779,6 +796,19 @@ function AppShell({
           {children}
         </main>
       </div>
+
+      {csvPreview && window.CsvExportModal && (
+        <window.CsvExportModal
+          preview={csvPreview}
+          // O recorte vem do MESMO resolvedor que desenha a faixa de chips na tela; a janela
+          // não relê o estado por conta própria, senão poderia contradizer a faixa acima dela.
+          chips={window.activeFilterChips
+            ? window.activeFilterChips(summary, window.bancoById && window.bancoById(database))
+            : []}
+          conventions={conventions}
+          onClose={() => setCsvPreview(null)}
+        />
+      )}
 
       {citeOpen && (
         <div className="cite-backdrop" onClick={() => setCiteOpen(false)}>

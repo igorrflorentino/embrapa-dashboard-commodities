@@ -301,6 +301,15 @@
   font-size: 12px;
   flex-shrink: 0;
 }
+/* Risquinho entre o "Exportar CSV" e o trio fixo. O export é CONDICIONAL — some nas
+   páginas de informação e nas views sem tabela — e no meio do grupo empurrava "Enviar
+   feedback" de lugar a cada troca de tela. Como `.util` tem `margin-left: auto`, um item no
+   INÍCIO cresce para a esquerda e os três nunca se movem. O separador diz o que a posição
+   já sugere: famílias vizinhas, não a mesma. */
+.util-sep {
+  width: 1px; align-self: stretch; margin: 6px 2px;
+  background: rgba(255, 255, 255, 0.22);
+}
 .util-action {
   display: inline-flex;
   align-items: center;
@@ -392,6 +401,76 @@
 }
 .cite-head .caption { color: var(--fg-3); }
 .cite-body { padding: 18px 22px 22px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+
+/* ====================================================================
+   Confirmação do CSV — reaproveita a casca do modal de citação (.cite-backdrop
+   /.cite-modal/.cite-head/.cite-body), para não existir um segundo desenho de janela no
+   produto; o que é próprio daqui são as três métricas, a lista de colunas e o rodapé.
+   ==================================================================== */
+.csv-modal { max-width: 620px; }
+.csv-body { gap: 16px; }
+/* O tamanho do que vem é o que se confere primeiro: "3 linhas" onde se esperava milhares
+   responde a pergunta antes de qualquer outra leitura. Daí virem em números grandes, no
+   topo, e não como mais uma linha de lista. */
+.csv-numeros {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  padding: 14px 4px; border-radius: var(--radius-md);
+  background: var(--bg-surface-2); border: 1px solid var(--border-subtle);
+}
+.csv-num { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.csv-num-v {
+  font: 500 22px var(--font-display, var(--font-body)); color: var(--fg-1);
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.csv-num-k {
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-3);
+}
+.csv-lista { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.csv-lista > div { display: flex; gap: 12px; align-items: baseline; }
+.csv-lista dt {
+  flex: 0 0 88px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--fg-3);
+}
+.csv-lista dd { margin: 0; font-size: 13px; color: var(--fg-1); min-width: 0; }
+/* `anywhere` porque o nome do arquivo é uma palavra só, longa, sem espaço onde quebrar —
+   sem isto ele estoura a janela em vez de passar para a linha de baixo. */
+.csv-arquivo {
+  font-family: var(--font-mono, monospace); font-size: 12px; color: var(--embrapa-green-darker);
+  background: color-mix(in srgb, var(--embrapa-green) 8%, transparent);
+  padding: 2px 6px; border-radius: 4px; overflow-wrap: anywhere;
+}
+.csv-secao { display: flex; flex-direction: column; gap: 8px; }
+.csv-h {
+  margin: 0; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--fg-3); font-weight: 500;
+}
+.csv-colunas, .csv-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.csv-col {
+  font-family: var(--font-mono, monospace); font-size: 11.5px; color: var(--fg-2);
+  background: var(--bg-surface-2); border: 1px solid var(--border-subtle);
+  padding: 3px 8px; border-radius: 4px;
+}
+.csv-nota { margin: 0; }
+/* Rodapé fixo: a lista de colunas pode rolar, mas o par Cancelar/Baixar não sai da vista —
+   a decisão que a janela pede tem de estar sempre ao alcance. */
+.csv-foot {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 14px 22px 18px; border-top: 1px solid var(--border-subtle); flex-shrink: 0;
+}
+.csv-baixar { display: inline-flex; align-items: center; gap: 7px; }
+.csv-baixar svg { color: rgba(255, 255, 255, 0.92); }
+@media (max-width: 560px) {
+  /* As três métricas continuam lado a lado: 375px/3 ≈ 125px cabe "1 kB"/"TAMANHO", e
+     empilhá-las gastava três vezes a altura no aparelho que menos tem altura. */
+  .csv-numeros { gap: 4px; padding: 12px 2px; }
+  .csv-num-v { font-size: 19px; }
+  /* Em coluna, `flex: 0 0 88px` do <dt> deixa de ser LARGURA e vira ALTURA — o rótulo
+     ganhava 88px de caixa e abria um vão enorme antes do valor. */
+  .csv-lista > div { flex-direction: column; gap: 2px; }
+  .csv-lista dt { flex: none; }
+  .csv-foot { flex-direction: column-reverse; }
+  .csv-foot button { width: 100%; justify-content: center; }
+}
 .cite-text {
   font: 400 13.5px var(--font-body);
   color: var(--fg-1);
@@ -3940,6 +4019,7 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
     color: var(--fg-1); font: 500 14px var(--font-body); text-align: left; cursor: pointer;
   }
   .util-menu-item:hover { background: var(--bg-surface-2); }
+  .util-menu-sep { display: block; height: 1px; margin: 4px 8px; background: var(--border-subtle); }
   .util-menu-item svg { color: var(--embrapa-green); stroke: currentColor; flex-shrink: 0; }
 
   /* The mode toggle, now at the top of the drawer (light surface → restyle off the

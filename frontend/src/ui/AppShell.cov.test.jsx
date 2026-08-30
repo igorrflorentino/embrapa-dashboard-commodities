@@ -111,6 +111,10 @@ const baseProps = () => ({
 let AppShell;
 
 beforeEach(async () => {
+  // A janela de confirmação do CSV é montada PELO AppShell (window.CsvExportModal); sem
+  // este import ela seria `undefined` e o clique no export não abriria nada — o teste
+  // passaria por ausência de janela, não por comportamento.
+  await import('./CsvExportModal.jsx');
   await import('./AppShell.jsx'); // registers window.AppShell
   AppShell = window.AppShell;
   stubGlobals();
@@ -532,8 +536,10 @@ describe('AppShell — mobile topbar: util overflow menu (⋯)', () => {
     const menu = container.querySelector('.util-menu');
     expect(menu).toBeTruthy();
     const labels = [...menu.querySelectorAll('.util-menu-item')].map((b) => b.textContent.trim());
-    // "Exportar CSV" entrou no grupo em v1.43.0: as quatro levam o mesmo estado embora.
-    expect(labels).toEqual(['Citar painel', 'Compartilhar', 'Exportar CSV', 'Enviar feedback']);
+    // "Exportar CSV" vem PRIMEIRO e separado: é condicional, e no meio do grupo empurrava
+    // "Enviar feedback" de lugar a cada troca de tela.
+    expect(labels).toEqual(['Exportar CSV', 'Citar painel', 'Compartilhar', 'Enviar feedback']);
+    expect(menu.querySelector('.util-menu-sep')).toBeTruthy();
     expect(container.querySelector('.util-more').getAttribute('aria-expanded')).toBe('true');
   });
 
@@ -579,26 +585,69 @@ describe('AppShell — mobile topbar: util overflow menu (⋯)', () => {
       .toEqual(['Citar painel', 'Compartilhar', 'Enviar feedback']);
   });
 
-  it('"Exportar CSV" chama o exportador com as MESMAS quatro entradas do permalink', () => {
-    // view + banco + filtros + convenções: é por carregar exatamente o estado que o
-    // "Compartilhar" codifica na URL que o botão pertence a este grupo, e não à faixa de
-    // filtros (onde o recorte é só uma das quatro).
-    const chamadas = [];
-    window.exportActiveTableCSV = (arg) => chamadas.push(arg);
+  it('"Exportar CSV" fica FORA do trio fixo, na primeira posição e com separador', () => {
+    // O pedido: o botão ao LADO dos três, não no meio deles. Como `.util` é alinhado à
+    // direita (`margin-left: auto`), um item no início cresce para a esquerda e os três
+    // não se movem quando o export aparece ou some — que é o ponto todo.
+    const { container } = render(<AppShell {...baseProps()} />);
+    const rotulos = [...container.querySelectorAll('.util .util-action')].map((b) => b.textContent.trim());
+    expect(rotulos).toEqual(['Exportar CSV', 'Citar painel', 'Compartilhar', 'Enviar feedback']);
+    // O separador fica ENTRE o export e o trio, não em qualquer lugar.
+    const filhos = [...container.querySelector('.util').children];
+    const iSep = filhos.findIndex((n) => n.classList.contains('util-sep'));
+    const iCitar = filhos.findIndex((n) => n.textContent.trim() === 'Citar painel');
+    expect(iSep).toBeGreaterThan(0);
+    expect(iSep).toBeLessThan(iCitar);
+  });
+
+  it('o clique MONTA e confirma — não baixa direto', () => {
+    // A confirmação existe para o pesquisador conferir ANTES do download. Se o clique
+    // baixasse e só depois mostrasse a janela, ela não seria uma confirmação.
+    const montagens = [];
+    let baixou = 0;
+    window.prepareTableCSV = (arg) => {
+      montagens.push(arg);
+      return { erro: false, arquivo: 'x.csv', banco: 'IBGE PEVS', assunto: 'Série anual agregada',
+               colunas: ['ano', 'valor_BRL'], linhas: 39, bytes: 1499, baixar: () => { baixou++; } };
+    };
     try {
       const { container } = render(<AppShell {...baseProps()} />);
-      const botao = [...container.querySelectorAll('.util-action')]
-        .find((b) => b.textContent.includes('Exportar CSV'));
-      expect(botao).toBeTruthy();
-      fireEvent.click(botao);
-      expect(chamadas).toHaveLength(1);
-      expect(chamadas[0]).toEqual({
-        view: 'overview',
-        database: 'ibge_pevs',
-        summary: baseProps().summary,
-        conventions: baseProps().conventions,
-      });
-    } finally { delete window.exportActiveTableCSV; }
+      fireEvent.click([...container.querySelectorAll('.util-action')]
+        .find((b) => b.textContent.includes('Exportar CSV')));
+
+      // Montou com as MESMAS quatro entradas que o permalink do "Compartilhar" codifica —
+      // é por carregar exatamente esse estado que o botão pertence a este grupo.
+      expect(montagens).toEqual([{
+        view: 'overview', database: 'ibge_pevs',
+        summary: baseProps().summary, conventions: baseProps().conventions,
+      }]);
+      expect(baixou, 'o clique não pode baixar nada por si').toBe(0);
+
+      // A janela abriu com os números do descritor.
+      const janela = container.querySelector('.csv-modal');
+      expect(janela).toBeTruthy();
+      expect(janela.textContent).toContain('39');
+
+      // Só o "Baixar" grava — e grava o arquivo JÁ MONTADO, não um novo.
+      fireEvent.click(janela.querySelector('.csv-baixar'));
+      expect(baixou).toBe(1);
+      expect(montagens).toHaveLength(1);          // não remontou no download
+      expect(container.querySelector('.csv-modal')).toBeNull();   // e fechou
+    } finally { delete window.prepareTableCSV; }
+  });
+
+  it('"Cancelar" fecha sem baixar nada', () => {
+    let baixou = 0;
+    window.prepareTableCSV = () => ({ erro: false, arquivo: 'x.csv', banco: 'B', assunto: 'A',
+      colunas: ['ano'], linhas: 1, bytes: 10, baixar: () => { baixou++; } });
+    try {
+      const { container } = render(<AppShell {...baseProps()} />);
+      fireEvent.click([...container.querySelectorAll('.util-action')]
+        .find((b) => b.textContent.includes('Exportar CSV')));
+      fireEvent.click(container.querySelector('.csv-modal .btn-secondary'));
+      expect(container.querySelector('.csv-modal')).toBeNull();
+      expect(baixou).toBe(0);
+    } finally { delete window.prepareTableCSV; }
   });
 
   it('closes the overflow menu via the scrim and via Escape', () => {

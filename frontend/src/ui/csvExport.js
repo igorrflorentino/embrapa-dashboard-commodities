@@ -188,23 +188,66 @@
     }
   }
 
-  // Public entry — called by the "Exportar CSV" button.
-  window.exportActiveTableCSV = function (ctx) {
+  // O que cada `subject` significa em português, para a janela de confirmação poder dizer
+  // ao pesquisador O QUE ele vai baixar. Fica ao lado dos `return { subject }` acima, de
+  // modo que um assunto novo sem verbete apareça como o próprio identificador — feio, mas
+  // honesto — em vez de sumir.
+  const ASSUNTO = {
+    serie_agregada: 'Série anual agregada (valor e quantidade por ano)',
+    series_por_produto: 'Série anual por produto',
+    distribuicao_geografica: 'Distribuição por UF',
+    distribuicao_por_regiao: 'Distribuição por região',
+    distribuicao_por_municipio: 'Distribuição por município',
+    concentracao: 'Concentração por UF, da maior para a menor',
+    qualidade: 'Contagem de linhas por marca de qualidade',
+  };
+
+  /**
+   * MONTA o arquivo e devolve um descritor — sem baixar nada.
+   *
+   * O `baixar()` que volta aqui escreve o CSV JÁ MONTADO, byte a byte. É de propósito: a
+   * janela de confirmação mostra estes mesmos números, e reconstruir na hora do "Baixar"
+   * abriria a porta para a tela dizer uma coisa e o arquivo trazer outra — o oposto do que
+   * a confirmação existe para garantir.
+   *
+   * Devolve `null` quando não há o que baixar, com `motivo` dizendo por quê: um banco ainda
+   * não liberado não tem linhas, e uma view pode render zero linhas sob o recorte atual.
+   */
+  window.prepareTableCSV = function (ctx) {
     const banco = window.bancoById ? window.bancoById(ctx.database) : null;
     // Only live bancos hold real rows; soon bancos have nothing to export.
     if (!banco || banco.status !== 'live') {
       console.warn('[csv] banco not available for export:', ctx.database);
-      return;
+      return { erro: true, motivo: 'banco-indisponivel', banco: banco ? banco.short : ctx.database };
     }
     const built = buildRows(ctx);
     if (!built || !built.rows.length) {
       console.warn('[csv] nothing to export for view', ctx.view);
-      return;
+      return { erro: true, motivo: 'sem-linhas', banco: banco.short };
     }
     const period = (ctx.summary && ctx.summary.startDate)
       ? `${ctx.summary.startDate.slice(0,4)}-${(ctx.summary.endDate||'').slice(0,4)}`
       : 'completo';
     const fname = `${banco.short.replace(/\s+/g,'_').toLowerCase()}_${built.subject}_${period}.csv`;
-    download(fname, toCSV(built.headers, built.rows));
+    const csv = toCSV(built.headers, built.rows);
+    return {
+      erro: false,
+      arquivo: fname,
+      banco: banco.short,
+      assunto: ASSUNTO[built.subject] || built.subject,
+      colunas: built.headers,
+      linhas: built.rows.length,
+      // Tamanho do arquivo REAL (a string já montada), não uma estimativa por linha.
+      bytes: new Blob([csv]).size,
+      baixar: () => download(fname, csv),
+    };
+  };
+
+  // Entrada direta — monta E baixa, sem confirmação. Mantida para quem chama o export por
+  // fora da janela (e é o caminho que os testes do exportador exercitam).
+  window.exportActiveTableCSV = function (ctx) {
+    const p = window.prepareTableCSV(ctx);
+    if (!p || p.erro) return;
+    p.baixar();
   };
 })();

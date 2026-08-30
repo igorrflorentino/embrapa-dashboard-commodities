@@ -69,6 +69,7 @@ import './ui/shChapters.js'; // window.SH_CHAPTERS — SH2 names for the product
 import './ui/FilterMenu.jsx';
 import './ui/FilterTriggerBar.jsx';
 import './ui/FeedbackModal.jsx';
+import './ui/CsvExportModal.jsx';
 import './ui/AppShell.jsx';
 import './ui/MainScreen.jsx';
 

@@ -28,6 +28,9 @@ function installDownloadCapture() {
   global.Blob = class {
     constructor(parts) {
       lastCsv = (parts || []).join('');
+      // `size` porque prepareTableCSV mede o arquivo REAL com `new Blob([csv]).size` para
+      // mostrar o tamanho na confirmação; sem isto ele sairia `undefined` no teste.
+      this.size = lastCsv.length;
     }
   };
   window.URL.createObjectURL = vi.fn(() => 'blob:mock');
@@ -131,6 +134,77 @@ describe('exportActiveTableCSV — guards (no download)', () => {
     window.exportActiveTableCSV({ view: 'mystery_view', summary: {}, database: 'ibge_pevs' });
     expect(warn).toHaveBeenCalled();
     expect(lastCsv).toBeUndefined();
+  });
+});
+
+// ── prepareTableCSV: monta SEM baixar, e o baixar() grava o que foi montado ──
+describe('prepareTableCSV — o descritor que a janela de confirmação mostra', () => {
+  const FILTRADO = {
+    products: PRODUCTS,
+    ts: [
+      { y: 2020, v: 1.5, q_mass: 10, q_vol: 2, q_count: 0 },
+      { y: 2021, v: 2.0, q_mass: 12, q_vol: 3, q_count: 0 },
+    ],
+  };
+
+  it('MONTA sem baixar — o clique não pode gravar nada por si', () => {
+    stubRegistry(FILTRADO);
+    const p = window.prepareTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' });
+    expect(p.erro).toBe(false);
+    // Quem sinaliza "gravou" é o clique no <a download>, não o Blob: `prepareTableCSV`
+    // constrói um Blob de propósito, só para medir o tamanho real que a janela mostra.
+    expect(lastDownloadName, 'preparar não pode gravar arquivo').toBeUndefined();
+    expect(p.bytes).toBe(lastCsv.length);   // e o tamanho é o do arquivo montado
+  });
+
+  it('descreve o que SERÁ gravado: linhas, colunas, banco e nome do arquivo', () => {
+    stubRegistry(FILTRADO);
+    const p = window.prepareTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' });
+    expect(p.linhas).toBe(2);                                   // uma por ano em `ts`
+    expect(p.colunas).toEqual(['ano', 'valor_BRL', 'qtd_massa_t', 'qtd_volume_m3', 'qtd_contagem_un']);
+    expect(p.banco).toBe('IBGE PEVS');
+    expect(p.assunto).toMatch(/Série anual agregada/);
+    expect(p.arquivo).toBe('ibge_pevs_serie_agregada_completo.csv');
+  });
+
+  it('o baixar() grava EXATAMENTE o que o descritor descreveu', () => {
+    // O ponto da confirmação: a janela mostra uma coisa e o arquivo é outra se o download
+    // remontar. Aqui a asserção é externa ao descritor — conta as linhas do CSV escrito e
+    // lê o cabeçalho dele, e confronta com o que o descritor prometeu.
+    stubRegistry(FILTRADO);
+    const p = window.prepareTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' });
+    p.baixar();
+    const linhas = lastCsv.replace('\uFEFF', '').split('\n');
+    expect(lastDownloadName).toBe(p.arquivo);
+    expect(linhas[0].split(';')).toEqual(p.colunas);
+    expect(linhas.length - 1).toBe(p.linhas);                   // menos o cabeçalho
+  });
+
+  it('a mudança do estado ENTRE preparar e baixar não altera o arquivo', () => {
+    // É o que "nada é recalculado no download" quer dizer. Se `baixar()` remontasse, o
+    // arquivo sairia com os dados novos e a janela teria mentido.
+    stubRegistry(FILTRADO);
+    const p = window.prepareTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' });
+    stubRegistry({ products: PRODUCTS, ts: [{ y: 1999, v: 9, q_mass: 9, q_vol: 9, q_count: 0 }] });
+    p.baixar();
+    const linhas = lastCsv.replace('\uFEFF', '').split('\n');
+    expect(linhas.length - 1).toBe(2);            // os 2 anos preparados, não o 1 novo
+    expect(lastCsv).not.toContain('1999');
+  });
+
+  it('devolve o MOTIVO quando não há o que baixar, em vez de só avisar no console', () => {
+    // Antes isto era um console.warn: o botão simplesmente não fazia nada, e quem usava
+    // não tinha como saber por quê. A janela precisa do motivo para dizer o que houve.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    stubRegistry({ ts: [], products: PRODUCTS });
+    expect(window.prepareTableCSV({ view: 'overview', summary: {}, database: 'ibge_pevs' }))
+      .toMatchObject({ erro: true, motivo: 'sem-linhas' });
+
+    window.bancoById = () => ({ short: 'SEFAZ NFe', status: 'pending' });
+    expect(window.prepareTableCSV({ view: 'overview', summary: {}, database: 'sefaz_nf' }))
+      .toMatchObject({ erro: true, motivo: 'banco-indisponivel', banco: 'SEFAZ NFe' });
+    expect(lastDownloadName).toBeUndefined();
+    warn.mockRestore();
   });
 });
 

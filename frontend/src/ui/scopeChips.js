@@ -83,4 +83,35 @@
 
     return { origem, flow, regime, mercado, reporter, parceiro };
   };
+
+  /**
+   * A lista COMPLETA de chips do recorte ativo — [{ k, v }], na ordem em que a faixa os
+   * mostra. Vivia dentro do FilterTriggerBar, o que fazia da faixa o único lugar capaz de
+   * dizer qual é o recorte. A janela de confirmação do CSV precisa dizer a MESMA coisa: se
+   * ela montasse a própria lista, a tela e o arquivo passariam a descrever uma seleção só
+   * com duas regras — que é como elas divergem. Mesma razão de `axisScopeChips` acima.
+   *
+   * Capability-driven: só entra o eixo que o banco ativo expõe (`banco.provides`), para não
+   * nomear um filtro que aquele banco não usa. "Faixa de valor" fica de fora de propósito —
+   * não tem caminho de filtro por trás, então é escondida em vez de mostrada inerte.
+   */
+  window.activeFilterChips = function (summary, banco) {
+    const s = summary || {};
+    const provides = (banco && banco.provides) || [];
+    const has = (c) => provides.includes(c);
+    const t = window.axisScopeChips ? window.axisScopeChips(s, banco) : {};
+    return [
+      has('product') && { k: 'Produtos', v: s.products },
+      { k: 'Período', v: s.period },
+      s.nivel && { k: 'Industrialização', v: s.nivel },
+      t.origem && { k: 'Origem', v: t.origem.label },
+      has('flow') && { k: 'Fluxo', v: t.flow && t.flow.label },
+      t.regime && { k: 'Regime', v: t.regime.label },
+      t.mercado && { k: 'Mercado', v: t.mercado.label },
+      t.reporter && { k: 'Reporter', v: t.reporter.label },
+      t.parceiro && { k: 'Parceiro', v: t.parceiro.label },
+      has('geo') && { k: 'Geografia', v: s.geo },
+      has('quality') && { k: 'Qualidade', v: s.quality },
+    ].filter(Boolean);
+  };
 }());

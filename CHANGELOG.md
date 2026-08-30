@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.44.0] - 2026-08-30
+
+### Adicionado
+
+- **Confirmação antes de baixar o CSV.** O clique em "Exportar CSV" passa a abrir uma
+  janela que mostra **o que vai ser baixado** antes de o navegador perguntar onde salvar:
+  quantas linhas, quantas colunas e o tamanho do arquivo; o conteúdo em uma frase
+  ("Série anual agregada", "Distribuição por município", …); o nome do arquivo; a lista
+  exata das colunas — é ela que responde se vem `valor_BRL` ou `valor_USD` —; e o recorte
+  e as convenções aplicados.
+
+  A garantia que faz isso valer alguma coisa é estrutural: a janela é montada a partir do
+  **mesmo objeto** que o "Baixar" grava. O exportador foi partido em `prepareTableCSV`
+  (monta e devolve um descritor, com um `baixar()` que escreve a string **já pronta**) e
+  `exportActiveTableCSV` (o caminho direto, sem confirmação, mantido). Se o download
+  remontasse o arquivo, a tela poderia descrever uma coisa e gravar outra — exatamente o
+  que a confirmação existe para impedir.
+
+  Como efeito colateral, **"não há o que baixar" virou uma resposta em tela**. Antes um
+  banco não liberado ou um recorte sem linhas produzia um `console.warn` e um botão que
+  não fazia nada — invisível para quem usa. Agora a janela diz o motivo e o que fazer.
+
+### Alterado
+
+- **"Exportar CSV" saiu do meio do trio fixo e foi para o lado dele**, separado por um
+  risquinho. O botão é condicional — some nas páginas de informação e nas views sem tabela
+  —, então no meio do grupo ele empurrava "Enviar feedback" de lugar a cada troca de tela.
+  Como `.util` é alinhado à direita, um item no **início** cresce para a esquerda: medido
+  no navegador, "Citar painel", "Compartilhar" e "Enviar feedback" ficam em 1003, 1127 e
+  1261 com ou sem o export — **zero deslocamento**. Mesma ordem no menu "⋯" do celular.
+
+- **A lista de chips do recorte mudou-se para `scopeChips.js`** (`activeFilterChips`).
+  Ela morava dentro do `FilterTriggerBar`, o que fazia da faixa o único lugar capaz de
+  dizer qual é o recorte; a janela do CSV precisa dizer a mesma coisa, e duas cópias da
+  regra é como duas superfícies passam a descrever uma seleção só de dois jeitos — a mesma
+  razão pela qual `axisScopeChips` já vivia ali.
+
+---
+
 ## [1.43.1] - 2026-08-30
 
 ### Corrigido

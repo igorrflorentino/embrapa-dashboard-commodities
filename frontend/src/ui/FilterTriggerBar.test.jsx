@@ -92,6 +92,25 @@ describe('FilterTriggerBar — capability-driven chips', () => {
     expect(vistos.size).toBeGreaterThan(1);
   });
 
+  it('a faixa e a janela do CSV leem o recorte do MESMO resolvedor', () => {
+    // A lista de chips morava dentro desta faixa, o que fazia dela o único lugar capaz de
+    // dizer qual é o recorte. A confirmação do CSV precisa dizer a MESMA coisa; com duas
+    // cópias da regra, tela e arquivo passariam a descrever uma seleção só de dois jeitos —
+    // o modo de falha que `scopeChips.js` existe para evitar.
+    //
+    // A âncora é externa às duas: `window.activeFilterChips`. Se a faixa voltar a montar a
+    // lista por conta própria, o que ela desenha deixa de acompanhar o resolvedor e isto
+    // falha — é por isso que o teste TROCA o resolvedor em vez de comparar dois textos.
+    const banco = { id: 'mdic_comex', short: 'MDIC COMEX', provides: ['product', 'flow', 'geo', 'quality'] };
+    const real = window.activeFilterChips;
+    window.activeFilterChips = () => [{ k: 'Marcador', v: 'só-do-resolvedor' }];
+    try {
+      const { container } = render(<FilterTriggerBar summary={SUMMARY} banco={banco} live />);
+      expect(chipKeys(container)).toEqual(['Marcador']);
+      expect(container.textContent).toContain('só-do-resolvedor');
+    } finally { window.activeFilterChips = real; }
+  });
+
   it('não desenha mais o "Exportar CSV" — ele foi para o topbar', () => {
     // Sair da faixa foi a decisão: aqui ele era o único botão sólido de um bloco que só
     // descreve estado, e o export é montado de {view, banco, filtros, convenções}. Se
