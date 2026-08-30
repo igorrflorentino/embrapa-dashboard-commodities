@@ -258,9 +258,7 @@ def test_a_regra_da_tag_nao_nomeia_um_banco() -> None:
     assert "_BANCOS_MULTI_TABELA" in fonte, "a regra voltou a nomear um banco"
     # A forma do CÓDIGO, não a prosa: os comentários citam `banco == "ppm"` de propósito,
     # para explicar o que quebrou. Uma asserção cega ao comentário reprovaria a explicação.
-    codigo = "\n".join(
-        linha for linha in fonte.split("\n") if not linha.strip().startswith("#")
-    )
+    codigo = "\n".join(linha for linha in fonte.split("\n") if not linha.strip().startswith("#"))
     assert 'if banco == "ppm"' not in codigo, "a regra voltou a nomear um banco"
     assert set(curation._BANCOS_MULTI_TABELA) == set(
         curation._tabelas_validas_por_banco(_cfg_falsa())

@@ -1305,7 +1305,10 @@ def test_the_multi_table_registry_matches_the_curation_validator() -> None:
     """
     from embrapa_dashboard.serving import curation
 
-    fonte = inspect.getsource(curation._validate_sidra_tabela)
+    # A âncora é `_tabelas_validas_por_banco` — o vocabulário de tabelas por banco, mantido
+    # por outro motivo (validar a tag). Ela saiu de dentro de `_validate_sidra_tabela` em
+    # v1.40.1 e este teste acusou a mudança, que é o que se espera dele.
+    fonte = inspect.getsource(curation._tabelas_validas_por_banco)
     do_validador = {b for b in ("ppm", "pevs", "pam", "comex", "comtrade") if f'"{b}":' in fonte}
     do_doctor = {b.removeprefix("ibge_") for b, _t, _d in doctor._BANCOS_MULTI_TABELA}
 

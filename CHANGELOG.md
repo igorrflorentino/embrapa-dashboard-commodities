@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.40.1] - 2026-08-30
+
+### Corrigido
+
+- **A regra da tag SIDRA estava fechada em `if banco == "ppm":`** — as duas metades dela, e
+  o `pevs` escapava das duas:
+  - **entrada nova sem tag era ACEITA**, caindo na sentinela. Uma sonda HTTP registrou o
+    produto `9999999` em produção para provar (removido em seguida);
+  - **um update parcial DERRUBAVA a tag.** Este é o pior: os edits inline de agrupamento e
+    ciclo na tabela do admin não reenviam a tag, então salvar um deles moveria o produto
+    para a sentinela — sumindo das duas metades, sem erro.
+
+  É o padrão *"condicional que nomeia UM banco"*: ela codifica um censo do mundo, e o mundo
+  cresceu quando a silvicultura entrou. Passou a derivar de `_BANCOS_MULTI_TABELA`, com o
+  vocabulário de tabelas numa função própria (`_tabelas_validas_por_banco`).
+
+### Verificação
+
+Encontrado ao rodar o caminho de ESCRITA do catálogo por **HTTP real** — a camada que eu
+mais mexi e menos tinha verificado nesse nível. Depois do conserto:
+
+| sonda | antes | agora |
+|---|---|---|
+| entrada nova em `pevs` sem tag | **200** (criava na sentinela) | **400** |
+| update parcial sem reenviar a tag | derrubaria | **preservada** (`291`) |
+| tag de outro banco (`3939` no `pevs`) | 400 | 400 |
+
+O teste do `doctor` que ancora o registro multi-tabela **acusou a mudança de lugar** do
+vocabulário — comportamento correto: a âncora foi reapontada para a função nova, que é
+âncora melhor por ser dedicada.
+
+---
+
 ## [1.40.0] - 2026-08-30
 
 Varredura dos **consumidores** da chave — as camadas que leem as dims e as que apagam dado.

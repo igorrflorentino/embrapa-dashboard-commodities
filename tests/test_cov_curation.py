@@ -1011,6 +1011,9 @@ def test_record_produto_catalog_accepts_a_registered_agrupamento(monkeypatch):
         "pevs",
         _HEADERS,
         agrupamento="Madeira",
+        # Entrada NOVA em banco multi-tabela exige a tag desde v1.40.1 — sem ela a entrada
+        # não pertence a metade nenhuma. Estes testes exercitam o registro de agrupamentos.
+        sidra_tabela="291",
         settings=_settings(),
         client=client,
         invalidate_cache=False,
@@ -1034,6 +1037,7 @@ def test_an_absent_group_registry_does_not_block_the_first_product(monkeypatch):
         "3457",
         "pevs",
         _HEADERS,
+        sidra_tabela="291",  # entrada nova em banco multi-tabela exige a tag (v1.40.1)
         agrupamento="Qualquer",
         settings=_settings(),
         client=client,
