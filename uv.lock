@@ -486,7 +486,7 @@ wheels = [
 
 [[package]]
 name = "embrapa-dashboard"
-version = "1.46.8"
+version = "1.46.9"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
