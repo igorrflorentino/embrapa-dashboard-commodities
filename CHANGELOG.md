@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.43.1] - 2026-08-30
+
+### Corrigido
+
+- **"Editar filtros" e "Editar métricas" passam a ter as mesmas dimensões.** A altura já
+  era igual — a classe é compartilhada —, mas a largura vinha do texto: 122px contra 138px,
+  medidos no navegador. Como os dois ficam no mesmo canto de dois blocos empilhados,
+  larguras diferentes os faziam ler como dois controles distintos, quando são o mesmo
+  controle de dois blocos. Um `min-width` na classe compartilhada iguala pelo maior, e
+  agora eles alinham nos **dois** lados, formando uma coluna. "Recolher" (o mesmo botão no
+  estado expandido das convenções) entra junto de propósito: sem isso o botão encolheria ao
+  abrir o bloco. "Ver dimensões previstas" é naturalmente maior e não é afetado — vive
+  sozinho na barra de preview, nunca lado a lado com os outros.
+
+  O guarda possível em teste não é a medida (o jsdom não aplica CSS), e sim as duas coisas
+  de que ela depende: que a regra seja **uma só** — se cada botão ganhar a sua, elas
+  divergem em silêncio — e que o **conjunto de rótulos** seja o que foi medido, já que um
+  valor em px não sabe o que o texto mede e um rótulo mais longo estouraria o `min-width`
+  sem erro nenhum.
+
+---
+
 ## [1.43.0] - 2026-08-30
 
 ### Alterado

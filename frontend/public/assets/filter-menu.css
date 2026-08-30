@@ -939,8 +939,22 @@
   font-size: 10px;
   letter-spacing: 0.08em;
 }
+/* Os dois botões ficam no MESMO canto de dois blocos empilhados, e larguras diferentes os
+   fazem ler como dois controles distintos quando são o mesmo controle de dois blocos.
+   `min-width` iguala pelo maior — medido no navegador com a fonte real, não estimado:
+   "Editar filtros" 122px · "Editar métricas" 138px · "Recolher" 102px.
+   "Recolher" entra junto de propósito: é este mesmo botão no estado expandido das
+   convenções, e sem isto o botão encolheria ao abrir o bloco. "Ver dimensões previstas"
+   (194px) é naturalmente maior, então o `min-width` não o afeta — e ele vive sozinho na
+   barra de preview, nunca lado a lado com os outros.
+   `justify-content: center` porque a caixa agora é mais larga que o conteúdo do menor: sem
+   ele, "Editar filtros" ficaria encostado à esquerda com um vão à direita.
+   ⚠ O número segue o TEXTO. Ao renomear um rótulo, meça de novo (a largura real inclui o
+   ícone, o gap, o padding e o `letter-spacing`, que `measureText` não aplica). */
 .fm-edit-btn {
   height: 32px;
+  min-width: 138px;
+  justify-content: center;
   padding: 0 14px;
   background: #fff;
   border: 1px solid var(--border-strong);
