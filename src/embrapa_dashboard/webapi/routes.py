@@ -130,7 +130,7 @@ def _niveis_or_400(raw: str | None):
     return niveis, None
 
 
-def _sidra_tabela_or_400(tabela: str | None):
+def _tabela_or_400(tabela: str | None):
     """Validate the optional SIDRA-table param — WHICH TABLE of a multi-table banco.
 
     A produto's identity is ``(banco, tabela, código)``, so this is the axis that tells
@@ -204,7 +204,7 @@ def _coerce_str_fields(body: dict, *keys: str, keep_blank: tuple[str, ...] = ())
 def _api_value_error(exc):
     """Client-input validation errors → HTTP 400 (not 500). The serving writers raise
     ValueError with a caller-facing reason (pt-BR for the catalog writers: a bad key, an
-    over-length field, an invalid ciclo/banco, a missing PPM sidra_tabela). Surface that reason
+    over-length field, an invalid ciclo/banco, a missing PPM tabela). Surface that reason
     verbatim so the user can self-correct — a generic "check the fields" hides WHY. ValueError
     here is always our own validation; an arbitrary internal fault is an Exception → the 500
     handler, never this path — so the message is safe to return."""
@@ -459,7 +459,7 @@ def catalog_entry_upsert():
     """Upsert one commodity-catalog entry (the editable successor to the
     commodity_crosswalk seed). Author captured from the IAP header; 401/403 via the
     per-catalog editor allowlist. A bad key / over-length / invalid ciclo/banco /
-    missing PPM sidra_tabela → 400."""
+    missing PPM tabela → 400."""
     author, err = _authorize_catalog_editor(seam.PRODUTO_CATALOG_RESOURCE)
     if err:
         return err
@@ -476,7 +476,7 @@ def catalog_entry_upsert():
         "ciclo_de_vida",
         "ingestao",
         "visibilidade",
-        "sidra_tabela",
+        "tabela",
         "change_id",
         # '' on the note means "erase it", not "absent" — see keep_blank.
         keep_blank=("descricao_produto",),
@@ -721,7 +721,7 @@ def _with_filter_axes(summary: dict | None) -> tuple[dict | None, tuple | None]:
     day apart, with the same result: the view answered over a dataset the user had not
     selected while the chip named the selection.
 
-    * ``sidraTabela`` (introduzido em 2026-08-29 como ``origem``) — the map, the município
+    * ``tabela`` (introduzido em 2026-08-29 como ``origem``) — the map, the município
       cube and both product rankings summed
       BOTH halves of PEVS. They differ ~6x in value.
     * ``niveis`` (2026-08-29) — the same readers ignored the industrialization level
@@ -742,7 +742,7 @@ def _with_filter_axes(summary: dict | None) -> tuple[dict | None, tuple | None]:
     market, err = _market_or_400(request.args.get("market"))
     if err:
         return None, err
-    sidra_tabela, err = _sidra_tabela_or_400(request.args.get("sidraTabela"))
+    tabela, err = _tabela_or_400(request.args.get("tabela"))
     if err:
         return None, err
     niveis, err = _niveis_or_400(request.args.get("niveis"))
@@ -757,8 +757,8 @@ def _with_filter_axes(summary: dict | None) -> tuple[dict | None, tuple | None]:
         extra["customs"] = customs
     if market and market != "all":
         extra["market"] = market
-    if sidra_tabela and sidra_tabela != "all":
-        extra["sidraTabela"] = sidra_tabela
+    if tabela and tabela != "all":
+        extra["tabela"] = tabela
     if niveis:
         extra["niveis"] = niveis
     if extra:

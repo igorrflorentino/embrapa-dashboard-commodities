@@ -84,7 +84,7 @@ def extract_raw(
         # silviculture codes too, and SIDRA answers with an empty slice that this pipeline
         # reports as a clean no-op — the extraction half would stop ingesting and nothing
         # would say so. An UNTAGGED entry resolves here (see catalog_resolver).
-        sidra_tabela=settings.ibge_table_id,
+        tabela=settings.ibge_table_id,
         bq_client=bq_client,
     )
     started = time.monotonic()
@@ -257,7 +257,7 @@ def _delta_start_year(settings: Settings, bq_client: bigquery.Client) -> Setting
         # silviculture codes too, and SIDRA answers with an empty slice that this pipeline
         # reports as a clean no-op — the extraction half would stop ingesting and nothing
         # would say so. An UNTAGGED entry resolves here (see catalog_resolver).
-        sidra_tabela=settings.ibge_table_id,
+        tabela=settings.ibge_table_id,
         bq_client=bq_client,
     )
     present = bronze_products_present(

@@ -18,6 +18,7 @@ models:
               - reference_year
               - state_acronym
               - product_code
+              - tabela
               - family
     columns:
       - name: reference_year
@@ -51,6 +52,7 @@ models:
               - reference_year
               - state_acronym
               - product_code
+              - tabela
               - family
     columns:
       - name: reference_year
@@ -80,6 +82,7 @@ models:
               - reference_year
               - state_acronym
               - product_code
+              - tabela
               - family
     columns:
       - name: reference_year
@@ -117,6 +120,7 @@ models:
               - reference_year
               - flow
               - ncm_code
+              - tabela
               - state_acronym
               - country_code
               # `family` IS part of the model grain (GROUP BY at the model's tail),
@@ -146,6 +150,7 @@ models:
               - reference_month
               - flow
               - ncm_code
+              - tabela
               - state_acronym
     columns:
       - name: reference_month
@@ -181,6 +186,7 @@ models:
               - flow
               - customs_code
               - cmd_code
+              - tabela
               - reporter_code
               - partner_code
     columns:

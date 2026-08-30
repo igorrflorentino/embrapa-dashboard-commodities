@@ -314,9 +314,9 @@ describe('ViewTerritoryProfile — combining territories', () => {
       productsByUf: () => ({
         loadError: null,
         products: [
-          { code: '3455', name: 'Carvão vegetal', sidra_tabela: '291', value: 114564 },
-          { code: '3433', name: 'Carvão vegetal', sidra_tabela: '289', value: 13745 },
-          { code: '3403', name: 'Açaí (fruto)', sidra_tabela: '289', value: 1 },
+          { code: '3455', name: 'Carvão vegetal', tabela: '291', value: 114564 },
+          { code: '3433', name: 'Carvão vegetal', tabela: '289', value: 13745 },
+          { code: '3403', name: 'Açaí (fruto)', tabela: '289', value: 1 },
         ],
       }),
     });

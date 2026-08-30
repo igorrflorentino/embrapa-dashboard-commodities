@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.47.0] - 2026-08-30
+
+Auditoria completa da identidade do produto (`docs/audits/chave_produto_audit_2026-08-30.md`,
+agora HISTORICAL): sete achados, todos corrigidos aqui, mais a decisão de estender o trio
+aos cinco bancos.
+
+### Modificado
+
+- **O trio `(banco, tabela, código)` vale agora em TODOS os bancos, inclusive nos de uma
+  tabela só.** PAM passa a carregar o seu id SIDRA real (5457); COMEX e COMTRADE, que não
+  vêm do SIDRA, carregam um nome escolhido pelo projeto (`comex_ncm` / `comtrade_hs`, em
+  `config.py` com paridade nas vars do dbt).
+
+  O objetivo é **simetria**: com o trio valendo nos cinco, cada função de identidade tem UMA
+  forma, sem o ramo *"este banco tem tabela / aquele não"*. Esse ramo era a causa recorrente
+  — foi ele que deixou a regra sem propagar na v1.46.1 (gráficos), na v1.46.5 (gate de
+  visibilidade) e nos sete achados desta auditoria.
+
+- **A coluna passa a se chamar `tabela`, não `sidra_tabela`** (704 ocorrências em 75
+  arquivos). O nome antigo seria falso em dois dos cinco bancos, justamente contra a
+  simetria que motiva a mudança. Os registros históricos (CHANGELOG, `docs/audits/`,
+  `docs/migration_history.md`) preservam o nome antigo de propósito: descrevem o que era
+  verdade então.
+
+- **A coluna é carimbada no SILVER**, onde cada modelo sabe de qual tabela lê, e carregada
+  daí em diante. As uniões do Gold viraram `select *` puro.
+
+### Corrigido
+
+1. **`serving_ppm_annual` colapsava as duas metades do PPM.** Agrupava sem a tabela e a
+   levantava com `any_value` — a assinatura de um colapso deliberado. Um código nas duas
+   tabelas teria as linhas **somadas** e a metade exibida seria arbitrária. O irmão
+   `serving_pevs_annual` já agrupava certo.
+2. **`gold_produto_agrupamento` declarava um invariante que o catálogo não garante.** O
+   cabeçalho afirmava, como *load-bearing*, que `(codigo_produto, source)` era único no
+   catálogo — o catálogo sempre foi único no TRIO. O join agora casa o trio inteiro; antes,
+   um código nas duas tabelas com agrupamentos diferentes **dobraria as somas monetárias**.
+3. **Chaves de unicidade que subdeclaravam o grão** (16 delas) passam a incluir a tabela.
+   Isso remove deliberadamente o *tripwire* que a chave estreita representava: ele fazia
+   sentido enquanto não havia outro alarme, e deixou de fazer na v1.46.4, quando o check
+   `Shared code across SIDRA tables` do `doctor` voltou a funcionar e passou a vigiar a
+   mesma condição **explicando-a**, em vez de produzir uma falha de unicidade obscura.
+4. **O estado Gold de um produto era indexado sem a tabela, em três camadas** — `group by
+   code` no gateway (que SOMAVA as duas metades), a chave `banco:código` no seam, e a
+   leitura no frontend. As três passam ao trio. O mesmo arquivo do frontend já usava o trio
+   como chave de renderização dez linhas antes.
+5. **`gateway.fetch_source_codes`** agrupava por código com `any_value(name)` — as três
+   descrições que se repetem entre as metades do PEVS (Carvão vegetal, Lenha, Madeira em
+   tora) são exatamente esse caso.
+
+### Adicionado
+
+- `tests/test_trio_identidade_produto.py` — varre os 5 Golds e as 6 marts exigindo a
+  PROJEÇÃO da coluna (não a menção: a primeira versão aceitava a palavra e uma injeção que
+  apagou a projeção passou verde, porque ela sobrevivia no `group by`), confere que toda
+  chave de unicidade com código inclui a tabela, e que o join do agrupamento e os dois lados
+  do gate casam o trio. Com o irmão que guarda o varredor.
+- `assert_ppm_measure_kind_matches_tabela` — `measure_kind` foi **mantido** (decisão da
+  auditoria: `origem` era só outro nome para a tabela, enquanto stock/flow é uma regra de
+  agregação — um estoque não se soma ao longo de anos). O que o torna seguro é ser derivado
+  e não autônomo; este teste é o que impede que volte a ser autônomo.
+- Macro `tabela_com_padrao` — os logs append-only guardam linhas escritas antes de a coluna
+  existir (comex 303, comtrade 519, pam 29, TODAS nulas). A macro completa o padrão do banco
+  no ÚNICO ponto onde o log cru vira dim, **sem reescrever o log de auditoria**. Bancos
+  multi-tabela não têm padrão — adivinhar a metade seria inventar dado —, e o `not_null`
+  sobre `tabela` nas dims transforma um nulo vivo em erro de build. Medido: nenhum existe
+  (as duas únicas linhas PEVS sem tabela são do código de teste 9999999, e a vigente é um
+  tombstone).
+
+### Removido
+
+- `_tabelaDoParamAntigo` e a decodificação do parâmetro de URL `or=extrativa|silvicultura`.
+  Era compat de código puro. **Não** foram removidos a macro `catalog_visibilidade` nem os
+  seeds de sucessão de códigos NCM/HS: o primeiro lê linhas que existem fisicamente num log
+  append-only (removê-lo quebraria a leitura de dado real, não limparia código), e os
+  segundos tratam de códigos que a FONTE EXTERNA aposentou — assunto diferente da nossa
+  chave.
+
+---
+
 ## [1.46.9] - 2026-08-30
 
 ### Modificado

@@ -42,7 +42,7 @@ prod (6.688 linhas de Gold filtradas, medido 2026-08-30). Leia as afirmações d
 como histórico da entrega original.
 
 **Single source of truth:** `dbt/models/core/dim_produto_visibility.sql` (view) emits only HIDDEN
-`(source, code, sidra_tabela)` rows — the EXACT commodity code (latest-wins, active, indisponível;
+`(source, code, tabela)` rows — the EXACT commodity code (latest-wins, active, indisponível;
 `code_prefix` was eliminated in v1.10.0, so this is now `codigo_produto`). Gate predicate =
 `NOT EXISTS … <code_column> = v.code` over it (was `LIKE code_prefix||'%'`; behavior-preserving since
 every entry's prefix already equalled its exact leaf code). A code with no row stays visible (handles
@@ -54,7 +54,7 @@ metade extração deixa a silvicultura visível. Antes casava só `(source, code
 sumiam juntas — latente, porque os códigos das duas tabelas são disjuntos e o caso nunca ocorreu.
 Uma linha do gate SEM tabela é **coringa** (esconde as duas), preservando as entradas sem tag. Os
 dois lados — a macro `hidden_code_predicate` e o espelho `serving/sql.visibility_clause` — renomeiam
-a coluna do gate para `_vis_sidra_tabela`: sem isso, `sidra_tabela` sem qualificação resolve para o
+a coluna do gate para `_vis_tabela`: sem isso, `tabela` sem qualificação resolve para o
 escopo interno do `NOT EXISTS` e a comparação vira tautologia (medido contra o BigQuery). Guardado
 pelos testes unitários dbt em `_gold.yml` sobre `gold_source_metadata`.
 `dim_produto_catalog` is untouched (admin/crosswalk still see hidden-but-active rows).

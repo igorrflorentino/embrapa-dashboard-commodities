@@ -12,11 +12,11 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import './filtersSchema.js'; // registra window.SIDRA_TABELA_OPTIONS + window.labelProductRows
+import './filtersSchema.js'; // registra window.TABELA_OPTIONS + window.labelProductRows
 
-const CARVAO_SILV = { code: '3455', name: 'Carvão vegetal', sidra_tabela: '291', value: 114564 };
-const CARVAO_EXTR = { code: '3433', name: 'Carvão vegetal', sidra_tabela: '289', value: 13745 };
-const ACAI = { code: '3403', name: 'Açaí (fruto)', sidra_tabela: '289', value: 1 };
+const CARVAO_SILV = { code: '3455', name: 'Carvão vegetal', tabela: '291', value: 114564 };
+const CARVAO_EXTR = { code: '3433', name: 'Carvão vegetal', tabela: '289', value: 13745 };
+const ACAI = { code: '3403', name: 'Açaí (fruto)', tabela: '289', value: 1 };
 
 const nomes = (rows) => window.labelProductRows(rows, 'ibge_pevs').map((r) => r.name);
 
@@ -58,13 +58,13 @@ describe('labelProductRows — desambiguar só quando é preciso', () => {
   });
 
   it('o rótulo curto vem do MESMO registro que o filtro usa', () => {
-    // Âncora externa: se alguém renomear uma metade no SIDRA_TABELA_OPTIONS, o sufixo do gráfico
+    // Âncora externa: se alguém renomear uma metade no TABELA_OPTIONS, o sufixo do gráfico
     // acompanha. Sem isso nasceria um segundo vocabulário da metade do PEVS.
-    const opts = window.SIDRA_TABELA_OPTIONS.ibge_pevs.filter((o) => o.short);
+    const opts = window.TABELA_OPTIONS.ibge_pevs.filter((o) => o.short);
     expect(opts.length).toBe(2);
     for (const o of opts) {
       const out = window.labelProductRows(
-        [{ name: 'X', sidra_tabela: o.value }, { name: 'X', sidra_tabela: 'outra' }], 'ibge_pevs',
+        [{ name: 'X', tabela: o.value }, { name: 'X', tabela: 'outra' }], 'ibge_pevs',
       );
       expect(out[0].name).toBe(`X · ${o.short}`);
     }

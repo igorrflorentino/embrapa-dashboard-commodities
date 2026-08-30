@@ -52,7 +52,7 @@ const _CC_BANCO_LABEL = Object.fromEntries(_CC_BANCOS.map((b) => [b.v, b.label])
 // (banco, tabela, código): sem ela a entrada não cai em nenhuma das duas metades, cai numa
 // TERCEIRA identidade que não corresponde a dado nenhum. Era opcional no PEVS enquanto a
 // chave a ignorava.
-const _CC_SIDRA_TABELAS = {
+const _CC_TABELAS = {
   ppm: {
     campo: 'Tabela PPM', obrigatorio: true, vazio: 'Escolha rebanho ou produção…',
     opcoes: [{ v: '3939', label: 'Rebanho (efetivo)' }, { v: '74', label: 'Produção animal' }],
@@ -63,7 +63,7 @@ const _CC_SIDRA_TABELAS = {
   },
 };
 const _CC_SIDRA_LABEL = Object.fromEntries(
-  Object.entries(_CC_SIDRA_TABELAS).map(([banco, cfg]) => [
+  Object.entries(_CC_TABELAS).map(([banco, cfg]) => [
     banco, Object.fromEntries(cfg.opcoes.map((t) => [t.v, t.label])),
   ]),
 );
@@ -84,7 +84,7 @@ function _ccCombina(termos, campos) {
 
 const _CC_EMPTY_DRAFT = {
   codigo_produto: '', banco: 'comex', agrupamento_id: '',
-  descricao_produto: '', ingestao: 'ativa', visibilidade: 'visivel', sidra_tabela: '',
+  descricao_produto: '', ingestao: 'ativa', visibilidade: 'visivel', tabela: '',
 };
 // Reference legend content (pt-BR — the researcher reads it). Kept as DATA next to the
 // vocabulary it documents, so a new column/action is added in one place and the counts in the
@@ -329,7 +329,7 @@ function ViewCadastroProdutos() {
     catalogDriven: [] });
   // Uma barra horizontal por cartão, todas movendo juntas — ver useSyncedTableScroll.
   const sincronizarRolagem = useSyncedTableScroll();
-  const [statusMap, setStatusMap] = useCcState({}); // "banco:code" -> {n_rows, year_start, year_end, has_data}
+  const [statusMap, setStatusMap] = useCcState({}); // "banco:tabela:code" (o TRIO) -> {n_rows, year_start, year_end, has_data}
   const [statusErr, setStatusErr] = useCcState(false); // the (cheap, lazy) Gold-state read FAILED — distinct from "sem dados"
   const [status, setStatus] = useCcState(null); // { kind: 'ok' | 'err', msg }
   const [busy, setBusy] = useCcState(false);
@@ -372,7 +372,7 @@ function ViewCadastroProdutos() {
   // desde v1.39.0. Sem ela, editar as duas metades de um código compartilhado com os mesmos
   // atributos geraria o MESMO change_id, e a segunda edição seria descartada como replay.
   const _saveKey = (e) =>
-    `save:${e.banco}:${e.sidra_tabela ?? '-'}:${e.codigo_produto}:` +
+    `save:${e.banco}:${e.tabela ?? '-'}:${e.codigo_produto}:` +
     JSON.stringify([e.agrupamento_id ?? null, e.ingestao ?? null, e.visibilidade ?? null, e.descricao_produto ?? null]);
 
   // Server-authoritative edit permission (from /api/catalog/entries' can_edit). The UI
@@ -504,8 +504,8 @@ function ViewCadastroProdutos() {
       body: 'Os dados já baixados ficam órfãos (não são apagados automaticamente).',
       confirmLabel: 'Remover', danger: true,
       onConfirm: () => {
-        const key = `rm:${e.banco}:${e.sidra_tabela ?? '-'}:${e.codigo_produto}`;
-        run(() => post('/api/catalog/entry/remove', { codigo_produto: e.codigo_produto, banco: e.banco, sidra_tabela: e.sidra_tabela ?? null, change_id: cidFor(key) }),
+        const key = `rm:${e.banco}:${e.tabela ?? '-'}:${e.codigo_produto}`;
+        run(() => post('/api/catalog/entry/remove', { codigo_produto: e.codigo_produto, banco: e.banco, tabela: e.tabela ?? null, change_id: cidFor(key) }),
           `Produto ${e.codigo_produto} marcado como descontinuado.`, key);
       },
     });
@@ -612,7 +612,7 @@ function ViewCadastroProdutos() {
   // Só um banco EXIGE a marca de tabela (ppm); o pevs a aceita e tem padrão, os demais
   // não a têm. Derivado do registro — um `draft.banco !== 'ppm'` aqui voltaria a bloquear
   // o dia em que outro banco passar a exigi-la.
-  const sidraTagged = !_CC_SIDRA_TABELAS[draft.banco]?.obrigatorio || !!draft.sidra_tabela;
+  const sidraTagged = !_CC_TABELAS[draft.banco]?.obrigatorio || !!draft.tabela;
   // A code the source doesn't (yet) list is no longer blocked — it registers as *pendente
   // de ingestão* (the catalog now drives ingestion). We only need a code, a group, the PPM
   // tag when applicable, and edit permission.
@@ -628,8 +628,8 @@ function ViewCadastroProdutos() {
       setStatus({ kind: 'err', msg: 'Escolha um agrupamento (ou crie um novo acima).' });
       return;
     }
-    const cfgSidra = _CC_SIDRA_TABELAS[draft.banco];
-    if (cfgSidra?.obrigatorio && !draft.sidra_tabela) {
+    const cfgSidra = _CC_TABELAS[draft.banco];
+    if (cfgSidra?.obrigatorio && !draft.tabela) {
       setStatus({ kind: 'err', msg: `Escolha a ${cfgSidra.campo.toLowerCase()}.` });
       return;
     }
@@ -698,11 +698,11 @@ function ViewCadastroProdutos() {
             // O status vem do Gold por (banco, código): o FATO não carrega a tabela, então
             // duas metades de um código compartilhado mostrariam a mesma contagem. É limite
             // do dado, não chave errada — `doctor → shared-code` avisa se o caso aparecer.
-            const st = statusMap[e.banco + ':' + e.codigo_produto];
+            const st = statusMap[e.banco + ':' + (e.tabela ?? '-') + ':' + e.codigo_produto];
             return (
               // A key precisa da chave INTEIRA: com banco+código só, as duas metades de um
               // código compartilhado colidiriam e o React reusaria a linha errada.
-              <tr key={e.banco + '|' + (e.sidra_tabela ?? '-') + '|' + e.codigo_produto}>
+              <tr key={e.banco + '|' + (e.tabela ?? '-') + '|' + e.codigo_produto}>
                 <td className="cc-cell-title">{_CC_BANCO_LABEL[e.banco] || e.banco}</td>
                 {/* A identidade de um produto é BANCO + TABELA + CÓDIGO, então o trio lê da
                     esquerda para a direita em colunas próprias. Era um selo dentro da célula do
@@ -717,9 +717,9 @@ function ViewCadastroProdutos() {
                     apenas mais um pedaço da identidade. O nome por extenso vira `title`, de
                     modo que ninguém precise decorar que 289 é extração vegetal. */}
                 <td className="tnum" data-label="Tabela"
-                    title={_CC_SIDRA_LABEL[e.banco]?.[e.sidra_tabela] || undefined}>
-                  {_CC_SIDRA_TABELAS[e.banco]
-                    ? (e.sidra_tabela || <span className="dt-null">—</span>)
+                    title={_CC_SIDRA_LABEL[e.banco]?.[e.tabela] || undefined}>
+                  {_CC_TABELAS[e.banco]
+                    ? (e.tabela || <span className="dt-null">—</span>)
                     : <span className="dt-null">—</span>}
                 </td>
                 <td className="tnum" data-label="Código">{e.codigo_produto}</td>
@@ -991,18 +991,18 @@ function ViewCadastroProdutos() {
             <label className="cc-field">
               <span className="cc-field-label">Banco (fonte)</span>
               <select value={draft.banco} disabled={locked}
-                      onChange={(e) => setDraft((d) => ({ ...d, banco: e.target.value, codigo_produto: '', sidra_tabela: '' }))}>
+                      onChange={(e) => setDraft((d) => ({ ...d, banco: e.target.value, codigo_produto: '', tabela: '' }))}>
                 {_CC_BANCOS.map((b) => <option key={b.v} value={b.v}>{b.label}</option>)}
               </select>
             </label>
 
-            {_CC_SIDRA_TABELAS[draft.banco] && (
+            {_CC_TABELAS[draft.banco] && (
               <label className="cc-field">
-                <span className="cc-field-label">{_CC_SIDRA_TABELAS[draft.banco].campo}</span>
-                <select value={draft.sidra_tabela} disabled={locked}
-                        onChange={(e) => setDraft((d) => ({ ...d, sidra_tabela: e.target.value }))}>
-                  <option value="">{_CC_SIDRA_TABELAS[draft.banco].vazio}</option>
-                  {_CC_SIDRA_TABELAS[draft.banco].opcoes.map(
+                <span className="cc-field-label">{_CC_TABELAS[draft.banco].campo}</span>
+                <select value={draft.tabela} disabled={locked}
+                        onChange={(e) => setDraft((d) => ({ ...d, tabela: e.target.value }))}>
+                  <option value="">{_CC_TABELAS[draft.banco].vazio}</option>
+                  {_CC_TABELAS[draft.banco].opcoes.map(
                     (t) => <option key={t.v} value={t.v}>{t.v} — {t.label}</option>)}
                 </select>
               </label>
@@ -1089,7 +1089,7 @@ function ViewCadastroProdutos() {
             <button type="button" className="btn-secondary" onClick={cancelAdd} disabled={busy}>
               Cancelar
             </button>
-            {draft.banco === 'ppm' && !draft.sidra_tabela && draft.codigo_produto && (
+            {draft.banco === 'ppm' && !draft.tabela && draft.codigo_produto && (
               <span className="caption" style={{ color: 'var(--err, #b71c1c)' }}>escolha a tabela PPM</span>
             )}
           </div>

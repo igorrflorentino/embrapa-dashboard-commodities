@@ -3,7 +3,7 @@
   vocabulário do gate de visibilidade e das dims (pevs | pam | ppm | comex | comtrade).
 
   PEVS: extração t289 × silvicultura t291. PPM: rebanho 3939 × produção animal 74.
-  Nos demais a coluna `sidra_tabela` não existe no Gold, então nenhum predicado pode
+  Nos demais a coluna `tabela` não existe no Gold, então nenhum predicado pode
   referenciá-la — é isto que esta lista decide.
 
   Espelha `serving.curation._BANCOS_MULTI_TABELA` do lado Python, e

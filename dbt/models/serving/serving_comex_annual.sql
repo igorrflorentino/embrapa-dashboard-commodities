@@ -40,6 +40,10 @@ with comex as (
         reference_year,
         flow,
         ncm_code,
+        -- A TABELA no grão, como em todos os bancos. Constante aqui (banco de UMA tabela
+        -- só), e é justamente por isso que precisa estar: com o trio valendo nos cinco, a
+        -- mart tem a MESMA forma em todos e o consumidor não ramifica por banco.
+        tabela,
         state_acronym,
         country_code,
         -- family in the grain (like serving_pevs_annual) keeps qty_base summable
@@ -83,7 +87,7 @@ with comex as (
         max(last_refresh)           as last_refresh
     from {{ ref('gold_comex_flows') }}
     where {{ hidden_code_predicate('comex', 'ncm_code') }}
-    group by reference_year, flow, ncm_code, state_acronym, country_code, family
+    group by reference_year, flow, ncm_code, tabela, state_acronym, country_code, family
 
 )
 
@@ -92,6 +96,7 @@ select
     date(c.reference_year, 12, 31)  as reference_date,
     c.flow,
     c.ncm_code,
+    c.tabela,
     c.hs_chapter,
     c.ncm_description,
     c.state_acronym,
@@ -128,3 +133,6 @@ left join {{ ref('dim_geo_br') }} g
     on g.state_acronym = c.state_acronym
 left join {{ ref('gold_produto_agrupamento') }} x
     on x.source = 'comex' and x.code = c.ncm_code
+    -- O TRIO no join: sem a tabela, um código presente nas duas tabelas de um banco
+    -- casaria DUAS linhas do agrupamento e o LEFT JOIN dobraria as somas.
+    and x.tabela = c.tabela

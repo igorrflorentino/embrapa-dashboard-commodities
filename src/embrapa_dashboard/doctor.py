@@ -316,7 +316,7 @@ def _check_silvicultura_variable_codes(settings: Settings) -> CheckResult:
                 f"not configured: {missing} "
                 f"(quantity={settings.silvicultura_variable_quantity_code!r}, "
                 f"value={settings.silvicultura_variable_value_code!r}) "
-                "→ that Gold column would be empty for sidra_tabela='291' (silvicultura)",
+                "→ that Gold column would be empty for tabela='291' (silvicultura)",
             )
         return CheckResult(
             "IBGE silvicultura variable codes",
@@ -355,11 +355,9 @@ def _check_catalog_resolver_parity(settings: Settings) -> CheckResult:
         ]
         parts: list[str] = []
         drift = False
-        for banco, sidra_tabela, env_codes in plan:
-            cat = set(
-                catalog_resolver.read_catalog_codes(settings, banco, sidra_tabela=sidra_tabela)
-            )
-            label = banco + (f":{sidra_tabela}" if sidra_tabela else "")
+        for banco, tabela, env_codes in plan:
+            cat = set(catalog_resolver.read_catalog_codes(settings, banco, tabela=tabela))
+            label = banco + (f":{tabela}" if tabela else "")
             if not cat:
                 parts.append(f"{label} vazio→.env({len(env_codes)})")
                 continue
@@ -1323,14 +1321,14 @@ def _check_curation_referential_integrity(settings: Settings) -> CheckResult:
         return _skip_ou_quebra("Curation referential integrity", exc)
 
 
-# A coluna que distingue as duas tabelas SIDRA de um banco multi-tabela. É `sidra_tabela`
+# A coluna que distingue as duas tabelas SIDRA de um banco multi-tabela. É `tabela`
 # em TODO banco, por definição: a identidade de um produto é `(banco, tabela, código)`, e a
 # tabela é o dado — não um rótulo derivado dela. Constante, e não um campo por banco, de
 # propósito: enquanto cada entrada trazia o seu próprio discriminador, o PEVS trazia
 # `origem` (prosa) e o PPM `measure_kind` (prosa), e quando a v1.46.1 removeu `origem` este
 # check virou uma consulta a uma coluna inexistente. Um campo por banco torna representável
 # exatamente o erro que a v1.46.x foi corrigir.
-_COLUNA_DISCRIMINADORA = "sidra_tabela"
+_COLUNA_DISCRIMINADORA = "tabela"
 
 # Os bancos que unem DUAS tabelas SIDRA sob um token só. Uma segunda entrada aqui é tudo o
 # que um novo banco multi-tabela precisa.
@@ -1351,14 +1349,14 @@ def _check_shared_code_across_tables(settings: Settings) -> CheckResult:
        e como o prod roda ``dbt build`` os modelos downstream são pulados. O número errado
        NÃO chega ao dashboard.
     2. O **gate de visibilidade** não consegue representar o caso — e só ele. Catálogo
-       (grão ``(banco, sidra_tabela, código)``) e nível de industrialização (grão
-       ``(source, code, sidra_tabela, version)``) já carregam a tabela na chave. A view
-       ``dim_produto_visibility`` também é única em ``(source, code, sidra_tabela)``, mas o
+       (grão ``(banco, tabela, código)``) e nível de industrialização (grão
+       ``(source, code, tabela, version)``) já carregam a tabela na chave. A view
+       ``dim_produto_visibility`` também é única em ``(source, code, tabela)``, mas o
        PREDICADO que a consome casa só ``source`` e ``code`` — nos dois lados, a macro
        ``hidden_code_predicate`` e o espelho Python ``serving/sql.visibility_clause``.
        Esconder uma metade esconderia as DUAS, em silêncio. Medido em 2026-08-30.
     3. Com ``catalog_authoritative_ingestion`` ligado, o resolver filtra por
-       ``sidra_tabela``: a metade não marcada deixaria de ser buscada em silêncio.
+       ``tabela``: a metade não marcada deixaria de ser buscada em silêncio.
 
     Corrigir (2) de verdade custaria trocar a identidade do produto em ~25 pontos, 3 dims e
     3 logs — sobre o único dado que não se recalcula. Este check é a alternativa barata:

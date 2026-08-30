@@ -132,9 +132,9 @@ describe('ViewProductCompare — smoke + default top-3 selection', () => {
     // componente da identidade do produto.
     const fx = flowFixture();
     fx.products = [
-      { code: 'P1', name: 'Carvão vegetal', family: 'mass', sidra_tabela: '291' },
-      { code: 'P2', name: 'Carvão vegetal', family: 'mass', sidra_tabela: '289' },
-      { code: 'P3', name: 'Açaí (fruto)', family: 'mass', sidra_tabela: '289' },
+      { code: 'P1', name: 'Carvão vegetal', family: 'mass', tabela: '291' },
+      { code: 'P2', name: 'Carvão vegetal', family: 'mass', tabela: '289' },
+      { code: 'P3', name: 'Açaí (fruto)', family: 'mass', tabela: '289' },
     ];
     stubGlobals(fx);
     const { container } = render(

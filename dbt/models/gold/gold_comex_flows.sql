@@ -60,6 +60,9 @@ base_flows as (
         reference_month,
         date(reference_year, reference_month, 1)  as reference_date,
         ncm_code,
+        -- A TABELA no grão da CTE base, vinda do Silver — o trio atravessa o Gold
+        -- inteiro em vez de ser reconstituído no select final.
+        tabela,
         any_value(hs_chapter)                     as hs_chapter,
         country_code,
         state_acronym,
@@ -89,7 +92,7 @@ base_flows as (
         max(ingestion_timestamp)                  as last_refresh
     from unit_ranked
     group by
-        flow, reference_year, reference_month, ncm_code, country_code,
+        flow, reference_year, reference_month, ncm_code, tabela, country_code,
         state_acronym, transport_route_code
 
 ),
@@ -185,6 +188,10 @@ enriched as (
 )
 
 select
+    -- A TABELA da fonte, carregada do Silver (que a carimba). Fecha o trio
+    -- `(banco, tabela, código)` neste banco de uma tabela só — a simetria é o ponto:
+    -- com o trio valendo nos cinco, nenhum consumidor ramifica por banco.
+    tabela,
     -- ── Time ─────────────────────────────────────────────────────────────────
     reference_year,
     reference_month,

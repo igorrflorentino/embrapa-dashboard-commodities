@@ -78,6 +78,13 @@ vars:
   silvicultura_table_id: "{{ env_var('SILVICULTURA_TABLE_ID', '291') }}"
   ppm_herd_table_id:     "{{ env_var('PPM_HERD_TABLE_ID',     '3939') }}"
   ppm_animal_table_id:   "{{ env_var('PPM_ANIMAL_TABLE_ID',   '74') }}"
+  # Os bancos de UMA tabela também têm id, para o trio `(banco, tabela, código)` valer nos
+  # cinco. PAM usa o id SIDRA real; COMEX e COMTRADE não vêm do SIDRA e usam um nome do
+  # PROJETO. Paridade com `config.py` (`pam_table_id` / `comex_table_id` /
+  # `comtrade_table_id`), guardada por `embrapa doctor`.
+  pam_table_id:          "{{ env_var('PAM_TABLE_ID',          '5457') }}"
+  comex_table_id:        "{{ env_var('COMEX_TABLE_ID',        'comex_ncm') }}"
+  comtrade_table_id:     "{{ env_var('COMTRADE_TABLE_ID',     'comtrade_hs') }}"
 
   # IBGE PAM (SIDRA table 5457) variable codes. `v/all` ingests all of them; the
   # Silver model keeps these five real measures (dropping the 3 "% do total"

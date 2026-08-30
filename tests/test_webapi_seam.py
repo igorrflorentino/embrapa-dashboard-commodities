@@ -1083,7 +1083,7 @@ def test_snapshot_returns_empty_shape_for_non_live_banco():
     assert out["value_column"] is None and out["value_label"] == ""
 
 
-def test_snapshot_pevs_threads_the_sidra_tabela_axis_to_every_production_reader(monkeypatch):
+def test_snapshot_pevs_threads_the_tabela_axis_to_every_production_reader(monkeypatch):
     """A chosen half of the survey must reach EVERY reader, not just the first.
 
     gold_pevs_production carries extraction and silviculture together. If one reader
@@ -1096,7 +1096,7 @@ def test_snapshot_pevs_threads_the_sidra_tabela_axis_to_every_production_reader(
 
     def _rec(key):
         def fake(**kw):
-            seen[key] = kw.get("sidra_tabela")
+            seen[key] = kw.get("tabela")
             return pd.DataFrame()
 
         return fake
@@ -1110,11 +1110,11 @@ def test_snapshot_pevs_threads_the_sidra_tabela_axis_to_every_production_reader(
     monkeypatch.setattr(seam.gateway, "fetch_production_by_uf", _rec("uf"))
     monkeypatch.setattr(seam.gateway, "fetch_production_by_uf_yearly", _rec("ufy"))
 
-    seam.snapshot("ibge_pevs", {"currency": "BRL", "correction": "IPCA"}, {"sidraTabela": "291"})
+    seam.snapshot("ibge_pevs", {"currency": "BRL", "correction": "IPCA"}, {"tabela": "291"})
     assert seen == {"ov": "291", "uf": "291", "ufy": "291"}
 
     seen.clear()
-    seam.snapshot("ibge_pevs", {"currency": "BRL", "correction": "IPCA"}, {"sidraTabela": "all"})
+    seam.snapshot("ibge_pevs", {"currency": "BRL", "correction": "IPCA"}, {"tabela": "all"})
     assert seen == {"ov": None, "uf": None, "ufy": None}
 
 
@@ -1150,9 +1150,9 @@ def test_snapshot_pevs_threads_basket_window_and_value_column(monkeypatch):
         product_codes=(),
         value_column=None,
         source=None,
-        sidra_tabela=None,
+        tabela=None,
     ):
-        recorded["ov"] = dict(value_column=value_column, source=source, sidra_tabela=sidra_tabela)
+        recorded["ov"] = dict(value_column=value_column, source=source, tabela=tabela)
         return pd.DataFrame([{"reference_year": 2020, "total_value": 9.0}])
 
     monkeypatch.setattr(seam.gateway, "fetch_products", fake_products)
@@ -1173,10 +1173,10 @@ def test_snapshot_pevs_threads_basket_window_and_value_column(monkeypatch):
     assert recorded["pts"]["y0"] == 2018 and recorded["pts"]["y1"] == 2021
     assert recorded["pts"]["value_column"] == "val_real_ipca_brl"
     assert recorded["ov"]["source"] == "ibge_pevs"
-    # No `sidraTabela` in the summary → None = every table, which is what the
+    # No `tabela` in the summary → None = every table, which is what the
     # reader emitted before the axis existed. The axis must be opt-IN, never a default
     # that silently narrows an unfiltered panel to one half.
-    assert recorded["ov"]["sidra_tabela"] is None
+    assert recorded["ov"]["tabela"] is None
     # overview carries the q_mass summed from product_ts' per-family q_mass column.
     assert float(out["overview_ts"].loc[0, "q_mass"]) == 2e3
     assert out["value_column"] == "val_real_ipca_brl"
@@ -1700,7 +1700,7 @@ def test_products_by_uf_gates_on_uf_and_dispatches_by_banco(monkeypatch):
     assert recorded["flow"] == "export"
     assert recorded["uf_codes"] == ("AC",) and recorded["codes"] == ("4407",)
     assert recorded["value_column"] == "val_yearfx_usd"
-    assert recorded.get("include_sidra_tabela") in (None, False), (
+    assert recorded.get("include_tabela") in (None, False), (
         "o COMEX não tem coluna origem — pedi-la quebraria a consulta"
     )
     # PEVS production form: product columns, NO flow predicate
@@ -1712,7 +1712,7 @@ def test_products_by_uf_gates_on_uf_and_dispatches_by_banco(monkeypatch):
     # E a METADE viaja junto: madeira, lenha e carvão existem nas duas com o MESMO nome, e
     # sem a coluna a tela funde duas linhas legítimas numa barra só (o Plotly junta
     # categorias homônimas). Só o PEVS a tem — pedi-la no COMEX quebraria a consulta.
-    assert recorded["include_sidra_tabela"] is True
+    assert recorded["include_tabela"] is True
 
 
 def test_products_by_uf_none_without_geo_capability():

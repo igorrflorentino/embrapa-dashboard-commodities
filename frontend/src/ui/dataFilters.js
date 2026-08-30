@@ -450,10 +450,10 @@
         if (!prod || !series) return null;
         const lastInWindow = series.filter(d => d.y >= yearStart && d.y <= yearEnd).slice(-1)[0];
         if (!lastInWindow) return null;
-        // `sidra_tabela` viaja junto: madeira, lenha e carvão existem nas DUAS tabelas do
+        // `tabela` viaja junto: madeira, lenha e carvão existem nas DUAS tabelas do
         // PEVS com o MESMO nome, e sem ela o Donut mostra duas fatias com rótulo idêntico.
         // Quem rotula é `labelProductRows`, no consumidor — aqui só não se perde o dado.
-        return { name: prod.name, sidra_tabela: prod.sidra_tabela, value: lastInWindow.v };
+        return { name: prod.name, tabela: prod.tabela, value: lastInWindow.v };
       })
       .filter(Boolean)
       .sort((a, b) => b.value - a.value);

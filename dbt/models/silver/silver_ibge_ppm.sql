@@ -121,15 +121,15 @@ parsed as (
 
     -- Herd (3939): a STOCK headcount; product dim = tipo_de_rebanho.
     --
-    -- `sidra_tabela` é o FATO guardado — a identidade de um produto é
+    -- `tabela` é o FATO guardado — a identidade de um produto é
     -- (banco, tabela, código) — e `measure_kind` passa a ser DERIVADA dele lá na Gold.
     -- Antes só a prosa era guardada, e o id da tabela existia apenas como nome de
     -- tabela no Bronze. `measure_kind` NÃO foi aposentada junto com a `origem` do PEVS
     -- porque ela não é um apelido da tabela: cinco telas perguntam
     -- `measure_kind === 'stock'` para saber se a linha TEM PREÇO, e trocar isso por
-    -- `sidra_tabela === '3939'` poria um número mágico no lugar de uma pergunta legível.
+    -- `tabela === '3939'` poria um número mágico no lugar de uma pergunta legível.
     select
-        '{{ var("ppm_herd_table_id") }}'                        as sidra_tabela,
+        '{{ var("ppm_herd_table_id") }}'                        as tabela,
         cast(ano as int64)                                      as reference_year,
         municipio_codigo                                        as city_code,
         regexp_replace(municipio, r'\s-\s[A-Z]{2}$', '')        as city_name,
@@ -147,7 +147,7 @@ parsed as (
 
     -- Animal production (74): a FLOW (quantity + value); product dim = tipo_de_produto_de_origem_animal.
     select
-        '{{ var("ppm_animal_table_id") }}'                      as sidra_tabela,
+        '{{ var("ppm_animal_table_id") }}'                      as tabela,
         cast(ano as int64)                                      as reference_year,
         municipio_codigo                                        as city_code,
         regexp_replace(municipio, r'\s-\s[A-Z]{2}$', '')        as city_name,
@@ -164,12 +164,12 @@ parsed as (
 )
 
 select
-    p.sidra_tabela,
+    p.tabela,
     -- DERIVADA da tabela, não guardada em paralelo: um fato só. 'stock' = efetivo do
     -- rebanho (contagem, sem preço) · 'flow' = produção animal (quantidade + valor).
     -- Continua existindo porque responde "esta linha tem preço?", que é a pergunta que
     -- cinco telas fazem — o id da tabela responde "de onde veio", que é outra coisa.
-    case when p.sidra_tabela = '{{ var("ppm_herd_table_id") }}' then 'stock' else 'flow' end
+    case when p.tabela = '{{ var("ppm_herd_table_id") }}' then 'stock' else 'flow' end
         as measure_kind,
     p.reference_year,
     p.city_code,

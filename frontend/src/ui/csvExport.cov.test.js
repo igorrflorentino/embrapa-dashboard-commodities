@@ -542,8 +542,8 @@ describe('exportActiveTableCSV — a tabela SIDRA viaja junto com o arquivo', ()
   // passou a carregar o id da tabela.
   // RESTAURA em vez de apagar: `delete` removia o resolvedor que o próprio
   // `filtersSchema.js` registra, e os testes seguintes deste arquivo perdiam a coluna.
-  const _real = window.sidraTabelaOptionsFor;
-  afterEach(() => { window.sidraTabelaOptionsFor = _real; });
+  const _real = window.tabelaOptionsFor;
+  afterEach(() => { window.tabelaOptionsFor = _real; });
 
   const run = (summary) => {
     stubRegistry({ products: PRODUCTS, ufData: UF_ROW, ufLatestYear: 2024, notFilteredByBasket: true });
@@ -552,7 +552,7 @@ describe('exportActiveTableCSV — a tabela SIDRA viaja junto com o arquivo', ()
   };
 
   it('nomeia a metade escolhida', () => {
-    const lines = run({ sidraTabela: '291' });
+    const lines = run({ tabela: '291' });
     expect(lines[0]).toContain('tabela_sidra');
     expect(lines[1]).toContain('Silvicultura (plantada)');
   });
@@ -564,8 +564,8 @@ describe('exportActiveTableCSV — a tabela SIDRA viaja junto com o arquivo', ()
   });
 
   it('não acrescenta a coluna num banco sem a dimensão', () => {
-    window.sidraTabelaOptionsFor = () => null;
-    expect(run({ sidraTabela: '291' })[0]).not.toContain('tabela_sidra');
+    window.tabelaOptionsFor = () => null;
+    expect(run({ tabela: '291' })[0]).not.toContain('tabela_sidra');
   });
 });
 

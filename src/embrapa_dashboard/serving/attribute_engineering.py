@@ -62,7 +62,7 @@ CODE_INDUSTRIALIZATION_LOG_SCHEMA = [
     # NULLABLE: os bancos de uma tabela só não a preenchem, e o `ifnull` do
     # `sql.CHAVE_*` a colapsa na sentinela. Sem ela aqui, uma instalação NOVA criaria
     # o log sem a coluna e o particionamento quebraria — furo que um teste pegou.
-    bigquery.SchemaField("sidra_tabela", "STRING", mode="NULLABLE"),
+    bigquery.SchemaField("tabela", "STRING", mode="NULLABLE"),
 ]
 
 # The (customs procedure × flow) → economic-purpose market log. A `market` of ''
@@ -173,7 +173,7 @@ def record_code_industrialization(
     # verdade da identidade, então a tag vem dele.
     from embrapa_dashboard.serving.curation import tabela_do_produto
 
-    sidra_tabela = tabela_do_produto(source, code, settings=cfg, client=bq)
+    tabela = tabela_do_produto(source, code, settings=cfg, client=bq)
 
     if supplied and _change_id_seen(bq, table_fqn, change_id):
         logger.info(
@@ -185,8 +185,8 @@ def record_code_industrialization(
         # the wrong prior row. An attribute-only divergence (level/note) stays a benign no-op.
         ensure_no_change_id_conflict(
             stored,
-            {"source": source, "code": code, "sidra_tabela": sidra_tabela},
-            ("source", "code", "sidra_tabela"),
+            {"source": source, "code": code, "tabela": tabela},
+            ("source", "code", "tabela"),
             entity="código",
         )
         # Return the STORED row (read-after-write), not the retried request body.
@@ -205,15 +205,15 @@ def record_code_industrialization(
     sql = f"""
         insert into `{table_fqn}`
             (source, code, industrialization_level, note, edited_by, edited_at, change_id,
-             sidra_tabela)
+             tabela)
         values
             (@source, @code, @level, @note, @edited_by, current_timestamp(), @change_id,
-             @sidra_tabela)
+             @tabela)
     """
     params = [
         bigquery.ScalarQueryParameter("source", "STRING", source),
         bigquery.ScalarQueryParameter("code", "STRING", code),
-        bigquery.ScalarQueryParameter("sidra_tabela", "STRING", sidra_tabela),
+        bigquery.ScalarQueryParameter("tabela", "STRING", tabela),
         bigquery.ScalarQueryParameter("level", "STRING", industrialization_level),
         bigquery.ScalarQueryParameter("note", "STRING", note),
         bigquery.ScalarQueryParameter("edited_by", "STRING", edited_by),

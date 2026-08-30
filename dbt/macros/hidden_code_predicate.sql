@@ -15,14 +15,14 @@
     disjuntos e o caso nunca chegou a acontecer.
 
     Uma linha do gate SEM tabela é CORINGA (esconde as duas metades). É o comportamento
-    anterior preservado: `sidra_tabela` é opcional numa entrada de PEVS, e uma tag ausente
+    anterior preservado: `tabela` é opcional numa entrada de PEVS, e uma tag ausente
     tem de continuar escondendo tudo — jamais nada.
 
-    ⚠ Por que o subselect renomeia a coluna. Dentro do NOT EXISTS, um `sidra_tabela` sem
-    qualificação resolve para o escopo INTERNO: `v.sidra_tabela = sidra_tabela` vira uma
+    ⚠ Por que o subselect renomeia a coluna. Dentro do NOT EXISTS, um `tabela` sem
+    qualificação resolve para o escopo INTERNO: `v.tabela = tabela` vira uma
     tautologia que esconde as duas metades de novo, com aparência de correto. Medido contra
     o BigQuery em 2026-08-30 — a forma ingênua fez a metade 291 desaparecer junto. Ao expor
-    a coluna do gate como `_vis_sidra_tabela`, o nome `sidra_tabela` deixa de existir no
+    a coluna do gate como `_vis_tabela`, o nome `tabela` deixa de existir no
     escopo interno e só pode resolver para o Gold, que é o que se quer comparar. Não troque
     isto por uma comparação "mais simples".
 
@@ -35,16 +35,16 @@
 {% macro hidden_code_predicate(source_literal, code_column) -%}
     not exists (
         select 1 from (
-            select source, code, sidra_tabela as _vis_sidra_tabela
+            select source, code, tabela as _vis_tabela
             from {{ ref('dim_produto_visibility') }}
         ) v
         where v.source = '{{ source_literal }}'
           and {{ code_column }} = v.code
 {%- if source_literal in bancos_multi_tabela() %}
           and (
-              v._vis_sidra_tabela is null
-              or v._vis_sidra_tabela = ''
-              or v._vis_sidra_tabela = sidra_tabela
+              v._vis_tabela is null
+              or v._vis_tabela = ''
+              or v._vis_tabela = tabela
           )
 {%- endif %}
     )

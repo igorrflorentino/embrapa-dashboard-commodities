@@ -39,12 +39,12 @@ const ENTRIES = {
     {
       // The seam always returns the EFFECTIVE coded axes (a legacy row is translated
       // server-side), so the fixture carries them like the real API does.
-      codigo_produto: '4403', banco: 'comex', agrupamento: 'Madeira',
+      codigo_produto: '4403', banco: 'comex', tabela: 'comex_ncm', agrupamento: 'Madeira',
       ingestao: 'ativa', visibilidade: 'visivel', agrupamento_id: 'madeira',
       descricao_fonte: 'Madeira em toras (NCM)', descricao_produto: 'Nota antiga',
     },
     {
-      codigo_produto: '4407', banco: 'comtrade', agrupamento: 'Madeira',
+      codigo_produto: '4407', banco: 'comtrade', tabela: 'comtrade_hs', agrupamento: 'Madeira',
       ingestao: 'ativa', visibilidade: 'visivel', agrupamento_id: 'madeira',
       descricao_fonte: null,
     },
@@ -59,10 +59,13 @@ const GROUPS = {
   total: 2,
 };
 // Per-commodity Gold state (linhas na Gold + período + tem-dados), keyed "banco:code".
+// Chaveado pelo TRIO `banco:tabela:código` (v1.47.0). Era `banco:código`, e o catálogo é
+// único no trio — duas entradas legítimas (mesmo código, tabelas diferentes) colidiam numa
+// entrada só e as duas linhas do editor mostravam o mesmo total.
 const STATUS = {
   status: {
-    'comex:4403': { n_rows: 1234, year_start: 1997, year_end: 2023, has_data: true },
-    'comtrade:4407': { n_rows: 0, year_start: null, year_end: null, has_data: false },
+    'comex:comex_ncm:4403': { n_rows: 1234, year_start: 1997, year_end: 2023, has_data: true },
+    'comtrade:comtrade_hs:4407': { n_rows: 0, year_start: null, year_end: null, has_data: false },
   },
 };
 // The source's REAL codes for the add form (comex): includes 0801, so a valid add can fire.
@@ -245,7 +248,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(postBody.codigo_produto).toBe('9999');
   });
 
-  it('PPM requires the sidra_tabela sub-select and sends it in the POST', async () => {
+  it('PPM requires the tabela sub-select and sends it in the POST', async () => {
     const { container, getByText } = render(<ViewCadastroProdutos />);
     await abrirAgrupamentos(container);
     const codeInput = await openAddForm(container, getByText);
@@ -256,7 +259,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     fireEvent.change(container.querySelector('.cc-add-card .cc-group-select'), { target: { value: 'castanha' } });
     // Without the table chosen, Salvar stays disabled (the tag is mandatory for PPM).
     expect(getByText('Salvar produto').disabled).toBe(true);
-    // Pick "Rebanho" (SIDRA 3939) → Salvar enables and the POST carries sidra_tabela.
+    // Pick "Rebanho" (SIDRA 3939) → Salvar enables and the POST carries tabela.
     const tabelaSelect = [...container.querySelectorAll('.cc-add-card select')].find(
       (s) => [...s.options].some((o) => o.value === '3939'),
     );
@@ -265,7 +268,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     fireEvent.click(getByText('Salvar produto'));
     await waitFor(() => expect(postBody).toBeTruthy());
     expect(postBody.banco).toBe('ppm');
-    expect(postBody.sidra_tabela).toBe('3939');
+    expect(postBody.tabela).toBe('3939');
   });
 
   it('PEVS offers the two SIDRA halves, and the tag is REQUIRED there', async () => {
@@ -292,7 +295,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     fireEvent.click(getByText('Salvar produto'));
     await waitFor(() => expect(postBody).toBeTruthy());
     expect(postBody.banco).toBe('pevs');
-    expect(postBody.sidra_tabela).toBe('291');
+    expect(postBody.tabela).toBe('291');
   });
 
   it('shows the SIDRA-half tag on a pevs row, not only on ppm', async () => {
@@ -303,7 +306,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
       entries: {
         entries: [{
           codigo_produto: '3457', banco: 'pevs', agrupamento: 'Madeira', agrupamento_id: 'madeira',
-          descricao_fonte: 'Madeira em tora', sidra_tabela: '291',
+          descricao_fonte: 'Madeira em tora', tabela: '291',
         }],
         total: 1,
       },
@@ -323,13 +326,13 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     // fetch, so promising one there is a lie the researcher cannot check.
     const entries = {
       entries: [{
-        codigo_produto: '3405', banco: 'pevs', agrupamento: 'Bambu',
+        codigo_produto: '3405', banco: 'pevs', tabela: '289', agrupamento: 'Bambu',
         ingestao: 'ativa', visibilidade: 'visivel', agrupamento_id: 'bambu',
       }],
       total: 1,
       catalog_driven_bancos: ['pevs', 'pam', 'ppm'],
     };
-    const status = { status: { 'pevs:3405': { n_rows: 0, year_start: null, year_end: null, has_data: false } } };
+    const status = { status: { 'pevs:289:3405': { n_rows: 0, year_start: null, year_end: null, has_data: false } } };
     mockFetch({ entries, status, groups: { groups: [{ group_id: 'bambu', group_name: 'Bambu', n_members: 1 }] } });
     const { container } = render(<ViewCadastroProdutos />);
     await abrirAgrupamentos(container);
@@ -442,23 +445,23 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     mockFetch({
       entries: {
         entries: [
-          { codigo_produto: '1', banco: 'comex', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          { codigo_produto: '1', banco: 'comex', tabela: 'comex_ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
             ingestao: 'ativa', visibilidade: 'visivel' },
-          { codigo_produto: '2', banco: 'comex', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          { codigo_produto: '2', banco: 'comex', tabela: 'comex_ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
             ingestao: 'ativa', visibilidade: 'oculto' },
-          { codigo_produto: '3', banco: 'comex', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          { codigo_produto: '3', banco: 'comex', tabela: 'comex_ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
             ingestao: 'pausada', visibilidade: 'visivel' },
-          { codigo_produto: '4', banco: 'comex', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          { codigo_produto: '4', banco: 'comex', tabela: 'comex_ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
             ingestao: 'pausada', visibilidade: 'visivel' },
         ],
         total: 4,
       },
       status: {
         status: {
-          'comex:1': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
-          'comex:2': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
-          'comex:3': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
-          'comex:4': { n_rows: 0, year_start: null, year_end: null, has_data: false },
+          'comex:comex_ncm:1': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
+          'comex:comex_ncm:2': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
+          'comex:comex_ncm:3': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
+          'comex:comex_ncm:4': { n_rows: 0, year_start: null, year_end: null, has_data: false },
         },
       },
     });
@@ -476,7 +479,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     mockFetch({
       entries: {
         entries: [{
-          codigo_produto: '4403', banco: 'comex', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          codigo_produto: '4403', banco: 'comex', tabela: 'comex_ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
           ciclo_de_vida: 'Fazer Ingestão e deixar disponível',
         }],
         total: 1,
@@ -509,7 +512,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
         entries: [{
           codigo_produto: '2670', banco: 'ppm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
           ciclo_de_vida: 'Fazer Ingestão e deixar disponível',
-          descricao_fonte: 'Bovino', sidra_tabela: '3939',
+          descricao_fonte: 'Bovino', tabela: '3939',
         }],
         total: 1,
       },

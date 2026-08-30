@@ -1,7 +1,7 @@
 """A chave do gate de visibilidade, como a documentação a descreve, tem de bater com a
 chave que o dbt realmente impõe.
 
-Esta deriva aconteceu de verdade: a v1.46.5 acrescentou `sidra_tabela` à
+Esta deriva aconteceu de verdade: a v1.46.5 acrescentou `tabela` à
 `dim_produto_visibility` e ao predicado que a consome, o spec em `PLANS/` foi atualizado
 no mesmo PR — e `CLAUDE.md` e `ARCHITECTURE.md` ficaram dizendo `(source, code)` por mais
 duas versões. `CLAUDE.md` é o arquivo carregado no contexto de toda sessão futura, então

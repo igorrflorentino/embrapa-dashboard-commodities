@@ -11,6 +11,6 @@
   escreve e lê os logs, o dbt materializa as dims que a UI e o Gold consomem. Uma chave que
   muda de um lado e não do outro é a forma exata do defeito que este projeto já teve.
 -#}
-{% macro chave_produto(codigo='codigo_produto', banco='banco', tabela='sidra_tabela') %}
+{% macro chave_produto(codigo='codigo_produto', banco='banco', tabela='tabela') %}
 {{ codigo }}, {{ banco }}, ifnull({{ tabela }}, '-')
 {%- endmacro %}

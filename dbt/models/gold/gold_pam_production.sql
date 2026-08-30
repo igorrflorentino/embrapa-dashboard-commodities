@@ -37,6 +37,9 @@ with base_pam as (
         city_code,
         any_value(city_name)            as city_name,
         product_code,
+        -- A TABELA no grão da CTE base, vinda do Silver — o trio atravessa o Gold
+        -- inteiro em vez de ser reconstituído no select final.
+        tabela,
         any_value(product_description)  as product_description,
         -- One physical unit per product at this grain (Toneladas for the lean
         -- crops) → max() lifts the quantity row's family/unit/qty (NULL on the
@@ -62,7 +65,7 @@ with base_pam as (
         max(case when is_monetary_value then numeric_value end) as val_raw,
         max(ingestion_timestamp)        as last_refresh
     from {{ ref('silver_ibge_pam') }}
-    group by reference_year, state_acronym, city_code, product_code
+    group by reference_year, state_acronym, city_code, product_code, tabela
     having qty_native is not null
         or val_raw    is not null
         or area_planted_ha   is not null
@@ -95,6 +98,10 @@ enriched as (
 )
 
 select
+    -- A TABELA da fonte, carregada do Silver (que a carimba). Fecha o trio
+    -- `(banco, tabela, código)` neste banco de uma tabela só — a simetria é o ponto:
+    -- com o trio valendo nos cinco, nenhum consumidor ramifica por banco.
+    tabela,
     -- ── Time ─────────────────────────────────────────────────────────────────
     reference_year,
     date(reference_year, 12, 31)                             as reference_date,

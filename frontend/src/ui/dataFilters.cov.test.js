@@ -162,17 +162,17 @@ describe('applyFilters — national path', () => {
 
   it('a composição preserva a TABELA de cada produto — é o que desambigua o Donut', () => {
     // O Donut rotula cada fatia por `name`, e madeira/lenha/carvão existem nas duas tabelas
-    // do PEVS com o MESMO nome. Se a composição descarta `sidra_tabela`, o consumidor não
+    // do PEVS com o MESMO nome. Se a composição descarta `tabela`, o consumidor não
     // tem como distinguir duas fatias idênticas — e este é o elo que a asserção do Donut,
     // que dubla `topProducts`, não alcança.
     const snap = makeSnapshot();
-    snap.products = snap.products.map((p, i) => ({ ...p, sidra_tabela: i % 2 ? '291' : '289' }));
+    snap.products = snap.products.map((p, i) => ({ ...p, tabela: i % 2 ? '291' : '289' }));
     installGlobals(snap);
     const out = window.applyFilters({ basket: null }, 'ibge_pevs');
     const reais = out.topProducts.filter((p) => p.name !== 'Outros');
     expect(reais.length).toBeGreaterThan(0);
     for (const p of reais) {
-      expect(['289', '291'], `${p.name} perdeu a tabela`).toContain(p.sidra_tabela);
+      expect(['289', '291'], `${p.name} perdeu a tabela`).toContain(p.tabela);
     }
   });
 

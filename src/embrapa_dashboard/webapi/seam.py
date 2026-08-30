@@ -193,7 +193,7 @@ def _flow_from_summary(summary: dict | None) -> str | None:
     return flow
 
 
-def _sidra_tabela_from_summary(summary: dict | None) -> str | None:
+def _tabela_from_summary(summary: dict | None) -> str | None:
     """Which SIDRA TABLE the panel is scoped to, from the FilterMenu.
 
     A produto's identity is ``(banco, tabela, código)``, so the table is what tells the
@@ -202,11 +202,11 @@ def _sidra_tabela_from_summary(summary: dict | None) -> str | None:
     which for PEVS is the survey's own total and keeps an unfiltered request
     byte-identical to the one this seam emitted before the axis existed. Mirrors
     ``_flow_from_summary``; only the PEVS-shaped branch passes it, since single-table
-    bancos have no ``sidra_tabela`` column to filter on.
+    bancos have no ``tabela`` column to filter on.
     """
     if not summary:
         return None
-    tabela = summary.get("sidraTabela")
+    tabela = summary.get("tabela")
     if not tabela or tabela == "all":
         return None
     return str(tabela)
@@ -414,16 +414,16 @@ def snapshot(banco_id: str, conv: dict, summary: dict | None = None) -> dict:
         product_ts = gateway.fetch_product_timeseries(
             banco_id, year_start=y0, year_end=y1, codes=codes, value_column=value_col
         )
-        # Only the PEVS-shaped branch carries `sidra_tabela` — of the production marts
+        # Only the PEVS-shaped branch carries `tabela` — of the production marts
         # only gold_pevs_production spans two tables. None (the default) sums both.
-        sidra_tabela = _sidra_tabela_from_summary(summary)
+        tabela = _tabela_from_summary(summary)
         overview_ts = gateway.fetch_production_overview(
             year_start=y0,
             year_end=y1,
             product_codes=codes,
             value_column=value_col,
             source=banco_id,
-            sidra_tabela=sidra_tabela,
+            tabela=tabela,
         )
         uf_data = gateway.fetch_production_by_uf(
             year_start=y0,
@@ -431,7 +431,7 @@ def snapshot(banco_id: str, conv: dict, summary: dict | None = None) -> dict:
             product_codes=codes,
             value_column=value_col,
             source=banco_id,
-            sidra_tabela=sidra_tabela,
+            tabela=tabela,
         )
         uf_yearly = gateway.fetch_production_by_uf_yearly(
             year_start=y0,
@@ -439,7 +439,7 @@ def snapshot(banco_id: str, conv: dict, summary: dict | None = None) -> dict:
             product_codes=codes,
             value_column=value_col,
             source=banco_id,
-            sidra_tabela=sidra_tabela,
+            tabela=tabela,
         )
 
     return {
@@ -644,7 +644,7 @@ def product_uf_ranking(
         uf_codes=states,
         value_column=value_col,
         source=banco_id,
-        sidra_tabela=_sidra_tabela_from_summary(summary),
+        tabela=_tabela_from_summary(summary),
     )
 
 
@@ -682,7 +682,7 @@ def geo_yearly(banco_id: str, conv: dict, summary: dict | None = None) -> pd.Dat
         product_codes=codes,
         value_column=value_col,
         source=banco_id,
-        sidra_tabela=_sidra_tabela_from_summary(summary),
+        tabela=_tabela_from_summary(summary),
     )
 
 
@@ -752,7 +752,7 @@ def geo_municipio_yearly(
             city_codes=city_codes,
             value_column=value_col,
             source=banco_id,
-            sidra_tabela=_sidra_tabela_from_summary(summary),
+            tabela=_tabela_from_summary(summary),
         )
     except NotFound:
         # gold_<source>_production not built → documented None (serialize_municipio_yearly
@@ -787,10 +787,10 @@ def products_by_municipio(
             city_codes=city_codes,
             value_column=value_col,
             source=banco_id,
-            sidra_tabela=_sidra_tabela_from_summary(summary),
+            tabela=_tabela_from_summary(summary),
             # A metade viaja junto com a linha: madeira, lenha e carvão existem nas DUAS
             # com o mesmo nome, e quem exibe precisa distingui-las. Só o PEVS tem a coluna.
-            include_sidra_tabela=True,
+            include_tabela=True,
         )
     except NotFound:
         # gold_<source>_production not built → documented None (→ {"products": []}),
@@ -985,10 +985,10 @@ def products_by_uf(
             codes=codes,
             uf_codes=states,
             value_column=value_col,
-            sidra_tabela=_sidra_tabela_from_summary(summary),
+            tabela=_tabela_from_summary(summary),
             # A metade viaja junto com a linha: madeira, lenha e carvão existem nas DUAS
             # com o mesmo nome, e quem exibe precisa distingui-las. Só o PEVS tem a coluna.
-            include_sidra_tabela=True,
+            include_tabela=True,
         )
     return None
 

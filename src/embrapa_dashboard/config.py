@@ -311,6 +311,18 @@ class Settings(BaseSettings):
     )
     # Which flows to ingest — closed domain {export, import}, mapped to the
     # EXP_/IMP_ file prefixes by the client.
+    # O id de TABELA do banco, para fechar o trio `(banco, tabela, código)` também nos
+    # bancos de uma tabela só. COMEX e COMTRADE não vêm do SIDRA e portanto não têm um id
+    # oficial: estes são nomes do PROJETO, escolhidos para serem estáveis e legíveis.
+    #
+    # Por que dar um id a quem só tem uma tabela, em vez de deixar NULL: o trio passa a ser
+    # a chave em TODO banco, então toda função de identidade tem UMA forma, sem o ramo
+    # "este banco tem tabela / aquele não". A simetria é o ponto — era o ramo que fazia a
+    # regra deixar de se propagar (v1.46.1, v1.46.5 e o presente relatório de auditoria).
+    #
+    # PEVS (289/291), PPM (3939/74) e PAM (5457) usam o id SIDRA de verdade; só estes dois
+    # são inventados.
+    comex_table_id: str = Field(default="comex_ncm")
     comex_flows: str = Field(default="export,import")
     # CODE:LABEL of full 8-digit NCMs to keep regardless of chapter. Codes verified
     # against the official Siscomex NCM table (Res. Gecex 812/2025). Used ONLY for
@@ -402,6 +414,9 @@ class Settings(BaseSettings):
     # explicitly below. Retired codes are then TRANSLATED to their current
     # equivalent in silver_comtrade_flows (comtrade_hs_succession seed), so the Gold
     # / serving / dashboard only ever expose current codes.
+    # Ver `comex_table_id`: o id de TABELA do banco, nome do PROJETO (o COMTRADE não é
+    # SIDRA), para que o trio `(banco, tabela, código)` valha em todos os cinco bancos.
+    comtrade_table_id: str = Field(default="comtrade_hs")
     comtrade_cmd_codes: str = Field(
         default=(
             "080121:castanha_com_casca,080122:castanha_sem_casca,"

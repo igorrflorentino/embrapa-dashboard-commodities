@@ -1468,7 +1468,7 @@ def catalog_seed_from_env_cmd(
     """Seed the Curadoria catalog with the current IBGE *_PRODUCT_CODES env codes so the
     catalog-driven ingestion resolver reproduces them exactly — the cutover backfill for
     CATALOG_AUTHORITATIVE_INGESTION. Idempotent (a re-run is a no-op). PPM codes are tagged
-    with their sidra_tabela (herd/animal). Requires the `webapi` extra."""
+    with their tabela (herd/animal). Requires the `webapi` extra."""
     from embrapa_dashboard.serving.curation import seed_catalog_from_env
     from embrapa_dashboard.serving.iap import IAP_EMAIL_HEADER
 

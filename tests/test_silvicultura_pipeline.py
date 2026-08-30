@@ -253,8 +253,8 @@ def test_product_codes_resolve_the_catalog_scoped_to_t291(settings, monkeypatch)
     (the entries carried no table tag); now they do, so the guard is the SCOPE."""
     visto = {}
 
-    def _fake(cfg, banco, *, env_fallback, sidra_tabela=None, bq_client=None):
-        visto.update(banco=banco, sidra_tabela=sidra_tabela, env_fallback=env_fallback)
+    def _fake(cfg, banco, *, env_fallback, tabela=None, bq_client=None):
+        visto.update(banco=banco, tabela=tabela, env_fallback=env_fallback)
         return ["3455", "3456", "3457"]
 
     monkeypatch.setattr(silvicultura_pipeline.catalog_resolver, "resolve_product_codes", _fake)
@@ -262,7 +262,7 @@ def test_product_codes_resolve_the_catalog_scoped_to_t291(settings, monkeypatch)
     assert silvicultura_pipeline._product_codes(settings) == ["3455", "3456", "3457"]
     assert visto["banco"] == "pevs"
     # The scope is the whole guard: a None here would hand t291 the extraction codes.
-    assert visto["sidra_tabela"] == settings.silvicultura_table_id
+    assert visto["tabela"] == settings.silvicultura_table_id
     assert visto["env_fallback"] == settings.silvicultura_product_codes_list
 
 

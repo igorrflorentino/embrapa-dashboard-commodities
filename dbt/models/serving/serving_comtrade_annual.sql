@@ -42,6 +42,10 @@ with comtrade as (
         -- guaranteed in silver_comtrade_flows). The regime filter narrows on it.
         customs_code,
         cmd_code,
+        -- A TABELA no grão, como em todos os bancos. Constante aqui (banco de UMA tabela
+        -- só), e é justamente por isso que precisa estar: com o trio valendo nos cinco, a
+        -- mart tem a MESMA forma em todos e o consumidor não ramifica por banco.
+        tabela,
         reporter_code,
         partner_code,
         -- family in the grain only mirrors the other marts' shape (uniform BFF
@@ -87,7 +91,7 @@ with comtrade as (
         max(last_refresh)           as last_refresh
     from {{ ref('gold_comtrade_flows') }}
     where {{ hidden_code_predicate('comtrade', 'cmd_code') }}
-    group by reference_year, flow, customs_code, cmd_code, reporter_code, partner_code, family
+    group by reference_year, flow, customs_code, cmd_code, tabela, reporter_code, partner_code, family
 
 )
 
@@ -108,6 +112,7 @@ select
     cast(null as string)            as market_nature,
     {%- endif %}
     ct.cmd_code,
+    ct.tabela,
     ct.hs_chapter,
     ct.cmd_description,
     ct.reporter_code,
@@ -139,6 +144,9 @@ select
 from comtrade ct
 left join {{ ref('gold_produto_agrupamento') }} x
     on x.source = 'comtrade' and x.code = ct.cmd_code
+    -- O TRIO no join: sem a tabela, um código presente nas duas tabelas de um banco
+    -- casaria DUAS linhas do agrupamento e o LEFT JOIN dobraria as somas.
+    and x.tabela = ct.tabela
 -- Edit-driven market-nature (current classification per customs procedure × flow). GUARDED
 -- behind enable_curation: only ref() the gated dim_flow_market_scd2 when curation is on, so a
 -- future build with the flag off degrades market_nature to NULL rather than failing to compile

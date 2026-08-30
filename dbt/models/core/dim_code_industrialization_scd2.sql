@@ -22,7 +22,7 @@
 -- Each "Aplicar" in the Curadoria panel appends ONE immutable row to
 -- research_inputs.code_industrialization_log (written by the Python data-access
 -- layer, never by dbt) — the Gold tables are NEVER overwritten. This view derives
--- the timeline per (source, code, sidra_tabela):
+-- the timeline per (source, code, tabela):
 --   valid_from = edited_at of this version
 --   valid_to   = LEAD(edited_at) — when the next edit superseded it (NULL = open)
 --   is_current = valid_to IS NULL
@@ -30,10 +30,10 @@
 -- Materialized as a VIEW on purpose: the log is small, and a view means a fresh
 -- INSERT from the curation panel is visible to the UI immediately, with no dbt
 -- rebuild. The dashboard LEFT JOINs the Gold code universe (DISTINCT codes) to
--- this live dim on (source, code, sidra_tabela) filtered to is_current — an unclassified code
+-- this live dim on (source, code, tabela) filtered to is_current — an unclassified code
 -- surfaces as "a classificar" (the dynamic worklist).
 --
--- Grain: one row per (source, code, sidra_tabela, version). A tabela entra na chave
+-- Grain: one row per (source, code, tabela, version). A tabela entra na chave
 -- porque PEVS e PPM unem duas tabelas SIDRA sob um token de fonte só.
 -- ────────────────────────────────────────────────────────────────────────────
 
@@ -50,7 +50,10 @@ with log as (
         -- Parte da identidade do produto (banco/source + TABELA + código): PPM e PEVS
         -- unem duas tabelas SIDRA sob um token só. Precisa vir até aqui porque a window
         -- de versionamento particiona por ela.
-        sidra_tabela
+        -- Padrão do banco quando o log histórico não traz tabela (comex/comtrade/pam
+        -- nasceram sem ela). ÚNICO ponto do projeto que trata a ausência; daqui para
+        -- baixo o trio é NÃO-NULO em todas as camadas.
+        {{ tabela_com_padrao('tabela', 'source') }} as tabela
     from {{ source('research_inputs', 'code_industrialization_log') }}
 
 ),
@@ -64,7 +67,7 @@ versioned as (
         note,
         edited_by,
         edited_at,
-        sidra_tabela,
+        tabela,
         -- Order by edit time, breaking ties on the surrogate change_id so two
         -- edits in the same instant still get a deterministic version sequence.
         row_number() over w     as version,
@@ -78,7 +81,7 @@ select
     source,
     code,
     -- Ver dim_produto_catalog: parte da identidade do produto.
-    sidra_tabela,
+    tabela,
     version,
     industrialization_level,
     note,

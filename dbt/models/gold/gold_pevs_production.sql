@@ -49,7 +49,7 @@
 -- ── The two halves of PEVS ──────────────────────────────────────────────────
 --
 --  The survey is "Produção da Extração Vegetal E DA Silvicultura" and this table
---  carries both, told apart by `sidra_tabela` — the SIDRA table each row came from:
+--  carries both, told apart by `tabela` — the SIDRA table each row came from:
 --    t289 — NATIVE forest, extração vegetal (the original contents of this table)
 --    t291 — PLANTED forest, silvicultura
 --
@@ -74,16 +74,16 @@
 --  here would shuffle values between fields rather than fail.
 with silver_union as (
 
-    select '{{ var("ibge_table_id") }}'         as sidra_tabela, * from {{ ref('silver_ibge_pevs') }}
+    select * from {{ ref('silver_ibge_pevs') }}
     union all
-    select '{{ var("silvicultura_table_id") }}' as sidra_tabela, * from {{ ref('silver_ibge_silvicultura') }}
+    select * from {{ ref('silver_ibge_silvicultura') }}
 
 ),
 
 base_pevs as (
 
     select
-        sidra_tabela,
+        tabela,
         reference_year,
         state_acronym,
         -- Group by city_code (the natural geographic key from Silver), NOT
@@ -111,7 +111,7 @@ base_pevs as (
         max(case when is_monetary_value then numeric_value end) as val_raw,
         max(ingestion_timestamp)        as last_refresh
     from silver_union
-    group by sidra_tabela, reference_year, state_acronym, city_code, product_code
+    group by tabela, reference_year, state_acronym, city_code, product_code
     having qty_native is not null
         or val_raw    is not null
 
@@ -172,7 +172,7 @@ select
     -- Never null: every row comes from exactly one of the two Silvers. Part of the
     -- produto's identity (banco, tabela, código), not a label about it — the human
     -- name of each half is derived from this id wherever it is displayed.
-    sidra_tabela,
+    tabela,
 
     -- ── Quantities (physical-unit family) ───────────────────────────────────
     -- The reported quantity is normalised to a per-family base unit:

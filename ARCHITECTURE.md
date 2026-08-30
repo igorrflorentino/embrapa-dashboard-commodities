@@ -171,7 +171,7 @@ embrapa-dashboard-commodities/
 │   │   │   ├── dim_geo_br.sql        # 27 UFs → name/region/abbrev (N·NE·CO·SE·S)
 │   │   │   ├── dim_geo_municipio.sql # ~5570 municípios → both sub-UF divisions (meso/micro + intermediária/imediata)
 │   │   │   ├── dim_code_industrialization_scd2.sql  # Per-code curation SCD2 (view; gated)
-│   │   │   ├── dim_produto_visibility.sql  # F7 gate: (source, code, sidra_tabela) marked indisponível — excluded from every researcher-facing read
+│   │   │   ├── dim_produto_visibility.sql  # F7 gate: (source, code, tabela) marked indisponível — excluded from every researcher-facing read
 │   │   │   └── dim_flow_market_scd2.sql    # (customs × flow) → market nature — FROZEN (data-blocked: totals-only COMTRADE base)
 │   │   └── serving/                  # ⭐ Pre-aggregated marts for the webapi dashboard
 │   │       ├── _serving.yml

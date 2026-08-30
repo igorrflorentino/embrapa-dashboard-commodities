@@ -78,7 +78,7 @@ def _casos():
                 "agrupamento_id": "madeira",
                 "active": True,
                 "edited_by": "a@b.c",
-                "sidra_tabela": None,
+                "tabela": None,
                 "ingestao": "ativa",
                 "visibilidade": "visivel",
             },

@@ -45,11 +45,11 @@ with base_ppm as (
         product_code,
         any_value(product_description)  as product_description,
         -- Per product there is one SIDRA table (3939 herd | 74 animal production) and
-        -- one physical unit → any_value/max lift them. `sidra_tabela` is part of the
+        -- one physical unit → any_value/max lift them. `tabela` is part of the
         -- produto's IDENTITY (banco, tabela, código); `measure_kind` is derived from it
         -- upstream and rides along because it answers a different question — "does this
         -- row have a price?" — that five views ask directly.
-        any_value(sidra_tabela)         as sidra_tabela,
+        any_value(tabela)         as tabela,
         any_value(measure_kind)         as measure_kind,
         max(family)                     as family,
         max(unit_native)                as unit_native,
@@ -105,7 +105,7 @@ select
     product_code,
     product_description,
     -- 'stock' (herd headcount, no price) vs 'flow' (animal production, qty + value).
-    sidra_tabela,
+    tabela,
     measure_kind,
 
     -- ── Quantities (physical-unit family — contagem/volume/massa per product) ──
