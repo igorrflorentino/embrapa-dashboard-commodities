@@ -403,6 +403,19 @@ def _is_active_entry(bq: bigquery.Client, table_fqn: str, codigo_produto: str, b
     return bool(rows) and bool(rows[0].active)
 
 
+# Os bancos que unem DUAS tabelas SIDRA sob um token só. Uma constante e não um literal
+# espalhado: `banco == "ppm"` era exatamente a forma que deixou o pevs de fora da regra.
+_BANCOS_MULTI_TABELA = ("ppm", "pevs")
+
+
+def _tabelas_validas_por_banco(cfg: Settings) -> dict[str, set[str]]:
+    """As tabelas SIDRA que cada banco multi-tabela aceita."""
+    return {
+        "ppm": {cfg.ppm_herd_table_id, cfg.ppm_animal_table_id},
+        "pevs": {cfg.ibge_table_id, cfg.silvicultura_table_id},
+    }
+
+
 def _validate_sidra_tabela(
     banco: str, sidra_tabela: str | None, cfg: Settings, *, require_for_ppm: bool = True
 ) -> None:
@@ -427,10 +440,7 @@ def _validate_sidra_tabela(
     ``require_for_ppm`` — mantido o nome por compatibilidade de chamada — é True para uma
     entrada NOVA e False para um UPDATE, onde o chamador preserva a tag guardada. Fail loud
     (400, pt-BR)."""
-    valid_por_banco = {
-        "ppm": {cfg.ppm_herd_table_id, cfg.ppm_animal_table_id},
-        "pevs": {cfg.ibge_table_id, cfg.silvicultura_table_id},
-    }
+    valid_por_banco = _tabelas_validas_por_banco(cfg)
     valid = valid_por_banco.get(banco)
     if valid is None:
         if sidra_tabela:
@@ -715,10 +725,16 @@ def record_produto_catalog(
     # Validate the banco and note whether the code already has Gold data (a not-yet-
     # ingested code is accepted as *pendente de ingestão*). Read state AFTER ensure.
     _check_code_status(bq, table_fqn, codigo_produto, banco, is_active=is_active)
-    if banco == "ppm":
-        # PRESERVE the stored sidra_tabela on an update that doesn't re-send it (the admin
-        # table's inline ciclo/agrupamento edits) so the append-only overwrite can't drop it;
-        # a NEW ppm entry must supply it.
+    if banco in _BANCOS_MULTI_TABELA:
+        # Vale para TODO banco multi-tabela, não só o ppm. Estava fechado em `banco == "ppm"`
+        # e o pevs escapava das duas metades desta regra:
+        #   • PRESERVAR a tag num update que não a reenvia (os edits inline de
+        #     agrupamento/ciclo na tabela do admin). Sem isso a escrita append-only DERRUBA
+        #     a tag e move a entrada para a sentinela — um produto que some das duas metades.
+        #   • EXIGIR a tag numa entrada nova: sem ela a entrada não pertence a metade
+        #     nenhuma. Uma sonda HTTP registrou `9999999` na sentinela para provar.
+        # É o padrão "condicional que nomeia UM banco": ela codifica um censo do mundo, e o
+        # mundo cresceu quando a silvicultura entrou.
         if sidra_tabela is None and is_active:
             sidra_tabela = _current_sidra_tabela(bq, table_fqn, codigo_produto, banco)
         _validate_sidra_tabela(banco, sidra_tabela, cfg, require_for_ppm=not is_active)
