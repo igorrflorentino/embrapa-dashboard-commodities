@@ -67,6 +67,21 @@ const _CC_SIDRA_LABEL = Object.fromEntries(
     banco, Object.fromEntries(cfg.opcoes.map((t) => [t.v, t.label])),
   ]),
 );
+// Busca do cadastro. Sem dobrar acento, "acai" não acha "Açaí" e "castanha do para" não acha
+// "castanha-do-pará" — e é exatamente assim que o pesquisador digita quando só quer saber se o
+// produto JÁ está cadastrado. Hífen e pontuação viram espaço pelo mesmo motivo.
+function _ccNorm(txt) {
+  return String(txt ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+// Todos os termos têm de aparecer (E, não OU): "arroz 1006" acha o arroz de código 1006xxxx,
+// que é a pergunta real. Cada termo pode cair em qualquer campo.
+function _ccCombina(termos, campos) {
+  const alvo = campos.map(_ccNorm).join(' | ');
+  return termos.every((t) => alvo.includes(t));
+}
+
 const _CC_EMPTY_DRAFT = {
   codigo_produto: '', banco: 'comex', agrupamento_id: '',
   descricao_produto: '', ingestao: 'ativa', visibilidade: 'visivel', sidra_tabela: '',
@@ -76,7 +91,7 @@ const _CC_EMPTY_DRAFT = {
 // summary stay honest automatically. Order matches the table, left to right.
 const _CC_HELP_COLUNAS = [
   { k: 'Banco', d: 'A fonte oficial do dado (IBGE PEVS/PAM/PPM, MDIC COMEX, UN Comtrade).' },
-  { k: 'Tabela', d: 'Qual tabela SIDRA dentro do banco. Só o PEVS (extração vegetal · silvicultura) e o PPM (rebanho · produção animal) reúnem duas tabelas sob um mesmo banco; nos demais aparece um travessão. Junto com o banco e o código, ela forma a identidade do produto — o mesmo código pode estar cadastrado nas duas tabelas e são produtos diferentes.' },
+  { k: 'Tabela', d: 'O código da tabela SIDRA dentro do banco (passe o mouse para ver o nome). Só o PEVS (extração vegetal · silvicultura) e o PPM (rebanho · produção animal) reúnem duas tabelas sob um mesmo banco; nos demais aparece um travessão. Junto com o banco e o código, ela forma a identidade do produto — o mesmo código pode estar cadastrado nas duas tabelas e são produtos diferentes.' },
   { k: 'Código', d: 'O código real da fonte (NCM, HS, código SIDRA). É ele, junto com o banco e a tabela, que identifica o produto no cadastro — não o nome.' },
   { k: 'Descrição (fonte)', d: 'O nome que a própria fonte dá a esse código; é somente leitura. Logo abaixo fica a sua anotação (✎), um texto livre seu que não altera nenhum dado.' },
   { k: 'Linhas', d: 'Quantas linhas esse produto tem hoje na camada Gold. Zero significa que ainda não foi ingerido.' },
@@ -296,6 +311,11 @@ function ViewCadastroProdutos() {
   const [newGroup, setNewGroup] = useCcState('');
   // The source's REAL codes for the add form's banco (autocomplete + advisory "já existe" hint).
   const [srcCodes, setSrcCodes] = useCcState({ banco: null, codes: [], loading: false, error: false });
+  // Cada agrupamento começa RECOLHIDO: com 31 cartões abertos a tela abre com ~234 linhas e
+  // ninguém lê 234 linhas — quem chega aqui quer UM produto. Guardamos os abertos (e não os
+  // fechados) para que um agrupamento novo nasça fechado como todos os outros.
+  const [abertos, setAbertos] = useCcState(() => new Set());
+  const [busca, setBusca] = useCcState('');
 
   // Idempotency keys, one STABLE change_id per in-flight logical operation. The key is scoped
   // to the entity AND the payload (see _saveKey): a retry of the SAME edit reuses its key so a
@@ -601,6 +621,35 @@ function ViewCadastroProdutos() {
   const knownIds = new Set(data.groups.map((g) => g.group_id));
   const strayEntries = data.entries.filter((e) => !knownIds.has(e.agrupamento_id));
 
+  // ── Busca ────────────────────────────────────────────────────────────────────────────
+  // Procura no CÓDIGO e nas duas descrições — a da fonte e a anotação do pesquisador —, mais
+  // o banco e o agrupamento. A pergunta que ela responde é "esse produto já está cadastrado?",
+  // e quem pergunta lembra do nome OU do código, raramente de qual banco. Filtra a LINHA, não
+  // só o cartão: mostrar um agrupamento inteiro porque um item bateu esconderia qual bateu.
+  const termos = _ccNorm(busca).split(' ').filter(Boolean);
+  const buscando = termos.length > 0;
+  const nomeDoGrupo = new Map(data.groups.map((g) => [g.group_id, g.group_name]));
+  const casa = (e) => !buscando || _ccCombina(termos, [
+    e.codigo_produto, e.descricao_fonte, e.descricao_produto,
+    _CC_BANCO_LABEL[e.banco] || e.banco, nomeDoGrupo.get(e.agrupamento_id) || '',
+  ]);
+  const filtrar = (lista) => (buscando ? lista.filter(casa) : lista);
+  const achados = buscando ? data.entries.filter(casa).length : 0;
+
+  // Buscando, o resultado tem de estar VISÍVEL: um acerto escondido atrás de um toggle é o
+  // mesmo que nenhum acerto. Fora da busca vale o que o usuário abriu — e um cartão vazio
+  // continua listado (recolhido), senão o agrupamento sem produtos some sem explicação.
+  const estaAberto = (gid) => (buscando ? true : abertos.has(gid));
+  const alternar = (gid) => setAbertos((prev) => {
+    const p = new Set(prev);
+    if (p.has(gid)) p.delete(gid); else p.add(gid);
+    return p;
+  });
+  const gruposVisiveis = buscando
+    ? groupsSorted.filter((g) => membersOf(g.group_id).some(casa))
+    : groupsSorted;
+  const todosAbertos = groupsSorted.length > 0 && groupsSorted.every((g) => abertos.has(g.group_id));
+
   const memberRows = (members) => (
     <div className="dt-wrap cc-dt-wrap">
       <table className="dt-table cc-table">
@@ -627,13 +676,17 @@ function ViewCadastroProdutos() {
                     banco, o que escondia um terço da chave dentro de outro terço. Bancos de uma
                     tabela só mostram o travessão: a coluna não some, senão o leitor não sabe se
                     aquele banco não tem tabela ou se a tela deixou de mostrar. */}
-                <td data-label="Tabela">
+                {/* O CÓDIGO da tabela SIDRA, não o nome por extenso: é o identificador que a
+                    fonte usa e que aparece na URL do SIDRA, e a coluna vizinha já mostra o
+                    código do produto — os dois lidos juntos formam a chave. Mesma fonte,
+                    cor e tamanho do resto da tabela (a classe `tnum` das colunas numéricas),
+                    em vez do selo colorido: um selo dizia "isto é outra coisa", quando é
+                    apenas mais um pedaço da identidade. O nome por extenso vira `title`, de
+                    modo que ninguém precise decorar que 289 é extração vegetal. */}
+                <td className="tnum" data-label="Tabela"
+                    title={_CC_SIDRA_LABEL[e.banco]?.[e.sidra_tabela] || undefined}>
                   {_CC_SIDRA_TABELAS[e.banco]
-                    ? (
-                      <span className="cc-sidra-tag">
-                        {_CC_SIDRA_LABEL[e.banco]?.[e.sidra_tabela] || e.sidra_tabela || '—'}
-                      </span>
-                    )
+                    ? (e.sidra_tabela || <span className="dt-null">—</span>)
                     : <span className="dt-null">—</span>}
                 </td>
                 <td className="tnum" data-label="Código">{e.codigo_produto}</td>
@@ -850,10 +903,38 @@ function ViewCadastroProdutos() {
         </div>
       )}
 
-      <div className="pp-selector" style={{ marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-        <span className="pp-selector-label">
-          {data.entries.length.toLocaleString('pt-BR')} produtos · {data.groups.length} agrupamentos
+      {/* A busca vem ANTES do resto da barra e ocupa a primeira linha inteira: com os cartões
+          recolhidos por padrão, ela passa a ser o caminho principal para chegar a um produto,
+          não um filtro acessório. */}
+      <div className="pp-selector cc-busca-barra" style={{ marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+        <label className="cc-busca">
+          <span className="cc-busca-icone" aria-hidden="true">⌕</span>
+          <input type="search" value={busca} className="cc-busca-input"
+                 placeholder="Pesquisar produto por código ou descrição…"
+                 aria-label="Pesquisar no cadastro por código ou descrição"
+                 onChange={(e) => setBusca(e.target.value)}
+                 onKeyDown={(e) => { if (e.key === 'Escape') setBusca(''); }} />
+          {busca && (
+            <button type="button" className="cc-busca-limpar" onClick={() => setBusca('')}
+                    aria-label="Limpar busca" title="Limpar (Esc)">×</button>
+          )}
+        </label>
+        {/* O resultado é dito em número: "0 produtos" responde "não, não está cadastrado" —
+            que é justamente a pergunta — de um jeito que uma lista vazia não responde. */}
+        <span className="caption cc-busca-saldo" role="status">
+          {buscando
+            ? `${achados.toLocaleString('pt-BR')} produto(s) em ${gruposVisiveis.length} agrupamento(s)`
+            : `${data.entries.length.toLocaleString('pt-BR')} produtos · ${data.groups.length} agrupamentos`}
         </span>
+        <button type="button" className="seg-opt" disabled={buscando || !groupsSorted.length}
+                title={buscando ? 'Durante a busca os resultados ficam sempre abertos' : undefined}
+                onClick={() => setAbertos(todosAbertos ? new Set()
+                  : new Set(groupsSorted.map((g) => g.group_id)))}>
+          {todosAbertos ? '▾ Recolher todos' : '▸ Expandir todos'}
+        </button>
+      </div>
+
+      <div className="pp-selector" style={{ marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
         <label className="caption" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           Novo agrupamento:
           <input type="text" value={newGroup} placeholder="Ex.: Castanha" disabled={locked}
@@ -889,7 +970,7 @@ function ViewCadastroProdutos() {
                         onChange={(e) => setDraft((d) => ({ ...d, sidra_tabela: e.target.value }))}>
                   <option value="">{_CC_SIDRA_TABELAS[draft.banco].vazio}</option>
                   {_CC_SIDRA_TABELAS[draft.banco].opcoes.map(
-                    (t) => <option key={t.v} value={t.v}>{t.label}</option>)}
+                    (t) => <option key={t.v} value={t.v}>{t.v} — {t.label}</option>)}
                 </select>
               </label>
             )}
@@ -992,12 +1073,26 @@ function ViewCadastroProdutos() {
         </p>
       ) : (
         <>
-          {groupsSorted.map((g) => {
-            const members = membersOf(g.group_id);
+          {gruposVisiveis.map((g) => {
+            const members = filtrar(membersOf(g.group_id));
+            const aberto = estaAberto(g.group_id);
             return (
-              <div className="card" key={g.group_id} style={{ marginBottom: 10 }}>
-                <div className="cc-group-head" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-                  <strong style={{ flex: 1, minWidth: 160 }}>{g.group_name} <small className="pc-cap">({g.n_members})</small></strong>
+              <div className="card cc-group-card" key={g.group_id} style={{ marginBottom: 10 }}>
+                <div className="cc-group-head" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: aberto ? 8 : 0, flexWrap: 'wrap' }}>
+                  {/* O nome INTEIRO é o botão, não só a setinha: é o alvo óbvio de clique e dá
+                      uma área de toque decente. Os outros controles do cabeçalho ficam FORA
+                      dele — aninhar botão em botão é HTML inválido e faz renomear/excluir
+                      recolherem o cartão junto. Por isso não usamos <details>/<summary>. */}
+                  <button type="button" className="cc-group-toggle" aria-expanded={aberto}
+                          onClick={() => alternar(g.group_id)} disabled={buscando}
+                          title={buscando ? 'Durante a busca os resultados ficam abertos'
+                                          : (aberto ? 'Recolher' : 'Expandir')}>
+                    <span className="cc-group-chevron" aria-hidden="true">{aberto ? '▾' : '▸'}</span>
+                    <strong>{g.group_name}</strong>
+                    <small className="pc-cap">
+                      ({buscando ? `${members.length} de ${g.n_members}` : g.n_members})
+                    </small>
+                  </button>
                   <button type="button" className="seg-opt" disabled={locked}
                           onClick={() => renameGroup(g)} title="Renomear agrupamento">✎ Renomear</button>
                   <button type="button" className="seg-opt" disabled={locked || g.n_members > 0}
@@ -1034,22 +1129,31 @@ function ViewCadastroProdutos() {
                     </label>
                   )}
                 </div>
-                {members.length ? memberRows(members) : (
+                {/* Recolhido não renderiza a tabela — o custo de 234 linhas de <select> some
+                    junto com a poluição visual, em vez de só ficar escondido por CSS. */}
+                {aberto && (members.length ? memberRows(members) : (
                   <p className="caption" style={{ margin: '0 2px' }}>Agrupamento vazio — adicione produtos ou exclua-o.</p>
-                )}
+                ))}
               </div>
             );
           })}
 
-          {strayEntries.length > 0 && (
+          {buscando && !gruposVisiveis.length && !filtrar(strayEntries).length && (
+            <p className="caption" style={{ padding: '28px 4px', textAlign: 'center' }}>
+              Nenhum produto cadastrado combina com <strong>“{busca.trim()}”</strong>. Se ele
+              deveria estar aqui, use “+ Adicionar produto”.
+            </p>
+          )}
+
+          {filtrar(strayEntries).length > 0 && (
             <div className="card" style={{ marginBottom: 10, borderLeft: '4px solid var(--warn, #b8860b)' }}>
               <div className="cc-group-head" style={{ marginBottom: 8 }}>
-                <strong>Sem agrupamento registrado <small className="pc-cap">({strayEntries.length})</small></strong>
+                <strong>Sem agrupamento registrado <small className="pc-cap">({filtrar(strayEntries).length})</small></strong>
                 <p className="caption" style={{ margin: '4px 0 0' }}>
                   Reatribua cada um a um agrupamento existente na coluna “Agrupamento”.
                 </p>
               </div>
-              {memberRows(strayEntries)}
+              {memberRows(filtrar(strayEntries))}
             </div>
           )}
         </>

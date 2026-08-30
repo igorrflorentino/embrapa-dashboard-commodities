@@ -16,6 +16,24 @@ let ViewCadastroProdutos;
 let postBody;
 let postUrl;
 
+/**
+ * Espera o cadastro carregar e ABRE todos os agrupamentos.
+ *
+ * Desde v1.42.0 cada agrupamento nasce RECOLHIDO — com 31 cartões abertos a tela abria com
+ * ~234 linhas. Quase todo teste aqui é sobre o conteúdo da tabela, então em vez de repetir o
+ * clique em 20 lugares, este helper substitui o antigo `waitFor(.dt-table)`: ele espera o
+ * cabeçalho do primeiro agrupamento (o sinal de que os dados chegaram), clica em "Expandir
+ * todos" e só então espera a tabela. Um teste que queira verificar o estado RECOLHIDO não usa
+ * o helper — chama `render` direto.
+ */
+async function abrirAgrupamentos(container) {
+  await waitFor(() => expect(container.querySelector('.cc-group-toggle')).toBeTruthy());
+  const expandir = [...container.querySelectorAll('button')]
+    .find((b) => /Expandir todos/.test(b.textContent));
+  if (expandir) fireEvent.click(expandir);
+  await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+}
+
 const ENTRIES = {
   entries: [
     {
@@ -149,7 +167,7 @@ const esperar = (container, predicado, oQue) =>
 describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
   it('renders each agrupamento with members, source description, and Gold-state columns', async () => {
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     // Wait for the async status fetch to populate the linhas/período columns.
     await waitFor(() => expect(container.textContent).toContain('1.234'));
     // The Madeira group header + member count, and the EMPTY Castanha group card too.
@@ -179,7 +197,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
   it('creates a new agrupamento via /api/catalog/group', async () => {
     const { container, getByText } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     const newGroupInput = [...container.querySelectorAll('input[type="text"]')].find(
       (i) => i.getAttribute('placeholder') === 'Ex.: Castanha',
     );
@@ -192,7 +210,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
   it('adds a commodity by an EXISTING source code into a chosen agrupamento', async () => {
     const { container, getByText } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     const codeInput = await openAddForm(container, getByText);
     // Type a code the source really has (0801 ∈ SOURCE_CODES) — the "já existe" hint shows ✓.
     fireEvent.change(codeInput, { target: { value: '0801' } });
@@ -211,7 +229,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
   it('accepts a NOT-YET-INGESTED code as pendente de ingestão: soft warning, Salvar enabled, POST fires', async () => {
     const { container, getByText } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     const codeInput = await openAddForm(container, getByText);
     // 9999 is NOT in the source's real codes — no longer blocked: the catalog drives
     // ingestion, so it registers as pending and the next run will fetch it.
@@ -229,7 +247,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
   it('PPM requires the sidra_tabela sub-select and sends it in the POST', async () => {
     const { container, getByText } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     const codeInput = await openAddForm(container, getByText);
     // Switch banco to IBGE PPM → the "Tabela PPM" sub-select appears.
     fireEvent.change(container.querySelectorAll('.cc-add-card select')[0], { target: { value: 'ppm' } });
@@ -257,7 +275,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     // cai em nenhuma das duas metades, cai numa TERCEIRA identidade que não corresponde a
     // dado nenhum. Era opcional enquanto a chave a ignorava.
     const { container, getByText } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     const codeInput = await openAddForm(container, getByText);
     fireEvent.change(container.querySelectorAll('.cc-add-card select')[0], { target: { value: 'pevs' } });
     await waitFor(() => expect(container.textContent).toContain('Metade do PEVS'));
@@ -291,9 +309,11 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
       },
     });
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
-    await waitFor(() => expect(container.querySelector('.cc-sidra-tag')).toBeTruthy());
-    expect(container.querySelector('.cc-sidra-tag').textContent).toContain('Silvicultura');
+    await abrirAgrupamentos(container);
+    const celula = container.querySelector('td[data-label="Tabela"]');
+    // O CÓDIGO da tabela SIDRA, não o nome por extenso; o nome fica no title.
+    expect(celula.textContent.trim()).toBe('291');
+    expect(celula.getAttribute('title')).toBe('Silvicultura');
   });
 
   it('says "Pendente de ingestão" ONLY for a banco the catalog actually steers', async () => {
@@ -312,6 +332,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     const status = { status: { 'pevs:3405': { n_rows: 0, year_start: null, year_end: null, has_data: false } } };
     mockFetch({ entries, status, groups: { groups: [{ group_id: 'bambu', group_name: 'Bambu', n_members: 1 }] } });
     const { container } = render(<ViewCadastroProdutos />);
+    await abrirAgrupamentos(container);
     await waitFor(() => expect(container.querySelector('.cc-status')).toBeTruthy());
     expect(container.querySelector('.cc-status-pendente')).toBeTruthy();
     expect(container.querySelector('.cc-status-sem-dados')).toBeFalsy();
@@ -324,6 +345,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     // waited five minutes and still saw it charted would conclude the control was broken.
     mockFetch();
     const { container } = render(<ViewCadastroProdutos />);
+    await abrirAgrupamentos(container);
     await waitFor(() => expect(container.querySelector('.cc-status')).toBeTruthy());
     const texto = container.textContent;
     expect(texto).not.toMatch(/alguns minutos/i);
@@ -333,7 +355,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
   it('read-only when can_edit is false: banner shown, edit controls disabled', async () => {
     mockFetch({ entries: { ...ENTRIES, can_edit: false } });
     const { container, getByText } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     expect(container.textContent).toContain('Modo somente leitura');
     expect(getByText('+ Adicionar produto').disabled).toBe(true);
     // The inline row controls (remove) are disabled too.
@@ -342,7 +364,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
   it('requires an agrupamento: with a valid code but no group, Salvar stays disabled', async () => {
     const { container, getByText } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     const codeInput = await openAddForm(container, getByText);
     fireEvent.change(codeInput, { target: { value: '0801' } }); // valid code…
     // …but no agrupamento chosen → the button stays disabled and nothing is posted.
@@ -356,7 +378,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     // documented, the researcher meets an unexplained header — so pin the two lists together
     // rather than trusting they stay in sync by hand.
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.cc-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     const headers = [...container.querySelectorAll('.cc-table thead th')]
       .map((th) => th.textContent.trim())
       .filter(Boolean); // the ações column header is intentionally empty (icon-only)
@@ -368,7 +390,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
   it('keeps the legend collapsed by default so it never pushes the table down', async () => {
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.cc-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     const details = container.querySelector('details.cc-help');
     expect(details).toBeTruthy();
     expect(details.open).toBe(false);
@@ -379,7 +401,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
   it('explains that removal is non-destructive and that hiding keeps ingesting', async () => {
     // These two are the actions most easily misread as data loss / as stopping the pipeline.
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.cc-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     const legend = container.querySelector('.cc-help').textContent;
     expect(legend).toContain('NÃO são apagados');
     expect(legend).toContain('a ingestão segue normalmente');
@@ -390,7 +412,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     // Pausing is reversible and destroys nothing (history stays, produto stays visible), so
     // unlike hiding it must NOT gate behind the modal.
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     const sel = container.querySelector('select[aria-label="Ingestão de 4403"]');
     fireEvent.change(sel, { target: { value: 'pausada' } });
     await waitFor(() => expect(postBody).toBeTruthy());
@@ -402,7 +424,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
   it('confirms before hiding, and hiding does not pause ingestion', async () => {
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     const sel = container.querySelector('select[aria-label="Visibilidade de 4403"]');
     fireEvent.change(sel, { target: { value: 'oculto' } });
     // Hiding pulls it from every chart → gated behind the accessible modal.
@@ -441,6 +463,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
       },
     });
     const { container } = render(<ViewCadastroProdutos />);
+    await abrirAgrupamentos(container);
     await waitFor(() => expect(container.querySelector('.cc-status')).toBeTruthy());
     await waitFor(() => expect(container.querySelectorAll('.cc-status').length).toBe(4));
     const badges = [...container.querySelectorAll('.cc-status')].map((b) => b.textContent);
@@ -460,14 +483,14 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
       },
     });
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     expect(container.querySelector('select[aria-label="Ingestão de 4403"]').value).toBe('ativa');
     expect(container.querySelector('select[aria-label="Visibilidade de 4403"]').value).toBe('visivel');
   });
 
   it('moves a commodity to another agrupamento via the row group dropdown', async () => {
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     // The first member row's Agrupamento <select> (a .cc-group-select inside the table).
     fireEvent.change(container.querySelector('.dt-table .cc-group-select'), { target: { value: 'castanha' } });
     await waitFor(() => expect(postBody).toBeTruthy());
@@ -492,21 +515,26 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
       },
     });
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
-    const tag = container.querySelector('.cc-sidra-tag');
-    expect(tag.textContent).toBe('Rebanho (efetivo)');
-    // Coluna própria — nem na célula do banco, nem na de Descrição.
-    expect(tag.closest('td').getAttribute('data-label')).toBe('Tabela');
-    expect(container.querySelector('td.cc-cell-title .cc-sidra-tag')).toBeNull();
-    expect(container.querySelector('td[data-label="Descrição"] .cc-sidra-tag')).toBeNull();
+    await abrirAgrupamentos(container);
+    const celula = container.querySelector('td[data-label="Tabela"]');
+    expect(celula.textContent.trim()).toBe('3939');
+    expect(celula.getAttribute('title')).toBe('Rebanho (efetivo)');
+    // Coluna própria — o código não voltou para dentro da célula do banco nem da Descrição.
+    expect(container.querySelector('td.cc-cell-title').textContent).not.toContain('3939');
+    expect(container.querySelector('td[data-label="Descrição"]').textContent).not.toContain('3939');
+    // A coluna usa a mesma classe numérica do resto da tabela, não um selo próprio.
+    expect(celula.className).toContain('tnum');
   });
 
   it('omits the SIDRA tag for SINGLE-TABLE bancos', async () => {
     // "non-PPM" until 2026-08-29; pevs joined ppm as multi-table, so what earns a tag is
     // spanning two SIDRA tables, not being ppm.
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
-    expect(container.querySelector('.cc-sidra-tag')).toBeNull(); // comex + comtrade rows
+    await abrirAgrupamentos(container);
+    // comex + comtrade: a coluna existe (senão o leitor não sabe se sumiu) mas vem vazia.
+    const celulas = [...container.querySelectorAll('td[data-label="Tabela"]')];
+    expect(celulas.length).toBeGreaterThan(0);
+    for (const c of celulas) expect(c.textContent.trim()).toBe('—');
   });
 
   it('shows the existing manual descrição pre-filled, and edits it after creation via blur-commit', async () => {
@@ -514,6 +542,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     // Wait for the INPUT the test is about, not just for the table around it: the rows are
     // populated a tick after `.dt-table` mounts, so gating on the table let this read a
     // not-yet-filled field. Passed locally and failed under CI load (2026-08-28).
+    await abrirAgrupamentos(container);
     await esperar(container,
       () => container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]')?.value === 'Nota antiga',
       'O campo de descrição de 4403 nunca chegou com a nota salva.');
@@ -535,6 +564,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
   it('does not re-save the manual descrição on blur when the (trimmed) value is unchanged', async () => {
     const { container } = render(<ViewCadastroProdutos />);
     // Same reason as above: gate on the field's own value, not on the table's presence.
+    await abrirAgrupamentos(container);
     await esperar(container,
       () => container.querySelector('.cc-descricao-input[aria-label="Sua descrição de 4403"]')?.value === 'Nota antiga',
       'O campo de descrição de 4403 nunca chegou com a nota salva.');
@@ -546,6 +576,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
   it('removes a commodity via the tombstone endpoint (after confirming in the accessible modal)', async () => {
     const { container } = render(<ViewCadastroProdutos />);
+    await abrirAgrupamentos(container);
     await waitFor(() => expect(container.querySelector('.cc-remove')).toBeTruthy());
     fireEvent.click(container.querySelector('.cc-remove'));
     // The native window.confirm is gone — an accessible in-app modal (role=dialog) opens; the
@@ -560,7 +591,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
   it('renames an agrupamento via the modal text input (no native prompt)', async () => {
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     // Groups sort alphabetically (Castanha before Madeira); target the Madeira card's Renomear.
     const madeiraCard = [...container.querySelectorAll('.card')].find((c) => {
       const h = c.querySelector('.cc-group-head strong');
@@ -579,7 +610,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
   it('deletes an empty agrupamento via the modal confirm (no native confirm)', async () => {
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     // Castanha is the empty group (n_members:0) → its "🗑 Excluir" is enabled.
     const castanhaCard = [...container.querySelectorAll('.card')].find((c) => {
       const h = c.querySelector('.cc-group-head strong');
@@ -598,7 +629,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
   it('surfaces a Gold-state (status) fetch failure as a distinct banner + "—" cells (not silent "…")', async () => {
     mockFetch({ failStatus: true });
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     // The catalog itself loaded (entries ok); only the lazy status read failed → the warn banner shows.
     await waitFor(() => expect(container.textContent).toContain('Não foi possível carregar o estado dos produtos no Gold'));
     // The Linhas cell shows '—' (unknown, explained by the banner), not the perpetual-loading '…'.
@@ -609,7 +640,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
   it('surfaces a source-codes fetch failure in the add form (not a false "0 códigos")', async () => {
     mockFetch({ failSourceCodes: true });
     const { container, getByText } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     fireEvent.click(getByText('+ Adicionar produto'));
     await waitFor(() => expect(container.textContent).toContain('Não foi possível carregar os códigos'));
   });
@@ -628,7 +659,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     // otherwise vanish silently — there may be discontinued produtos not shown.
     mockFetch({ failOrphans: true });
     const { container } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
     await waitFor(() => expect(container.textContent).toContain('Não foi possível carregar os produtos descontinuados'));
   });
 
@@ -657,7 +688,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     // cabeçalho quebrando em "Ex/ib/iç/ão". O CSS não é exercitado pelo jsdom, então o que
     // dá para prender aqui é a soma — que é justamente o que denuncia o deslocamento.
     const { container, getByText } = render(<ViewCadastroProdutos />);
-    await waitFor(() => expect(container.querySelector('.dt-table')).toBeTruthy());
+    await abrirAgrupamentos(container);
 
     const cabecalhos = [...container.querySelectorAll('.cc-table thead th')]
       .map((th) => th.textContent.trim()).filter(Boolean);
@@ -665,5 +696,95 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
 
     // A legenda é a referência em produto: coluna sem verbete vira cabeçalho inexplicado.
     expect(getByText('Tabela', { selector: '.cc-help-k, dt, strong, b' })).toBeTruthy();
+  });
+
+  // ── Agrupamentos recolhíveis + busca ──────────────────────────────────────────────────
+
+  it('abre com TODOS os agrupamentos recolhidos — nenhuma tabela na tela', async () => {
+    // A tela abria com ~234 linhas de uma vez. O que se prende aqui não é "existe um botão",
+    // é que a TABELA não está montada: um cartão que só esconde por CSS não resolve nada.
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.cc-group-toggle')).toBeTruthy());
+    expect(container.querySelector('.cc-table')).toBeNull();
+    for (const b of container.querySelectorAll('.cc-group-toggle')) {
+      expect(b.getAttribute('aria-expanded')).toBe('false');
+    }
+  });
+
+  it('o toggle abre só o agrupamento clicado, e fecha de novo', async () => {
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.cc-group-toggle')).toBeTruthy());
+    const madeira = [...container.querySelectorAll('.cc-group-toggle')]
+      .find((b) => b.textContent.includes('Madeira'));
+
+    fireEvent.click(madeira);
+    await waitFor(() => expect(container.querySelector('.cc-table')).toBeTruthy());
+    // Só UM cartão abriu: o outro agrupamento continua sem tabela.
+    expect(container.querySelectorAll('.cc-table').length).toBe(1);
+    expect(madeira.getAttribute('aria-expanded')).toBe('true');
+
+    fireEvent.click(madeira);
+    await waitFor(() => expect(container.querySelector('.cc-table')).toBeNull());
+  });
+
+  it('a busca acha pelo CÓDIGO e some com os agrupamentos que não têm o produto', async () => {
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.cc-group-toggle')).toBeTruthy());
+    fireEvent.change(container.querySelector('.cc-busca-input'), { target: { value: '4403' } });
+
+    // O resultado aparece SEM precisar expandir: um acerto escondido é o mesmo que nenhum.
+    await waitFor(() => expect(container.querySelector('.cc-table')).toBeTruthy());
+    const codigos = [...container.querySelectorAll('.cc-table td[data-label="Código"]')]
+      .map((td) => td.textContent.trim());
+    expect(codigos).toEqual(['4403']);              // o 4407 do mesmo agrupamento saiu
+    // Restou UM cartão. (Olhar `textContent` não serve: "Castanha" também aparece nas
+    // <option> do seletor de agrupamento e no placeholder do campo de criar.)
+    const cartoes = [...container.querySelectorAll('.cc-group-toggle')];
+    expect(cartoes.length).toBe(1);
+    expect(cartoes[0].textContent).toContain('Madeira');
+    expect(cartoes[0].textContent).toContain('1 de 2');   // quantos bateram, de quantos há
+  });
+
+  it('a busca acha pela DESCRIÇÃO ignorando acento, caixa e hífen', async () => {
+    // É assim que o pesquisador digita quando só quer saber se o produto já está cadastrado:
+    // sem acento, sem hífen, na caixa que der. A fixture PRECISA ter acento e hífen, senão o
+    // teste passa mesmo com a normalização removida — foi o que aconteceu na primeira versão
+    // deste teste, que buscava "MADEIRA em TORAS" contra "Madeira em toras" e só exercitava a
+    // caixa. Cada termo abaixo isola uma das três dobras.
+    mockFetch({
+      entries: {
+        entries: [{
+          codigo_produto: '0801', banco: 'comex', agrupamento: 'Castanha',
+          agrupamento_id: 'castanha', ingestao: 'ativa', visibilidade: 'visivel',
+          // SEM hífen de propósito: o caso que exige dobrar pontuação é o usuário digitar
+          // "castanha-do-pará" quando a fonte escreveu com espaços. No sentido contrário a
+          // busca acharia sozinha, porque os termos são casados por substring — foi por isso
+          // que a primeira versão deste teste passava com a normalização de hífen removida.
+          descricao_fonte: 'Castanha do Pará com casca',
+        }],
+        total: 1,
+      },
+      groups: { groups: [{ group_id: 'castanha', group_name: 'Castanha', n_members: 1 }], total: 1 },
+    });
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.cc-group-toggle')).toBeTruthy());
+    const campo = container.querySelector('.cc-busca-input');
+
+    for (const termo of ['castanha do para', 'CASTANHA-DO-PARÁ', 'pará com casca']) {
+      fireEvent.change(campo, { target: { value: termo } });
+      await waitFor(() => expect(container.querySelector('.cc-table')).toBeTruthy());
+      expect([...container.querySelectorAll('.cc-table td[data-label="Código"]')]
+        .map((td) => td.textContent.trim()), `não achou com "${termo}"`).toEqual(['0801']);
+    }
+  });
+
+  it('busca sem resultado DIZ que não achou — é a resposta à pergunta', async () => {
+    // "0 produtos" responde "não, não está cadastrado". Uma área em branco não responde nada,
+    // e é indistinguível de uma falha de carregamento.
+    const { container } = render(<ViewCadastroProdutos />);
+    await waitFor(() => expect(container.querySelector('.cc-group-toggle')).toBeTruthy());
+    fireEvent.change(container.querySelector('.cc-busca-input'), { target: { value: 'zzz-nao-existe' } });
+    await waitFor(() => expect(container.textContent).toMatch(/Nenhum produto cadastrado combina/));
+    expect(container.querySelector('.cc-busca-saldo').textContent).toContain('0 produto');
   });
 });

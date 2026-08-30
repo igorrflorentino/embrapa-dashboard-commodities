@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.42.0] - 2026-08-30
+
+### Adicionado
+
+- **Cada agrupamento agora abre e fecha.** A tela mostrava as 31 tabelas de uma vez —
+  234 linhas, 702 `<select>` e 8.190 `<option>` montados no carregamento — quando quem
+  chega aqui quer **um** produto. Os cartões nascem recolhidos: o cartão fechado não
+  renderiza a tabela, então o custo some junto com a poluição visual, em vez de ficar
+  apenas escondido por CSS. Um botão **Expandir/Recolher todos** cobre o caso de quem
+  quer a lista inteira. O nome do agrupamento inteiro é o alvo de clique (não só a
+  setinha); Renomear e Excluir ficam fora dele, senão recolheriam o cartão junto — é
+  por isso que não é um `<details>/<summary>`.
+
+- **Busca por código ou descrição**, no topo da lista. Responde a pergunta "esse produto
+  já está cadastrado?" sem obrigar a percorrer 31 agrupamentos. Procura no código, nas
+  duas descrições (a da fonte e a anotação do pesquisador), no banco e no agrupamento;
+  todos os termos precisam bater, então `arroz 1006` funciona. Dobra acento, caixa e
+  pontuação — `castanha do para` acha *Castanha do Pará*, e `castanha-do-pará` também.
+  Durante a busca os resultados ficam sempre visíveis (um acerto escondido atrás de um
+  toggle é o mesmo que nenhum acerto), e o cabeçalho diz quantos bateram de quantos há
+  (`Arroz (5 de 15)`). Uma busca sem resultado **diz** que não achou: "0 produtos"
+  responde "não está cadastrado", coisa que uma área em branco não responde.
+
+### Alterado
+
+- **A coluna `Tabela` mostra o código da tabela SIDRA (`289`, `291`, `3939`, `74`), não
+  o nome por extenso.** É o identificador que a fonte usa e que aparece na URL do SIDRA,
+  e lido junto com a coluna vizinha forma a chave do produto. Passa a usar a mesma fonte,
+  cor e tamanho do resto da tabela em vez de um selo colorido: o selo dizia "isto é outra
+  coisa", quando é apenas mais um pedaço da identidade. O nome por extenso vira `title`,
+  e o seletor do formulário passa a mostrar `289 — Extração vegetal`, para ninguém
+  precisar decorar a correspondência.
+
+- **Larguras das colunas refeitas** sobre a medição nova. `Tabela` caiu de 105px para
+  62px ao trocar o nome pelo código, e essa folga foi para *Descrição (fonte)*, que subiu
+  de 160px para 201px — a única coluna de prosa. As necessidades somam 1024px contra
+  1089px disponíveis.
+
+---
+
 ## [1.41.1] - 2026-08-30
 
 ### Corrigido

@@ -3396,14 +3396,57 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
 .cc-hint-ok { color: var(--ok, #1b7f3b); font-weight: 600; }
 .cc-hint-bad { color: var(--err, #b71c1c); font-weight: 600; }
 .cc-add-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
-/* Which SIDRA table a PPM row came from (rebanho 3939 / produção animal 74) — source
-   metadata qualifying the BANCO, so it sits under the banco name, tinted like source
-   info rather than looking like another description line. Wraps instead of truncating. */
-.cc-sidra-tag {
-  display: block; margin-top: 2px;
-  font: 500 10px var(--font-body); letter-spacing: 0.02em; line-height: 1.25;
-  color: var(--embrapa-blue); white-space: normal;
+/* ── Cadastro: busca + agrupamento recolhível ──────────────────────────────────────────
+   Com 31 agrupamentos abertos a tela abria com ~234 linhas, e quem chega aqui quer UM
+   produto. Os cartões passam a nascer recolhidos e a busca vira o caminho principal — daí
+   ela ocupar a primeira linha inteira da barra, e não um canto. */
+.cc-busca-barra { align-items: center; }
+.cc-busca {
+  display: flex; align-items: center; gap: 6px; flex: 1 1 320px; min-width: 220px;
+  padding: 0 10px; border: 1px solid var(--border-default); border-radius: 999px;
+  background: var(--bg-surface); transition: border-color 120ms, box-shadow 120ms;
 }
+.cc-busca:focus-within {
+  border-color: var(--embrapa-green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--embrapa-green) 18%, transparent);
+}
+.cc-busca-icone { color: var(--fg-4); font-size: 15px; line-height: 1; flex-shrink: 0; }
+/* Sem borda/fundo próprios: quem desenha o campo é o `.cc-busca` em volta, senão aparecem
+   duas molduras concêntricas. `appearance:none` some com o X nativo do type=search, que
+   duplicaria o nosso botão de limpar. */
+.cc-busca-input {
+  flex: 1; min-width: 0; border: none; background: none; outline: none;
+  padding: 7px 0; font: inherit; font-size: 12.5px; color: var(--fg-1);
+  appearance: none; -webkit-appearance: none;
+}
+.cc-busca-input::-webkit-search-cancel-button { display: none; }
+.cc-busca-input::placeholder { color: var(--fg-4); }
+.cc-busca-limpar {
+  border: none; background: none; cursor: pointer; flex-shrink: 0;
+  color: var(--fg-3); font-size: 16px; line-height: 1; padding: 0 2px;
+}
+.cc-busca-limpar:hover { color: var(--fg-1); }
+.cc-busca-saldo { white-space: nowrap; }
+/* O NOME INTEIRO é o alvo de clique, não só a setinha — área de toque decente e alvo óbvio.
+   Fica com `flex:1` porque herdou esse papel do <strong> que substituiu: é ele que empurra
+   Renomear/Excluir para a direita do cabeçalho. */
+.cc-group-toggle {
+  display: flex; align-items: center; gap: 7px; flex: 1; min-width: 160px;
+  border: none; background: none; padding: 3px 4px; margin: -3px -4px; border-radius: 6px;
+  cursor: pointer; text-align: left; color: inherit; font: inherit;
+}
+.cc-group-toggle:hover:not(:disabled) { background: var(--bg-surface-2); }
+.cc-group-toggle:disabled { cursor: default; }
+.cc-group-toggle:focus-visible {
+  outline: 2px solid var(--embrapa-green); outline-offset: 1px;
+}
+/* Largura fixa para a seta: sem ela o nome dança 3px para o lado a cada expandir/recolher. */
+.cc-group-chevron {
+  width: 11px; flex-shrink: 0; color: var(--fg-3); font-size: 10px; line-height: 1;
+}
+/* Recolhido o cartão é só o cabeçalho: sem o respiro de baixo ele fica alto e vazio. */
+.cc-group-card { transition: padding 120ms; }
+.cc-group-card:not(:has(.cc-table)) { padding-top: 12px; padding-bottom: 12px; }
 /* Inline "sua descrição" editor in the catalog table — borderless/transparent at rest so it
    reads as text (not a form) until the researcher hovers/focuses it, then it looks editable. */
 .cc-descricao-wrap { display: flex; align-items: center; gap: 3px; }
@@ -3477,9 +3520,10 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
   /* Each percentage is a MEASURED need, not a guess: the widest string the column must
      render on one line (longest word for the columns that wrap; the widest SELECTED value,
      plus ~30px for the arrow, for the <select> columns), plus 16px of padding. Measured on
-     the real 234-row catalog at 1440px, they come to 1067px against 1089px available, and
-     the 22px left over all go to "Descrição (fonte)" — the only column whose content is
-     open-ended prose, so it is the one that keeps benefiting from extra width.
+     the real 234-row catalog at 1440px, they come to 1024px against 1089px available. Most
+     of that slack was freed by "Tabela" when it went from the table's NAME to its CODE
+     (105px → 62px); it goes to "Descrição (fonte)", the only column whose content is
+     open-ended prose, with small margins to Banco/Código/Período.
      Two traps this replaced, both of which made an earlier allocation "add up" and still
      break on screen: canvas measureText ignores letter-spacing (understating every floor),
      and a <select> was being sized to its longest MENU option rather than its selected
@@ -3492,15 +3536,15 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
      "Tabela" — "Código" herdou os 16% de "Descrição" e "Exibição" caiu para 42px, com o
      cabeçalho quebrando em "Ex/ib/iç/ão". Ao mexer na tabela, reveja o bloco inteiro; a
      soma tem de dar 100%. */
-  .cc-table thead th:nth-child(1), .cc-table tbody td:nth-child(1) { width: 10.28%; }           /* Banco · 112px · a frase "UN COMTRADE" inteira */
-  .cc-table thead th:nth-child(2), .cc-table tbody td:nth-child(2) { width: 9.64%; }            /* Tabela · 105px · "Rebanho (efetivo)" */
-  .cc-table thead th:nth-child(3), .cc-table tbody td:nth-child(3) { width: 7.71%; }            /* Código · 84px · NCM de 8 dígitos */
-  .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { width: 14.70%; }           /* Descrição (fonte) · 160px · piso 151 + toda a folga (9px) — é a única coluna de prosa */
-  .cc-table thead th:nth-child(5), .cc-table tbody td:nth-child(5) { width: 6.52%; }            /* Linhas · 71px · "251.777" */
-  .cc-table thead th:nth-child(6), .cc-table tbody td:nth-child(6) { width: 8.36%; }            /* Período · 91px · "1974–2024" sem quebrar no travessão */
+  .cc-table thead th:nth-child(1), .cc-table tbody td:nth-child(1) { width: 10.47%; }           /* Banco · 114px · a frase "UN COMTRADE" inteira, com respiro */
+  .cc-table thead th:nth-child(2), .cc-table tbody td:nth-child(2) { width: 5.69%; }            /* Tabela · 62px · o CÓDIGO da tabela (3939), não o nome por extenso */
+  .cc-table thead th:nth-child(3), .cc-table tbody td:nth-child(3) { width: 7.16%; }            /* Código · 78px · NCM de 8 dígitos, com respiro */
+  .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { width: 18.45%; }           /* Descrição (fonte) · 201px · piso 151 + quase toda a folga — é a única coluna de prosa */
+  .cc-table thead th:nth-child(5), .cc-table tbody td:nth-child(5) { width: 6.34%; }            /* Linhas · 69px · "251.777" */
+  .cc-table thead th:nth-child(6), .cc-table tbody td:nth-child(6) { width: 7.71%; }            /* Período · 84px · "1974–2024" sem quebrar no travessão */
   .cc-table thead th:nth-child(7), .cc-table tbody td:nth-child(7) { width: 6.89%; }            /* Status · 75px · o pill "Oculto" INTEIRO, com o padding dele */
-  .cc-table thead th:nth-child(8), .cc-table tbody td:nth-child(8) { width: 16.98%; }           /* Agrupamento · 185px · o valor SELECIONADO mais longo + a seta */
-  .cc-table thead th:nth-child(9), .cc-table tbody td:nth-child(9) { width: 7.16%; }            /* Ingestão · 78px · o rótulo, mais largo que "Pausada" */
+  .cc-table thead th:nth-child(8), .cc-table tbody td:nth-child(8) { width: 18.46%; }           /* Agrupamento · 201px · "Casulos do bicho-da-seda" selecionado + a seta */
+  .cc-table thead th:nth-child(9), .cc-table tbody td:nth-child(9) { width: 7.07%; }            /* Ingestão · 77px · o rótulo, mais largo que "Pausada" */
   .cc-table thead th:nth-child(10), .cc-table tbody td:nth-child(10) { width: 7.90%; }          /* Exibição · 86px · "Visível" + a seta */
   .cc-table thead th:nth-child(11), .cc-table tbody td:nth-child(11) { width: 3.86%; }          /* Ações · 42px · o botão da lixeira com o padding dele */
   .cc-table thead th:nth-child(4), .cc-table tbody td:nth-child(4) { overflow-wrap: anywhere; }
