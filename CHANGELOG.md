@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.39.2] - 2026-08-30
+
+### Corrigido
+
+- **A troca de chave estava incompleta num ponto que a anulava**: os testes de unicidade
+  das três dims continuavam em `(codigo_produto, source)` / `(source, code)`, **sem a
+  tabela**. Se um código aparecesse nas duas metades de um banco multi-tabela, a curadoria
+  agora conseguiria representá-lo — e o build quebraria assim mesmo, que era exatamente a
+  situação que a mudança existia para resolver. As três dims passaram a **expor**
+  `sidra_tabela` e os três testes a incluí-la.
+- **A prosa ficou para trás do modelo** em 4 arquivos: as três dims e a spec
+  `PLANS/curadoria_catalogo.md` seguiam declarando o grão antigo horas depois da mudança.
+
+### Verificação
+
+Ao expor a coluna eu **quebrei um alias** e quase publiquei: `codigo_produto as code` virou
+`sidra_tabela as code` no `dim_produto_visibility`, o que faria a coluna `code` conter id de
+tabela e o gate de visibilidade parar de ocultar. O `dbt build` pegou, e a inspeção depois
+confirmou os 3 produtos ocultos com NCM de 8 dígitos em `code`.
+
+### Adicionado
+
+- Guarda de prosa em `tests/test_chave_produto.py`: nenhum doc de grão pode descrever a
+  chave sem a tabela. A primeira versão do regex **não pegava a injeção** — o lookahead
+  estava depois do parêntese; sem ele o padrão já basta, porque a forma correta tem
+  `, sidra_tabela` antes de fechar.
+
+---
+
 ## [1.39.1] - 2026-08-29
 
 ### Corrigido

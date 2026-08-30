@@ -201,6 +201,4 @@ def test_nenhum_doc_descreve_a_chave_sem_a_tabela(arquivo: str) -> None:
         r"key `\(codigo_produto, banco\)`",
         r"row per \(source, code, version\)",
     ):
-        assert not re.search(padrao, texto), (
-            f"{arquivo}: descreve a chave sem a tabela — {padrao}"
-        )
+        assert not re.search(padrao, texto), f"{arquivo}: descreve a chave sem a tabela — {padrao}"
