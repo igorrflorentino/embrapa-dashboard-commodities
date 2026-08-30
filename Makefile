@@ -153,6 +153,10 @@ dbt-clean:    ## Remove dbt build artifacts (target/, dbt_packages/, logs/)
 	cd $(DBT_DIR) && $(PY) dbt clean
 
 lint:    ## Ruff lint + format check (no writes)
+	# PRIMEIRO de tudo: qualquer `uv run` abaixo RE-SINCRONIZA o uv.lock, e aí a
+	# divergência some antes de ser vista. Foi assim que ela chegou ao main em v1.40.1,
+	# e é por isso que um pytest não serve de guarda aqui.
+	uv lock --check
 	$(PY) ruff check .
 	$(PY) ruff format --check .
 
