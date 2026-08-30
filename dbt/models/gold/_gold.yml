@@ -756,3 +756,67 @@ unit_tests:
       rows:
         - {reference_year: 2000, product_code: "0001", val_yearfx_brl: 1000, val_yearfx_usd: 500, val_real_ipca_brl: 3000, val_real_ipca_usd: 600}
 
+
+  # ── O gate de visibilidade casa a TABELA, não só o código ────────────────────
+  # A identidade de um produto é (banco, tabela, código). Esconder a metade extração
+  # (289) de um código tem de deixar a metade silvicultura (291) visível — até a
+  # v1.46.4 o predicado casava só (source, code) e as duas sumiam juntas.
+  #
+  # Este teste roda o SQL DE VERDADE no BigQuery, e é por isso que ele existe aqui e
+  # não em Python: a armadilha é de RESOLUÇÃO DE NOME, e quem decide é o BigQuery.
+  # Dentro do `not exists`, um `sidra_tabela` sem qualificar resolve para o escopo
+  # INTERNO — `v.sidra_tabela = sidra_tabela` vira tautologia e volta a esconder as
+  # duas metades, com aparência de correto. A macro evita isso expondo a coluna do
+  # gate como `_vis_sidra_tabela`; se alguém "simplificar" esse rename, ESTE teste
+  # cai (total_rows 2 → 1), que é onde precisa cair.
+  #
+  # gold_source_metadata foi escolhido por ser o modelo mais barato que usa a macro:
+  # os outros quatro `ref` sem fixture entram vazios e o `having count(*) > 0` os
+  # elimina, então o expect tem uma linha só.
+  - name: test_hidden_code_predicate_matches_the_sidra_table_not_only_the_code
+    model: gold_source_metadata
+    given:
+      - input: ref('dim_produto_visibility')
+        rows:
+          # esconde SÓ a metade extração (289) do código 3405
+          - {source: 'pevs', code: '3405', sidra_tabela: '289'}
+      - input: ref('gold_pevs_production')
+        rows:
+          - {reference_year: 2020, product_code: '3405', sidra_tabela: '289', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
+          - {reference_year: 2021, product_code: '3405', sidra_tabela: '291', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
+          - {reference_year: 2021, product_code: '9999', sidra_tabela: '289', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
+      # os demais bancos entram vazios: o `having count(*) > 0` os elimina, e o expect
+      # fica com uma linha só. dbt exige fixture para TODO ref do modelo.
+      - {input: "ref('gold_pam_production')", rows: []}
+      - {input: "ref('gold_ppm_production')", rows: []}
+      - {input: "ref('gold_comex_flows')", rows: []}
+      - {input: "ref('gold_comtrade_flows')", rows: []}
+    expect:
+      # sobrevivem a metade 291 do 3405 e o 9999 — o predicado antigo devolveria 1/1
+      rows:
+        - {source: 'ibge_pevs', year_start: 2021, year_end: 2021, total_rows: 2, products_total: 2, ufs_total: 1}
+
+  # Uma linha do gate SEM tabela é CORINGA: esconde as duas metades. É o
+  # comportamento anterior preservado — `sidra_tabela` é opcional numa entrada de
+  # PEVS, e uma tag ausente tem de continuar escondendo tudo, jamais nada. Sem esta
+  # regra a mudança acima seria fail-open: um produto escondido reapareceria.
+  - name: test_hidden_code_predicate_untagged_row_hides_both_halves
+    model: gold_source_metadata
+    given:
+      - input: ref('dim_produto_visibility')
+        rows:
+          - {source: 'pevs', code: '3405', sidra_tabela: null}
+      - input: ref('gold_pevs_production')
+        rows:
+          - {reference_year: 2020, product_code: '3405', sidra_tabela: '289', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
+          - {reference_year: 2020, product_code: '3405', sidra_tabela: '291', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
+          - {reference_year: 2021, product_code: '9999', sidra_tabela: '289', state_name: 'Pará', state_acronym: 'PA', last_refresh: '2026-01-01 00:00:00'}
+      # os demais bancos entram vazios: o `having count(*) > 0` os elimina, e o expect
+      # fica com uma linha só. dbt exige fixture para TODO ref do modelo.
+      - {input: "ref('gold_pam_production')", rows: []}
+      - {input: "ref('gold_ppm_production')", rows: []}
+      - {input: "ref('gold_comex_flows')", rows: []}
+      - {input: "ref('gold_comtrade_flows')", rows: []}
+    expect:
+      rows:
+        - {source: 'ibge_pevs', year_start: 2021, year_end: 2021, total_rows: 1, products_total: 1, ufs_total: 1}

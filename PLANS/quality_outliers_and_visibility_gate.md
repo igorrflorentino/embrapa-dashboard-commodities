@@ -37,13 +37,26 @@ it is **true for all 5 sources**, validated on a live build (rates above).
 
 `ciclo_de_vida = 'Fazer Ingestão mas deixar indisponível'` hides a commodity everywhere a researcher
 sees it, but NEVER from the Curadoria admin editor / orphan / crosswalk. Today: 46 active prefixes, all
-visible → the gate is a **data no-op** until a researcher hides something.
+visible → the gate era um **data no-op**. NÃO é mais: 3 códigos comex estão escondidos em
+prod (6.688 linhas de Gold filtradas, medido 2026-08-30). Leia as afirmações de "no-op" abaixo
+como histórico da entrega original.
 
 **Single source of truth:** `dbt/models/core/dim_produto_visibility.sql` (view) emits only HIDDEN
-`(source, code)` rows — the EXACT commodity code (latest-wins, active, indisponível; `code_prefix` was
-eliminated in v1.10.0, so this is now `codigo_produto`). Gate predicate = `NOT EXISTS … <code_column>
-= v.code` over it (was `LIKE code_prefix||'%'`; behavior-preserving since every entry's prefix already
-equalled its exact leaf code). A code with no row stays visible (handles PPM=0, partial coverage).
+`(source, code, sidra_tabela)` rows — the EXACT commodity code (latest-wins, active, indisponível;
+`code_prefix` was eliminated in v1.10.0, so this is now `codigo_produto`). Gate predicate =
+`NOT EXISTS … <code_column> = v.code` over it (was `LIKE code_prefix||'%'`; behavior-preserving since
+every entry's prefix already equalled its exact leaf code). A code with no row stays visible (handles
+PPM=0, partial coverage).
+
+**A TABELA entra no predicado (v1.46.5).** A identidade de um produto é `(banco, tabela, código)`, e
+nos bancos multi-tabela (pevs 289×291, ppm 3939×74) o predicado casa também a tabela: esconder a
+metade extração deixa a silvicultura visível. Antes casava só `(source, code)` e as duas metades
+sumiam juntas — latente, porque os códigos das duas tabelas são disjuntos e o caso nunca ocorreu.
+Uma linha do gate SEM tabela é **coringa** (esconde as duas), preservando as entradas sem tag. Os
+dois lados — a macro `hidden_code_predicate` e o espelho `serving/sql.visibility_clause` — renomeiam
+a coluna do gate para `_vis_sidra_tabela`: sem isso, `sidra_tabela` sem qualificação resolve para o
+escopo interno do `NOT EXISTS` e a comparação vira tautologia (medido contra o BigQuery). Guardado
+pelos testes unitários dbt em `_gold.yml` sobre `gold_source_metadata`.
 `dim_produto_catalog` is untouched (admin/crosswalk still see hidden-but-active rows).
 
 Files: `dim_produto_visibility.sql` (new), `macros/hidden_code_predicate.sql` (new); predicate added to
@@ -133,7 +146,8 @@ US$80M for 1 kg of plywood). `enable_quality_outliers` is therefore **true for a
 ## Operator runbook (prod)
 
 1. `make dbt-build-prod-with-backup` (rewrites `data_quality_flag` on every gold fact — backup-first).
-2. F7 check: `SELECT * FROM gold.dim_produto_visibility` → expect **0 rows today** (no-op confirmed).
+2. F7 check: `SELECT * FROM gold.dim_produto_visibility` → eram **0 linhas** na entrega; hoje são
+   3 (comex). Confira que o número bate com o que a curadoria escondeu, não que seja zero.
 3. Q1 check: `SELECT source, data_quality_flag, COUNT(*) FROM serving_quality_by_source GROUP BY 1,2` → the
    `OUTLIER_*` / `PROBLEMATIC_*` tiers appear; sanity-check the per-source rates against the table above.
 4. Revert (if ever needed): set `enable_quality_outliers: false` in `dbt_project.yml` + rebuild → the gold

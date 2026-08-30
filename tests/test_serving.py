@@ -8,6 +8,7 @@ never touch a live warehouse.
 from __future__ import annotations
 
 from datetime import UTC
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -15,6 +16,8 @@ from google.cloud import bigquery
 
 from embrapa_dashboard.config import Settings
 from embrapa_dashboard.serving import iap, sql
+
+_RAIZ_REPO = Path(__file__).resolve().parents[1]
 
 
 def _isolated_settings(**over) -> Settings:
@@ -2291,6 +2294,74 @@ def test_visibility_clause_and_builder_injection():
         visibility_predicate=clause,
     )
     assert clause in bp1
+
+
+def test_visibility_clause_matches_the_sidra_table_only_for_multi_table_bancos():
+    """A identidade de um produto é (banco, tabela, código), então o gate casa também a
+    tabela — mas SÓ nos bancos que têm duas. `comex`/`comtrade`/`pam` não têm a coluna
+    `sidra_tabela` no Gold: referenciá-la seria um erro de compilação a cada leitura.
+
+    A âncora é `curation._BANCOS_MULTI_TABELA`, mantida para validar a tag de tabela nas
+    escritas da curadoria — outro motivo, outro dono. Uma lista escrita aqui à mão apenas
+    repetiria a decisão que o código já tomou."""
+    from embrapa_dashboard.serving import sql
+    from embrapa_dashboard.serving.curation import _BANCOS_MULTI_TABELA
+
+    cfg = _isolated_settings()
+    for banco in ("pevs", "ppm", "pam", "comex", "comtrade"):
+        clause = sql.visibility_clause(cfg, banco, "code_col")
+        # o subselect renomeia a coluna em TODO banco (o SQL é uniforme); o que varia é a
+        # CONDIÇÃO, então é ela que decide — a primeira versão deste teste procurava o
+        # rename e dava positivo para os cinco.
+        casa_tabela = "_vis_sidra_tabela is null" in clause
+        assert casa_tabela is (banco in _BANCOS_MULTI_TABELA), (
+            f"{banco}: casa_tabela={casa_tabela}, mas multi-tabela={banco in _BANCOS_MULTI_TABELA}"
+        )
+
+
+def test_visibility_clause_renames_the_gate_column_to_avoid_the_shadowing_tautology():
+    """A armadilha que o predicado tem de evitar, como teste.
+
+    Dentro do NOT EXISTS, um `sidra_tabela` sem qualificação resolve para o escopo
+    INTERNO. Se a view do gate expuser a coluna com esse nome, a comparação vira
+    `v.sidra_tabela = v.sidra_tabela` — sempre verdadeira — e as DUAS metades voltam a ser
+    escondidas juntas, com aparência de correto. Medido contra o BigQuery em 2026-08-30.
+
+    O comportamento em si é guardado pelo teste unitário dbt
+    `test_hidden_code_predicate_matches_the_sidra_table_not_only_the_code`, que roda o SQL
+    de verdade. Este aqui guarda a CONDIÇÃO ESTRUTURAL no espelho Python, que nenhum teste
+    dbt alcança: a coluna do gate não pode chegar ao escopo interno com o nome do Gold."""
+    from embrapa_dashboard.serving import sql
+
+    clause = sql.visibility_clause(_isolated_settings(), "pevs", "product_code")
+    interno = clause[clause.index("(select source") : clause.index(") v ")]
+    assert "sidra_tabela as _vis_sidra_tabela" in interno
+    assert ".sidra_tabela" not in clause, (
+        "a coluna do gate ficou acessível como `sidra_tabela` no escopo interno — a "
+        "comparação vira tautologia e esconde as duas metades"
+    )
+
+
+def test_the_multi_table_banco_list_agrees_between_dbt_and_python():
+    """A macro dbt e o espelho Python decidem a MESMA coisa e vivem em arquivos
+    diferentes. Divergirem é sempre defeito: a macro gateia as marts, o Python gateia os
+    leitores diretos de Gold, e um banco que entrasse só de um lado ficaria com metade do
+    dashboard aplicando a regra nova e metade a velha.
+
+    A âncora de cada lado é o outro — legítimo aqui porque nenhum dos dois DERIVA do
+    outro: são dois arquivos escritos à mão, em linguagens diferentes, e o teste existe
+    justamente para acusar quando um andar sem o outro."""
+    import re
+
+    from embrapa_dashboard.serving.curation import _BANCOS_MULTI_TABELA
+
+    macro = (_RAIZ_REPO / "dbt" / "macros" / "bancos_multi_tabela.sql").read_text(encoding="utf-8")
+    corpo = macro[macro.index("{% macro bancos_multi_tabela") :]
+    do_dbt = set(re.findall(r"'([a-z_]+)'", corpo))
+
+    assert do_dbt == set(_BANCOS_MULTI_TABELA), (
+        f"dbt conhece {sorted(do_dbt)} e o Python {sorted(_BANCOS_MULTI_TABELA)}"
+    )
 
 
 def test_quality_readers_thread_f7_visibility_gate(monkeypatch):
