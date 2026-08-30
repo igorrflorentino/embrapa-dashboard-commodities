@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.47.1] - 2026-08-30
+
+### Corrigido
+
+- **A tabela chegava NULA ao editor do Cadastro nos bancos de uma tabela só.** A v1.47.0
+  pôs o padrão por banco na macro `tabela_com_padrao`, usada pelas dims — mas
+  `gateway.fetch_produto_catalog` **reimplementa o latest-wins em SQL** sobre o log cru em
+  vez de ler `dim_produto_catalog`, e não aplicava o mesmo tratamento. A chave do estado
+  saía `comtrade:nan:440724`.
+
+  Achado na verificação pós-deploy da própria v1.47.0, contra prod. É o padrão recorrente
+  deste projeto na sua forma mais literal: a regra existia num lugar e não no outro.
+
+  O espelho `serving/sql.tabela_com_padrao` deriva o mapa das **Settings** — as mesmas
+  fontes que alimentam as vars do dbt —, não uma quarta cópia escrita à mão. Verificado
+  contra prod: 234 entradas, **zero** com tabela nula, nos cinco bancos.
+
+### Adicionado
+
+- `test_o_padrao_por_banco_concorda_entre_dbt_e_python` — compara o CONJUNTO DE BANCOS que
+  recebe padrão de cada lado (a paridade var↔config já é do `doctor`; o que este teste
+  protege é o que aquele não vê: um banco ganhar padrão só de um lado). Confere também que
+  nenhum banco multi-tabela tem padrão — adivinhar a metade seria inventar dado. Validado
+  por injeção.
+
+---
+
 ## [1.47.0] - 2026-08-30
 
 Auditoria completa da identidade do produto (`docs/audits/chave_produto_audit_2026-08-30.md`,
