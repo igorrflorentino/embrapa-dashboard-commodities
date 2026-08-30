@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.46.6] - 2026-08-30
+
+### Modificado
+
+- **O mapeamento banco↔fonte estava escrito à mão quatro vezes; agora é uma só, e as outras
+  derivam.** Os 5 pares (`pevs`↔`ibge_pevs`, …) viviam em `curation._BANCO_TO_SOURCE`,
+  `curation._SOURCE_PARA_BANCO`, `gateway._SHORT_SOURCE` e
+  `seam_curation._BANCO_TO_SOURCE` — três módulos, as duas direções, e **duas delas com o
+  mesmo nome em módulos diferentes**, o que faz de um import errado um valor plausível em
+  vez de um `ImportError`. Nenhum teste guardava uma contra a outra; o que segurava a
+  consistência era um comentário pedindo que se lembrasse das outras.
+
+  Concordavam (medido em 2026-08-30), então era **latente, não vivo** — a mesma forma do
+  achado da v1.46.5. O gatilho, porém, é datado: **SEFAZ NFe está `Planejado`**, e um sexto
+  banco significa acertar quatro lugares. Errar um falha em silêncio, num caminho diferente
+  daquele que a pessoa está testando.
+
+  `serving/sql.BANCO_TO_SOURCE` passa a ser a fonte única, com `SOURCE_TO_BANCO` derivada
+  por inversão — uma bijeção escrita duas vezes à mão é duas vezes a chance de errar, e o
+  erro só apareceria no sentido que ninguém testa. As quatro referências antigas viraram
+  aliases: são **o mesmo objeto**, então divergir deixou de ser possível em vez de apenas
+  testado. Ambas são `MappingProxyType`, porque um dict compartilhado por três módulos que
+  alguém mute num deles muda em todos.
+
+  `sql.py` já hospedava esse tipo de vocabulário (`SEM_TABELA`, `CHAVE_*`) pela razão
+  idêntica registrada no comentário de lá: *"eram 16 `partition by` espalhados por 5
+  módulos, e uma chave que muda em 15 lugares e fica no 16º é a forma exata do defeito que
+  este projeto já teve três vezes"*.
+
+  Sem mudança de comportamento, medido: os quatro leitores diretos de Gold devolvem
+  exatamente os mesmos números de antes (pevs 76/10/114/31 · ppm 89/14/142/27), e o
+  predicado de visibilidade compõe igual.
+
+### Adicionado
+
+- `test_the_banco_vocabulary_is_written_by_hand_exactly_once` — varredura por AST de `src/`
+  inteiro, afirmando **exatamente uma** cópia à mão. O número exato, e não um teto, é
+  deliberado: um extrator quebrado que devolvesse zero faria uma asserção de teto passar
+  para sempre. Ele cobrou isso duas vezes durante a própria escrita — o extrator não
+  reconhecia o wrapper `MappingProxyType`, e depois não reconhecia a anotação de tipo
+  (`AnnAssign`). A mensagem de falha distingue as duas causas possíveis de "zero cópias",
+  que pedem correções opostas.
+- `test_the_banco_vocabulary_is_a_bijection_and_covers_every_known_banco` — id longo
+  repetido (o erro clássico de copiar-e-colar ao acrescentar o sexto banco) e cobertura
+  contra âncoras mantidas por outros motivos: `_BANCOS_MULTI_TABELA`,
+  `_tabelas_validas_por_banco` e as chaves de `gateway._GOLD_TABLE` (toda fonte roteável
+  precisa de token curto, senão o gate levanta `KeyError` no meio de uma leitura de Gold).
+
+  Validados por injeção: restaurar a cópia do gateway, duplicar um id longo e remover um
+  banco reprovam os testes certos.
+
+---
+
 ## [1.46.5] - 2026-08-30
 
 ### Corrigido

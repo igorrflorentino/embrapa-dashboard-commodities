@@ -303,14 +303,9 @@ def _registered_group_ids(cfg: Settings, bq: bigquery.Client) -> set[str]:
 
 
 # `ibge_pevs` (o token de FONTE, usado pelos registros por-código) → `pevs` (o token de
-# BANCO, usado pelo catálogo). Espelha webapi.seam_curation._BANCO_TO_SOURCE ao contrário.
-_SOURCE_PARA_BANCO = {
-    "ibge_pevs": "pevs",
-    "ibge_pam": "pam",
-    "ibge_ppm": "ppm",
-    "mdic_comex": "comex",
-    "un_comtrade": "comtrade",
-}
+# BANCO, usado pelo catálogo). Derivado do vocabulário único em `sql`, não redigitado: esta
+# era uma de QUATRO cópias à mão do mesmo mapeamento, e a inversa de outra logo abaixo.
+_SOURCE_PARA_BANCO = sqlbuild.SOURCE_TO_BANCO
 
 
 def tabela_do_produto(
@@ -368,13 +363,8 @@ def _validate_catalog_edit(codigo_produto: str, banco: str, ciclo_de_vida: str |
 
 # Catalog banco token → the long source id. Doubles as the allowlist of the 5 valid catalog
 # banco tokens (its keys) that _assert_code_exists validates against before the Gold read.
-_BANCO_TO_SOURCE = {
-    "pevs": "ibge_pevs",
-    "pam": "ibge_pam",
-    "ppm": "ibge_ppm",
-    "comex": "mdic_comex",
-    "comtrade": "un_comtrade",
-}
+# Alias do vocabulário único em `sql` — mesmo objeto, não uma cópia que possa divergir.
+_BANCO_TO_SOURCE = sqlbuild.BANCO_TO_SOURCE
 
 
 def _is_active_entry(bq: bigquery.Client, table_fqn: str, codigo_produto: str, banco: str) -> bool:
