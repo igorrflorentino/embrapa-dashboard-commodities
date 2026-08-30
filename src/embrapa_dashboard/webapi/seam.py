@@ -786,6 +786,9 @@ def products_by_municipio(
             value_column=value_col,
             source=banco_id,
             origem=_origem_from_summary(summary),
+            # A metade viaja junto com a linha: madeira, lenha e carvão existem nas DUAS
+            # com o mesmo nome, e quem exibe precisa distingui-las. Só o PEVS tem a coluna.
+            include_origem=True,
         )
     except NotFound:
         # gold_<source>_production not built → documented None (→ {"products": []}),
@@ -981,6 +984,9 @@ def products_by_uf(
             uf_codes=states,
             value_column=value_col,
             origem=_origem_from_summary(summary),
+            # A metade viaja junto com a linha: madeira, lenha e carvão existem nas DUAS
+            # com o mesmo nome, e quem exibe precisa distingui-las. Só o PEVS tem a coluna.
+            include_origem=True,
         )
     return None
 

@@ -789,6 +789,13 @@ def serialize_products_by_uf(df: pd.DataFrame | None, max_rows: int = 100) -> di
         {
             "code": str(r.product_code),
             "name": r.product_name,
+            # A metade do PEVS (extrativa | silvicultura), quando o banco tem metades.
+            # NÃO é decoração: madeira, lenha e carvão existem nas DUAS com o mesmo nome,
+            # então uma tela que rotule as linhas pelo nome funde duas linhas legítimas —
+            # o gráfico "O que <lugar> produz" desenhava uma barra só e dois rótulos
+            # sobrepostos. `None` fora do PEVS (COMEX não tem metades), o que mantém a
+            # chave presente e o contrato estável em vez de aparecer e sumir por banco.
+            "origem": getattr(r, "origem", None),
             "value": _num(r.total_value) / 1e6,
             "q_mass": _num(getattr(r, "q_mass", 0)) / 1e3,
             "q_vol": _num(getattr(r, "q_vol", 0)) / 1e6,

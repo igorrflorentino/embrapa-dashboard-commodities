@@ -1092,6 +1092,39 @@ def test_serialize_partner_null_weight_yields_none_price():
     assert out["partners"][0]["price"] is None
 
 
+def test_serialize_products_by_uf_carries_the_pevs_half_when_the_reader_selects_it() -> None:
+    """A metade viaja junto quando o leitor a seleciona (só o PEVS a tem).
+
+    Madeira, lenha e carvão existem nas DUAS metades com o MESMO nome. Sem esta coluna a
+    tela não tem como distinguir duas linhas legítimas — e o gráfico "O que <lugar>
+    produz" desenhava uma barra só, com os dois rótulos por cima um do outro."""
+    import pandas as pd
+
+    from embrapa_dashboard.webapi import serializers as s
+
+    df = pd.DataFrame(
+        [
+            {
+                "product_code": "3455",
+                "product_name": "Carvão vegetal",
+                "origem": "silvicultura",
+                "total_value": 114_000_000,
+            },
+            {
+                "product_code": "3433",
+                "product_name": "Carvão vegetal",
+                "origem": "extrativa",
+                "total_value": 13_000_000,
+            },
+        ]
+    )
+    out = s.serialize_products_by_uf(df)
+    # Duas linhas com o MESMO nome e códigos/metades diferentes — é isso que a tela precisa.
+    assert [p["name"] for p in out["products"]] == ["Carvão vegetal", "Carvão vegetal"]
+    assert [p["origem"] for p in out["products"]] == ["silvicultura", "extrativa"]
+    assert [p["code"] for p in out["products"]] == ["3455", "3433"]
+
+
 def test_serialize_products_by_uf_scales_value_and_quantities():
     """serialize_products_by_uf → value ÷1e6 (mi), q_mass ÷1e3 (mil t), q_vol ÷1e6
     (mi m³) — the SAME magnitudes the snapshot's productTS/ufData use; empty → []."""
@@ -1122,6 +1155,9 @@ def test_serialize_products_by_uf_scales_value_and_quantities():
         "q_mass": 2.0,  # 2_000 ÷1e3 → mil t
         "q_vol": 19.0,  # 19_000_000 ÷1e6 → mi m³
         "q_count": 0.0,  # absent → 0 (a herd row carries it for the 'Produtos do estado' rank)
+        # Sem coluna `origem` no df (COMEX não tem metades) → None, e a chave CONTINUA
+        # presente: uma chave que aparece e some por banco faz o consumidor adivinhar.
+        "origem": None,
     }
     assert out["products"][1]["q_mass"] == 0.0  # None → 0
     # A livestock row carries q_count (mi un) so a value-less herd ranks by headcount.

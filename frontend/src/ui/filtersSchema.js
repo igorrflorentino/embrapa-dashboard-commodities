@@ -47,11 +47,15 @@
 // sub-flows there is nothing to double-count. What it must never be is silent: a total
 // mixing native extraction with planted forest has to say so, which is why this reaches
 // the chip, the ABNT citation and the CSV. See PLANS/silvicultura_source.md.
+// `short` é o mesmo conceito num rótulo curto, para onde o espaço é do tamanho de uma
+// categoria de gráfico. Fica AQUI, junto do `label`, para não nascer um segundo vocabulário
+// da metade do PEVS em outro arquivo — é o que faz duas telas divergirem no nome da mesma
+// coisa. Sem `short` para 'all': "ambas" nunca rotula uma linha, só o filtro.
 window.ORIGEM_OPTIONS = {
   ibge_pevs: [
     { value: 'all',          label: 'Ambas' },
-    { value: 'extrativa',    label: 'Extração vegetal (nativa)' },
-    { value: 'silvicultura', label: 'Silvicultura (plantada)' },
+    { value: 'extrativa',    label: 'Extração vegetal (nativa)',  short: 'extração' },
+    { value: 'silvicultura', label: 'Silvicultura (plantada)',    short: 'silvicultura' },
   ],
 };
 
@@ -342,6 +346,40 @@ window.flowOptionsFor = (bancoId) => window.FLOW_OPTIONS[bancoId] || null;
 // Origem (extração vs silvicultura) options for a banco, or null when the banco has no
 // `origem` column (only PEVS carries it). Mirrors flowOptionsFor.
 window.origemOptionsFor = (bancoId) => window.ORIGEM_OPTIONS[bancoId] || null;
+
+/**
+ * Nomeia as linhas de um ranking de produtos, desambiguando SÓ quando é preciso.
+ *
+ * Madeira em tora, lenha e carvão vegetal existem nas DUAS metades do PEVS com o MESMO
+ * nome e códigos diferentes (3457/3435, 3456/3434, 3455/3433). Um gráfico que use o nome
+ * como categoria funde as duas: o Plotly junta categorias homônimas numa posição só, então
+ * aparecia UMA barra (a maior) com os DOIS rótulos impressos por cima um do outro — o que
+ * o pesquisador via como "números borrados" em "O que <lugar> produz".
+ *
+ * Somar as duas seria pior que borrar: a metade plantada é ~5x a nativa, e o CLAUDE.md diz
+ * que um total que as mistura em silêncio é "um número errado vestindo um rótulo certo".
+ *
+ * O sufixo entra apenas quando o nome APARECE MAIS DE UMA VEZ no conjunto exibido. Com o
+ * filtro em uma metade só, cada nome é único e o rótulo fica limpo — e o chip de Origem já
+ * diz qual metade é. Uma linha sem `origem` (bancos sem metades, como o COMEX) nunca ganha
+ * sufixo, mesmo que houvesse homônimos, porque não há o que dizer sobre ela.
+ */
+window.labelProductRows = (rows, bancoId) => {
+  const lista = rows || [];
+  const curto = Object.fromEntries(
+    ((window.ORIGEM_OPTIONS || {})[bancoId] || []).map((o) => [o.value, o.short]).filter((p) => p[1]),
+  );
+  const vezes = {};
+  for (const r of lista) {
+    const n = r.name || r.code;
+    vezes[n] = (vezes[n] || 0) + 1;
+  }
+  return lista.map((r) => {
+    const n = r.name || r.code;
+    const sufixo = curto[r.origem];
+    return vezes[n] > 1 && sufixo ? { ...r, name: `${n} · ${sufixo}` } : r;
+  });
+};
 
 // Nível de industrialização — a CURATED per-code axis (Engenharia de Atributos), offered
 // wherever codes have been classified. The 8 levels themselves live in ENRICH_LEVELS

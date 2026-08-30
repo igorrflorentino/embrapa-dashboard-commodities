@@ -12,6 +12,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 
+// O registro REAL de origem + `labelProductRows`. Dublá-lo deixaria o teste concordar com
+// uma regra que o produto não tem — e a regra aqui é justamente qual rótulo cada barra leva.
+import './filtersSchema.js';
+
 function stubGlobals(filtered, opts = {}) {
   window.applyFilters = () => filtered;
   window.DEFAULT_CONVENTIONS = { currency: 'BRL', correction: 'IPCA' };
@@ -45,7 +49,10 @@ function stubGlobals(filtered, opts = {}) {
   window.LineChart = (props) => <div className="line-chart" data-points={(props.data || []).length} />;
   window.BarChart = (props) => (
     <div className="bar-chart" data-points={(props.data || []).length}
-         data-first={(props.data || [])[0] ? props.data[0].name : ''} />
+         data-first={(props.data || [])[0] ? props.data[0].name : ''}
+         // As CATEGORIAS que chegam ao gráfico: é o que o Plotly funde quando se repetem,
+         // e era exatamente o que o defeito das barras borradas corrompia.
+         data-cats={(props.data || []).map((d) => d.uf || d.name).join('|')} />
   );
 }
 
@@ -294,6 +301,35 @@ describe('ViewTerritoryProfile — combining territories', () => {
     // One query over the set — the reader takes an array, so a combination needs no
     // special case and cannot drift from the single-território path.
     expect(productsByUf.mock.calls.at(-1)[1].states).toEqual(['PA', 'SP']);
+  });
+
+  it('as duas metades do PEVS viram barras SEPARADAS, não uma barra borrada', () => {
+    // O defeito: madeira, lenha e carvão existem nas duas metades com o MESMO nome, o
+    // BarChart usa o nome como categoria e o Plotly funde homônimas numa posição só —
+    // uma barra (a maior) com os dois rótulos impressos por cima um do outro.
+    //
+    // A asserção é sobre as CATEGORIAS que chegam ao gráfico, não sobre o texto do sufixo:
+    // é a unicidade que o Plotly exige, e é ela que estava quebrada.
+    stubGlobals(BASE, {
+      productsByUf: () => ({
+        loadError: null,
+        products: [
+          { code: '3455', name: 'Carvão vegetal', origem: 'silvicultura', value: 114564 },
+          { code: '3433', name: 'Carvão vegetal', origem: 'extrativa', value: 13745 },
+          { code: '3403', name: 'Açaí (fruto)', origem: 'extrativa', value: 1 },
+        ],
+      }),
+    });
+    const { container } = render(
+      <View summary={{ states: ['PA'] }} database="ibge_pevs" conventions={CONV} />,
+    );
+    const cats = container.querySelector('.bar-chart').getAttribute('data-cats').split('|');
+    expect(new Set(cats).size, `categorias homônimas fundem no gráfico: ${cats}`).toBe(cats.length);
+    expect(cats).toEqual([
+      'Carvão vegetal · silvicultura',
+      'Carvão vegetal · extração',
+      'Açaí (fruto)',   // nome único → sem sufixo
+    ]);
   });
 
   it('does NOT offer a combination when nothing narrows — that would just be Brasil', () => {

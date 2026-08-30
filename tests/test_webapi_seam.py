@@ -1702,12 +1702,19 @@ def test_products_by_uf_gates_on_uf_and_dispatches_by_banco(monkeypatch):
     assert recorded["flow"] == "export"
     assert recorded["uf_codes"] == ("AC",) and recorded["codes"] == ("4407",)
     assert recorded["value_column"] == "val_yearfx_usd"
+    assert recorded.get("include_origem") in (None, False), (
+        "o COMEX não tem coluna origem — pedi-la quebraria a consulta"
+    )
     # PEVS production form: product columns, NO flow predicate
     recorded.clear()
     seam.products_by_uf("ibge_pevs", {"states": ["PA"]})
     assert recorded["table_key"] == "serving_pevs_annual"
     assert recorded["code_column"] == "product_code"
     assert recorded.get("flow") is None
+    # E a METADE viaja junto: madeira, lenha e carvão existem nas duas com o MESMO nome, e
+    # sem a coluna a tela funde duas linhas legítimas numa barra só (o Plotly junta
+    # categorias homônimas). Só o PEVS a tem — pedi-la no COMEX quebraria a consulta.
+    assert recorded["include_origem"] is True
 
 
 def test_products_by_uf_none_without_geo_capability():

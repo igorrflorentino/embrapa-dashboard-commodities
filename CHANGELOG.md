@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.45.1] - 2026-08-30
+
+### Corrigido
+
+- **Rótulos sobrepostos no gráfico "O que <lugar> produz"** (perspectiva *Perfil do
+  território*, e o mesmo gráfico em *Geografia*). Os números ao lado das barras apareciam
+  borrados, e a maior barra não correspondia ao seu rótulo.
+
+  A causa não era o desenho: **madeira em tora, lenha e carvão vegetal existem nas duas
+  metades do PEVS** — extração vegetal (t289) e silvicultura (t291) — com o **mesmo nome** e
+  códigos diferentes (3457/3435, 3456/3434, 3455/3433). O gráfico usa o nome do produto
+  como categoria do eixo, e o Plotly funde categorias homônimas numa posição só: aparecia
+  **uma** barra (a maior) com os **dois** rótulos impressos por cima um do outro. Em Minas
+  Gerais, "Carvão vegetal" desenhava 115 bi (silvicultura) e imprimia junto "14 bi"
+  (extração).
+
+  Somar as duas seria pior que borrar: a metade plantada é ~5× a nativa, e um total que as
+  mistura em silêncio é "um número errado vestindo um rótulo certo". Agora a **metade viaja
+  junto com a linha** — nova coluna `origem` no payload de `/products-by-uf` e
+  `/products-by-municipio`, pedida ao SQL só onde ela existe (o COMEX não tem metades) — e o
+  rótulo a acrescenta **apenas quando o nome se repete** no conjunto exibido:
+
+  | filtro | rótulos |
+  |---|---|
+  | Origem: Ambas | `Carvão vegetal · silvicultura`, `Carvão vegetal · extração`, `Açaí (fruto)` |
+  | Origem: Silvicultura | `Carvão vegetal`, `Madeira em tora`, `Lenha` |
+
+  Com uma metade só, cada nome é único e o rótulo fica limpo — o chip de *Origem* já diz
+  qual metade está em tela. Uma linha sem `origem` (bancos sem metades) nunca ganha sufixo.
+
+  O rótulo curto (`extração` / `silvicultura`) mora no **mesmo registro** que o filtro usa
+  (`ORIGEM_OPTIONS`), para não nascer um segundo vocabulário da metade do PEVS num arquivo
+  diferente — que é como duas telas passam a chamar a mesma coisa por dois nomes.
+
+---
+
 ## [1.45.0] - 2026-08-30
 
 Auditoria completa do projeto (`docs/audits/full_audit_2026-08-30.md`) e a correção dos

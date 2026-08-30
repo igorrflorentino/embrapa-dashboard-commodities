@@ -538,6 +538,7 @@ def products_by_municipio(
     value_column: str = "val_real_ipca_brl",
     visibility_predicate: str = "",
     origem: str | None = None,
+    include_origem: bool = False,
 ) -> tuple[str, list]:
     """Per-PRODUCT ranking WITHIN a município selection — what the território profile
     needs to answer "o que este município produz".
@@ -550,6 +551,14 @@ def products_by_municipio(
     mart), and carries the SAME cost control: ``city_codes`` is required by the caller,
     so this only ever scans the selected cities. Quantities stay split by ``family`` —
     they are only summable WITHIN a family.
+
+    ``include_origem`` faz a METADE do PEVS viajar junto com cada linha. Ela é constante
+    por ``product_code`` (um código pertence a uma tabela SIDRA só), então o ``any_value``
+    é exato, não uma escolha arbitrária. Serve a quem EXIBE: madeira, lenha e carvão
+    existem nas duas metades com o MESMO nome, e uma tela que rotule as linhas pelo nome
+    funde as duas — foi o que aconteceu no gráfico "O que <lugar> produz", que desenhava
+    uma barra só e dois rótulos sobrepostos. Fora do PEVS a coluna não existe (COMEX não
+    tem metades), daí o sinalizador em vez de sempre selecionar.
     """
     code_column = _validate_column(code_column, ALLOWED_PRODUCT_COLUMNS, "product column")
     name_column = _validate_column(name_column, ALLOWED_PRODUCT_COLUMNS, "product column")
@@ -565,10 +574,12 @@ def products_by_municipio(
     _origem(conditions, params, origem)
     if visibility_predicate:
         conditions.append(visibility_predicate)
+    origem_select = "any_value(origem) as origem," if include_origem else ""
     sql = f"""
         select
             {code_column}                                        as product_code,
             any_value({name_column})                             as product_name,
+            {origem_select}
             sum({value_column})                                  as total_value,
             sum(case when family = 'massa'    then qty_base end) as q_mass,
             sum(case when family = 'volume'   then qty_base end) as q_vol,
@@ -662,6 +673,7 @@ def products_by_uf(
     value_column: str = "val_yearfx_usd",
     flow: str | None = None,
     origem: str | None = None,
+    include_origem: bool = False,
 ) -> tuple[str, list]:
     """Per-PRODUCT ranking WITHIN a UF selection (backs the "Base de dados" per-UF
     product breakdown). This is the INVERSE of production_by_uf / comex_by_uf (which
@@ -672,6 +684,14 @@ def products_by_uf(
     export (``flow='export'``, code_column=ncm_code). Each row carries value plus the
     family-split ``q_mass`` (t) / ``q_vol`` (m³) so the view can rank by Capital,
     Volume(massa) or Volume(volume) — quantities only ever sum WITHIN a family.
+
+    ``include_origem`` faz a METADE do PEVS viajar junto com cada linha. Ela é constante
+    por ``product_code`` (um código pertence a uma tabela SIDRA só), então o ``any_value``
+    é exato, não uma escolha arbitrária. Serve a quem EXIBE: madeira, lenha e carvão
+    existem nas duas metades com o MESMO nome, e uma tela que rotule as linhas pelo nome
+    funde as duas — foi o que aconteceu no gráfico "O que <lugar> produz", que desenhava
+    uma barra só e dois rótulos sobrepostos. Fora do PEVS a coluna não existe (COMEX não
+    tem metades), daí o sinalizador em vez de sempre selecionar.
     """
     code_column = _validate_column(code_column, ALLOWED_PRODUCT_COLUMNS, "product column")
     name_column = _validate_column(name_column, ALLOWED_PRODUCT_COLUMNS, "product column")
@@ -688,10 +708,12 @@ def products_by_uf(
     # Left off on 2026-08-29 when the axis was introduced — the aggregate path honoured it
     # and this one silently did not.
     _origem(conditions, params, origem)
+    origem_select = "any_value(origem) as origem," if include_origem else ""
     sql = f"""
         select
             {code_column}                                      as product_code,
             any_value({name_column})                           as product_name,
+            {origem_select}
             sum({value_column})                                as total_value,
             sum(case when family = 'massa'  then qty_base end) as q_mass,
             sum(case when family = 'volume' then qty_base end) as q_vol,
