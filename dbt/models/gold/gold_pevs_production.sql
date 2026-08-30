@@ -49,14 +49,24 @@
 -- ── The two halves of PEVS ──────────────────────────────────────────────────
 --
 --  The survey is "Produção da Extração Vegetal E DA Silvicultura" and this table
---  carries both, told apart by `origem`:
---    extrativa    — SIDRA t289, NATIVE forest (the original contents of this table)
---    silvicultura — SIDRA t291, PLANTED forest
+--  carries both, told apart by `sidra_tabela` — the SIDRA table each row came from:
+--    t289 — NATIVE forest, extração vegetal (the original contents of this table)
+--    t291 — PLANTED forest, silvicultura
+--
+--  The table id, not a word derived from it. A produto's identity is
+--  (banco, tabela, código) — the same key the curation catalog has used since v1.39.0
+--  — so the table has to BE a column. Until v1.46.0 Gold stamped prose instead
+--  (`origem` = 'extrativa' | 'silvicultura'), which left the identity component
+--  reachable only as a Bronze table NAME (`sidra_t289_raw`) and as a label: a chart
+--  that had to tell two halves apart could not reach it, and merged two legitimate
+--  produtos (same name, different tables) into one bar with both labels on top of
+--  each other. The human name of each half is now DERIVED from the id wherever it is
+--  displayed, so there is one stored fact instead of two that can disagree.
 --
 --  They are one banco on purpose. The codes never collide (3433-3435 vs 3455-3457),
 --  the units match, and the sum is a real quantity IBGE itself publishes as one
 --  survey. What must never happen is a total that mixes them WITHOUT saying so, which
---  is why `origem` is a first-class filter axis all the way to the chip, the ABNT
+--  is why the table is a first-class filter axis all the way to the chip, the ABNT
 --  citation and the CSV — see PLANS/silvicultura_source.md.
 --
 --  `union all` by position: both Silvers are column-identical by construction (one is
@@ -64,16 +74,16 @@
 --  here would shuffle values between fields rather than fail.
 with silver_union as (
 
-    select 'extrativa'    as origem, * from {{ ref('silver_ibge_pevs') }}
+    select '{{ var("ibge_table_id") }}'         as sidra_tabela, * from {{ ref('silver_ibge_pevs') }}
     union all
-    select 'silvicultura' as origem, * from {{ ref('silver_ibge_silvicultura') }}
+    select '{{ var("silvicultura_table_id") }}' as sidra_tabela, * from {{ ref('silver_ibge_silvicultura') }}
 
 ),
 
 base_pevs as (
 
     select
-        origem,
+        sidra_tabela,
         reference_year,
         state_acronym,
         -- Group by city_code (the natural geographic key from Silver), NOT
@@ -101,7 +111,7 @@ base_pevs as (
         max(case when is_monetary_value then numeric_value end) as val_raw,
         max(ingestion_timestamp)        as last_refresh
     from silver_union
-    group by origem, reference_year, state_acronym, city_code, product_code
+    group by sidra_tabela, reference_year, state_acronym, city_code, product_code
     having qty_native is not null
         or val_raw    is not null
 
@@ -157,10 +167,24 @@ select
     product_code,
     product_description,
 
-    -- ── Which half of the survey ────────────────────────────────────────────
-    -- 'extrativa' (native forest, t289) | 'silvicultura' (planted forest, t291).
-    -- Never null: every row comes from exactly one of the two Silvers.
-    origem,
+    -- ── Which SIDRA table the row came from ─────────────────────────────────
+    -- t289 (native forest, extração vegetal) | t291 (planted forest, silvicultura).
+    -- Never null: every row comes from exactly one of the two Silvers. Part of the
+    -- produto's identity (banco, tabela, código), not a label about it — the human
+    -- name of each half is derived from this id wherever it is displayed.
+    sidra_tabela,
+
+    -- ⚠ TRANSITÓRIA. `origem` era o fato GUARDADO até v1.46.0 e agora é DERIVADA da
+    -- tabela: um fato só, uma projeção dele. Ela continua aqui apenas para os
+    -- consumidores que ainda a leem (seam, filtro, chip, citação, CSV) — a migração
+    -- deles vem no PR seguinte, e esta coluna sai junto. Separar assim é deliberado:
+    -- o deploy do webapi e o build da Gold disparam em PARALELO no mesmo merge, então
+    -- publicar as duas coisas juntas deixaria o dashboard consultando uma coluna que a
+    -- Gold ainda não tem durante a janela entre os dois.
+    case
+        when sidra_tabela = '{{ var("ibge_table_id") }}' then 'extrativa'
+        else 'silvicultura'
+    end                                 as origem,
 
     -- ── Quantities (physical-unit family) ───────────────────────────────────
     -- The reported quantity is normalised to a per-family base unit:

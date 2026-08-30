@@ -67,6 +67,18 @@ vars:
   silvicultura_variable_quantity: "{{ env_var('SILVICULTURA_VARIABLE_QUANTITY_CODE', '142') }}"
   silvicultura_variable_value:    "{{ env_var('SILVICULTURA_VARIABLE_VALUE_CODE',    '143') }}"
 
+  # The SIDRA TABLE ids. A produto's identity is (banco, tabela, código) — the same key
+  # the curation catalog has used since v1.39.0 — so the table has to be a COLUMN, not a
+  # label derived from it. Gold used to stamp prose instead (`origem` = extrativa |
+  # silvicultura), which meant the identity component existed only as a Bronze *table
+  # name* (`sidra_t289_raw`) and as a word: a chart that had to tell two halves apart
+  # could not reach it, and merged two legitimate produtos into one bar.
+  # Same env_var/config.py parity as the variable codes above, validated by doctor.
+  ibge_table_id:         "{{ env_var('IBGE_TABLE_ID',         '289') }}"
+  silvicultura_table_id: "{{ env_var('SILVICULTURA_TABLE_ID', '291') }}"
+  ppm_herd_table_id:     "{{ env_var('PPM_HERD_TABLE_ID',     '3939') }}"
+  ppm_animal_table_id:   "{{ env_var('PPM_ANIMAL_TABLE_ID',   '74') }}"
+
   # IBGE PAM (SIDRA table 5457) variable codes. `v/all` ingests all of them; the
   # Silver model keeps these five real measures (dropping the 3 "% do total"
   # variables) and Gold pivots them into columns. Verified against the SIDRA 5457

@@ -1,6 +1,7 @@
 -- Singular test: the two PEVS Silvers must stay COLUMN-IDENTICAL.
 --
--- gold_pevs_production unions them POSITIONALLY (`select 'x' as origem, * from …` twice).
+-- gold_pevs_production unions them POSITIONALLY (`select '<id>' as sidra_tabela, * from …`
+-- twice).
 -- Positional union is the right shape here — one model is a literal mirror of the other —
 -- but it fails in the worst possible way if they ever drift: a column added to one and not
 -- the other shifts every field after it, so values land in the WRONG COLUMNS and the build

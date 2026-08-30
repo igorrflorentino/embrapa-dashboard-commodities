@@ -26,10 +26,12 @@
 -- linked to its commodity — column-identical with serving_pam_annual.
 --
 -- Grain: one row per (reference_year, state_acronym, product_code, family).
--- `origem` rides along as a filterable axis (extrativa | silvicultura). It does NOT
--- split the grain: the product code determines the half (3433-3435 vs 3455-3457), so it
--- is functionally dependent on a column already in the key and every pre-existing row
--- count and total is unchanged by its arrival.
+-- `sidra_tabela` (t289 | t291) rides along as a filterable axis AND as the third
+-- component of a produto's identity (banco, tabela, código). It does NOT split the
+-- grain: the product code determines the table (3433-3435 vs 3455-3457), so it is
+-- functionally dependent on a column already in the key and every pre-existing row
+-- count and total is unchanged by its presence. Until v1.46.0 this carried the prose
+-- `sidra_tabela` instead; the human name of each half is now derived from the id.
 -- ────────────────────────────────────────────────────────────────────────────
 
 with pevs as (
@@ -38,6 +40,7 @@ with pevs as (
         reference_year,
         state_acronym,
         product_code,
+        sidra_tabela,
         origem,
         family,
         any_value(product_description)  as product_description,
@@ -72,7 +75,7 @@ with pevs as (
         max(last_refresh)               as last_refresh
     from {{ ref('gold_pevs_production') }}
     where {{ hidden_code_predicate('pevs', 'product_code') }}
-    group by reference_year, state_acronym, product_code, origem, family
+    group by reference_year, state_acronym, product_code, sidra_tabela, origem, family
 
 )
 
@@ -87,7 +90,8 @@ select
     x.agrupamento_nome,
     p.product_code,
     p.product_description,
-    p.origem,
+    p.sidra_tabela,
+    p.origem,   -- ⚠ transitória: derivada da tabela, sai no PR dos consumidores
     p.family,
     p.base_unit,
     p.unit_native,
