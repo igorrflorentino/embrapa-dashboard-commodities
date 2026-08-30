@@ -242,3 +242,59 @@ def test_o_delete_envia_a_tabela_da_entrada() -> None:
     jsx = (_RAIZ / "frontend/src/ui/ViewCadastroProdutos.jsx").read_text(encoding="utf-8")
     linha = next(x for x in jsx.split("\n") if "catalog/entry/remove" in x)
     assert "sidra_tabela" in linha, "o delete não envia a tabela"
+
+
+# ── a regra da tag vale para TODO banco multi-tabela ──────────────────────────
+def test_a_regra_da_tag_nao_nomeia_um_banco() -> None:
+    """`if banco == "ppm":` fechava as DUAS metades da regra no ppm, e o pevs escapava:
+    entrada nova sem tag era aceita (uma sonda HTTP registrou `9999999` na sentinela para
+    provar) e um update parcial DERRUBAVA a tag, movendo o produto para a sentinela.
+
+    É o padrão "condicional que nomeia UM banco" — ela codifica um censo do mundo, e o
+    mundo cresceu quando a silvicultura entrou. A âncora é a constante, não o literal."""
+    from embrapa_dashboard.serving import curation
+
+    fonte = inspect.getsource(curation.record_produto_catalog)
+    assert "_BANCOS_MULTI_TABELA" in fonte, "a regra voltou a nomear um banco"
+    # A forma do CÓDIGO, não a prosa: os comentários citam `banco == "ppm"` de propósito,
+    # para explicar o que quebrou. Uma asserção cega ao comentário reprovaria a explicação.
+    codigo = "\n".join(
+        linha for linha in fonte.split("\n") if not linha.strip().startswith("#")
+    )
+    assert 'if banco == "ppm"' not in codigo, "a regra voltou a nomear um banco"
+    assert set(curation._BANCOS_MULTI_TABELA) == set(
+        curation._tabelas_validas_por_banco(_cfg_falsa())
+    ), "a constante e o vocabulário de tabelas divergiram"
+
+
+def _cfg_falsa():
+    from embrapa_dashboard.config import Settings
+
+    return Settings.model_construct(
+        ppm_herd_table_id="3939",
+        ppm_animal_table_id="74",
+        ibge_table_id="289",
+        silvicultura_table_id="291",
+    )
+
+
+@pytest.mark.parametrize("banco", ["ppm", "pevs"])
+def test_entrada_nova_exige_a_tag_em_todo_banco_multi_tabela(banco: str) -> None:
+    from embrapa_dashboard.serving import curation
+
+    with pytest.raises(ValueError, match="obrigatória"):
+        curation._validate_sidra_tabela(banco, None, _cfg_falsa(), require_for_ppm=True)
+
+
+@pytest.mark.parametrize("banco", ["ppm", "pevs"])
+def test_update_sem_a_tag_e_legitimo_porque_o_chamador_preserva(banco: str) -> None:
+    """A ausência num UPDATE é legítima só porque `record_produto_catalog` resolve a tag
+    guardada antes de validar. As duas coisas andam juntas — se a preservação sumir, esta
+    permissão vira o buraco."""
+    from embrapa_dashboard.serving import curation
+
+    curation._validate_sidra_tabela(banco, None, _cfg_falsa(), require_for_ppm=False)
+    fonte = inspect.getsource(curation.record_produto_catalog)
+    assert "_current_sidra_tabela(bq, table_fqn, codigo_produto, banco)" in fonte, (
+        "o update deixou de preservar a tag guardada"
+    )
