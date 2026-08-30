@@ -325,7 +325,11 @@ def test_purge_plan_backup_status_complete(monkeypatch):
     assert plan["backup_ok"] is True
     assert latest.strftime("%Y-%m-%d") in plan["backup_msg"]
     assert any("gold_comex_flows" in s and "= '20079926'" in s for s in plan["statements"])
-    assert all(s.strip().startswith("DELETE FROM") for s in plan["statements"])
+    # A primeira linha do plano é um comentário SQL de aviso (o DELETE casa por CÓDIGO, não
+    # pela chave inteira) — ele existe para quem executa, então tem de sobreviver.
+    executaveis = [x for x in plan["statements"] if not x.strip().startswith("--")]
+    assert executaveis and all(x.strip().startswith("DELETE FROM") for x in executaveis)
+    assert any("não pela chave" in x for x in plan["statements"]), "o plano perdeu o aviso"
 
 
 def test_purge_plan_backup_no_runs(monkeypatch):

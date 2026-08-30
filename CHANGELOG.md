@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.40.0] - 2026-08-30
+
+Varredura dos **consumidores** da chave — as camadas que leem as dims e as que apagam dado.
+
+### Adicionado
+
+- **`assert_catalog_join_cannot_fan_out`** (teste dbt). `serving_pam_annual` e
+  `serving_ppm_annual` juntam `dim_produto_catalog` por `(source, código)`, **sem a
+  tabela** — e desde v1.39.0 a dim pode devolver DUAS linhas para um código presente nas
+  duas metades de um banco multi-tabela. O join faria **fan-out e duplicaria os valores do
+  fato**, em silêncio.
+
+  O conserto "óbvio" seria escrever o mapeamento `stock↔3939 / flow↔74` no join — uma
+  **quarta cópia** de uma decisão que já vive no `.env`, no validador da curadoria e no
+  registro do `doctor`. Em vez disso, a suposição que os marts fazem ficou **presa onde é
+  usada**: o teste falha alto no dia em que ela deixar de valer, e o comentário no join diz
+  o que fazer então.
+
+### Corrigido
+
+- **O plano de purga afirmava "never over-purging" e isso virou condicionalmente falso.**
+  O `DELETE` casa por CÓDIGO, não pela chave inteira: um código nas duas metades seria
+  purgado por inteiro, levando a metade que NÃO foi marcada como órfã. Não há caso hoje e o
+  plano é impresso para revisão humana — então o aviso passou a sair **no próprio plano**,
+  onde quem executa lê, e não só no docstring.
+
+### Verificado sem achado
+
+`serving.sql.visibility_clause` e o macro `hidden_code_predicate` casam por `(source,
+code)` — consistentes entre si e corretos hoje, já que cada código vive numa metade só. A
+imprecisão só apareceria no cenário compartilhado, que `embrapa doctor` → `shared-code`
+vigia. `gold_produto_agrupamento` LÊ a dim sem juntar fato, então duas linhas ali seriam o
+comportamento correto sob o modelo novo.
+
+---
+
 ## [1.39.3] - 2026-08-30
 
 Varredura das camadas restantes da troca de chave — **6 sítios em 3 camadas**, todos
