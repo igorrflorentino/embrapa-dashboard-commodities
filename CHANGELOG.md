@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.47.4] - 2026-08-31
+
+### Corrigido
+
+- **Os selects de "Território em análise" não pareciam controles** (Perfil do território).
+  O `<select>` de UF usava `.seg-opt` — uma classe que é `border: none; background:
+  transparent` porque foi feita para viver **dentro** da caixa do `.seg`, que é quem
+  fornece a borda. Solto ao lado dela, o controle virava texto com uma setinha: não parecia
+  clicável e não se distinguia do rótulo à esquerda. E `.uf-scope`, a classe que envolve
+  rótulo+campo, **não tinha regra nenhuma** no CSS — a margem vinha de um `style` inline.
+
+  Novo `.scope-select`, com as métricas do `.seg` (34px, mesmo raio e borda) para os dois
+  controles ficarem na **mesma base** — é isso que faz a linha ler como uma barra em vez de
+  texto com uma caixinha no meio. Fonte do corpo, não a mono do `.xs-select`: aquela existe
+  para anos, e "MG · Minas Gerais" não é número.
+
+  Ganha também a afordância que não existia: **hover**, **foco visível** (contorno verde
+  Embrapa, medido com Tab real — `:focus-visible` não dispara por `.focus()` de script) e
+  **desabilitado** (o select de município nasce em "carregando municípios…", e sem estado
+  próprio convidava um clique que não faz nada).
+
+  Medido no navegador: `.seg` e `.scope-select` ambos com 34px e topo idêntico, nos dois
+  níveis (UF e Município).
+
+### Adicionado
+
+- `frontend/src/ui/scopeSelect.test.js` — prende a delimitação (borda e fundo próprios, e
+  **não** `transparent`), a afordância nos três estados, a ausência de `.seg-opt` nos
+  selects da view, e a igualdade de altura contra o `.seg` — âncora externa, mantida para o
+  segmentado: mudar a altura de um sem o outro desalinha a linha e o teste acusa. Validado
+  por três injeções.
+
+---
+
 ## [1.47.3] - 2026-08-31
 
 ### Corrigido (documentação atrás do modelo de dados)

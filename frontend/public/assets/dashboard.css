@@ -1823,6 +1823,44 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
 .seg-opt.on { background: #fff; color: var(--embrapa-green-darker); box-shadow: var(--shadow-1); }
 .seg-opt:not(.on):hover { color: var(--fg-1); }
 
+/* ── Campo rotulado + select, do bloco "Território em análise" (Perfil do território).
+   `.uf-scope` era uma classe SEM regra nenhuma no CSS, e o <select> ao lado usava
+   `.seg-opt` — que é `border: none; background: transparent`, feita para viver DENTRO da
+   caixa do `.seg`, que fornece a borda. Fora dela o controle virava texto solto com uma
+   setinha: não parecia clicável, e não se distinguia do rótulo à esquerda.
+
+   `.scope-select` repete as métricas do `.seg` (34px de altura, mesmo raio e borda) para os
+   dois controles da linha ficarem na MESMA base — é isso que faz o conjunto ler como uma
+   barra de controles, e não como texto com uma caixinha no meio. A fonte é a do corpo, não
+   a mono do `.xs-select`: aquela existe para anos, e "MG · Minas Gerais" não é número. */
+.uf-scope { display: inline-flex; align-items: center; gap: 6px; }
+
+.scope-select {
+    height: 34px;
+    max-width: 260px;
+    padding: 0 8px;
+    font: 500 12px var(--font-body);
+    color: var(--fg-1);
+    background: #fff;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+/* Afordância: o controle não tinha estado nenhum — nem hover, nem foco visível. */
+.scope-select:hover:not(:disabled) { border-color: var(--border-strong); }
+.scope-select:focus-visible {
+    outline: 2px solid var(--embrapa-green);
+    outline-offset: 1px;
+    border-color: var(--embrapa-green);
+}
+/* O select de município nasce desabilitado ("carregando municípios…"); sem estado próprio
+   ele ficava idêntico ao habilitado e convidava um clique que não faz nada. */
+.scope-select:disabled {
+    background: var(--bg-surface-2);
+    color: var(--fg-3);
+    cursor: not-allowed;
+}
+
 .btn-primary {
   height: 34px; padding: 0 14px;
   background: var(--embrapa-green); color: #fff;
