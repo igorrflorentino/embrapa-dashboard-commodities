@@ -15,15 +15,15 @@ deflated value matrix — see [§ Value columns](#value-columns)).
 
 ```mermaid
 erDiagram
-    gold_produto_agrupamento ||--o{ gold_pevs_production : "source=pevs · code=product_code"
-    gold_produto_agrupamento ||--o{ gold_pam_production  : "source=pam · code=product_code"
-    gold_produto_agrupamento ||--o{ gold_comex_flows     : "source=comex · code=ncm_code"
-    gold_produto_agrupamento ||--o{ gold_comtrade_flows  : "source=comtrade · code=cmd_code"
+    gold_produto_agrupamento ||--o{ gold_pevs_production : "source=pevs · code=product_code · tabela"
+    gold_produto_agrupamento ||--o{ gold_pam_production  : "source=pam · code=product_code · tabela"
+    gold_produto_agrupamento ||--o{ gold_comex_flows     : "source=comex · code=ncm_code · tabela"
+    gold_produto_agrupamento ||--o{ gold_comtrade_flows  : "source=comtrade · code=cmd_code · tabela"
     dim_geo_br               ||--o{ gold_pevs_production : "state_acronym"
     dim_geo_br               ||--o{ gold_pam_production  : "state_acronym"
     dim_geo_br               ||--o{ gold_comex_flows     : "state_acronym (UF of NCM)"
     dim_geo_municipio        ||--o{ gold_pevs_production : "city_code (sub-UF geo cube)"
-    dim_code_industrialization_scd2  |o--o| gold_produto_agrupamento : "(source, code) · is_current (gated)"
+    dim_code_industrialization_scd2  |o--o| gold_produto_agrupamento : "(source, code, tabela) · is_current (gated)"
 
     gold_pevs_production {
         int      reference_year     PK
@@ -81,8 +81,9 @@ erDiagram
         timestamp last_refresh
     }
     gold_produto_agrupamento {
-        string   source             PK "pevs / comex / comtrade"
+        string   source             PK "pevs / pam / ppm / comex / comtrade"
         string   code               PK "PEVS code / NCM8 / HS6"
+        string   tabela             PK "289/291 · 3939/74 · 5457 · comex_ncm · comtrade_hs"
         string   agrupamento_id           "stable slug (castanha_do_para, …)"
         string   agrupamento_nome
     }
@@ -127,10 +128,20 @@ erDiagram
 
 ## Join cheat-sheet
 
-- **Same agrupamento across sources** → join each fact's product code to
-  `gold_produto_agrupamento` on `(source, code)` where `code` is `product_code`
-  (PEVS) / `ncm_code` (COMEX) / `cmd_code` (COMTRADE), then group by
-  `agrupamento_id`. Codes matching no agrupamento are simply absent ("unlinked").
+- **Same agrupamento across sources** → join each fact to `gold_produto_agrupamento`
+  on the **TRIPLE** `(source, code, tabela)`, where `code` is `product_code` (PEVS/PAM/PPM)
+  / `ncm_code` (COMEX) / `cmd_code` (COMTRADE), then group by `agrupamento_id`. Codes
+  matching no agrupamento are simply absent ("unlinked").
+
+  ⚠ **Do not join on `(source, code)` alone.** A produto's identity is
+  `(banco, tabela, código)` and the catalog is unique on the triple — joining the pair
+  against it can match TWO rows for one fact row, and the LEFT JOIN then **doubles**
+  `qty_base` / `val_*` sums. That was the load-bearing invariant this model's header stated
+  incorrectly until v1.47.0; `assert_serving_conserved_gold` is the value-side guard.
+
+  Every banco carries `tabela`, including the single-table ones (PAM `5457`, COMEX
+  `comex_ncm`, COMTRADE `comtrade_hs`) — deliberately, so a consumer never branches on
+  "does this banco have a table". See `docs/audits/chave_produto_audit_2026-08-30.md`.
 - **Brazilian geography** → join `state_acronym` to `dim_geo_br` for
   `state_name` / `region` / `region_abbrev`. (COMTRADE is country↔country — no UF.)
 - **Curated industrialization level** (bruta/processada) → `dim_code_industrialization_scd2`

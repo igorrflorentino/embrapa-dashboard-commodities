@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.47.3] - 2026-08-31
+
+### Corrigido (documentação atrás do modelo de dados)
+
+Varredura pós-v1.47: os três documentos que descrevem exatamente o que mudou tinham **zero**
+menções à tabela.
+
+- **`docs/adding_a_data_source.md`** — o mais consequente, porque tem alvo datado: é o guia
+  que alguém vai seguir para acrescentar o **SEFAZ NFe**, hoje `Planejado`. Ganha uma seção
+  §4 dedicada ao id de tabela, ANTES de qualquer coisa que toque código de produto, com a
+  lista completa dos pontos (config + var dbt, carimbo no Silver, travessia pelo Gold e
+  pelas marts, `BANCO_TO_SOURCE`, `tabela_com_padrao` se for banco de uma tabela, e as
+  listas do teste do trio). Registra também o que medi: **todos são guardados por teste**,
+  então um esquecimento falha alto — mas a mensagem aponta para o teste, não para a lista.
+- **`docs/gold_data_model.md`** — se apresenta como *"ER diagram & join guide"* e ensinava a
+  juntar por `(source, code)`. O diagrama e o *cheat-sheet* passam ao **trio**, com o aviso
+  explícito de que juntar pelo par pode casar DUAS linhas e **dobrar** as somas — o
+  invariante que o cabeçalho de `gold_produto_agrupamento` afirmava errado até a v1.47.0.
+- **`docs/frontend_data_contract.md`** — promete o contrato *"field by field"*. A §3.1
+  passa a declarar `tabela` na forma de `products` e a registrar que ela viaja para os
+  **cinco** bancos desde a v1.47.2, com o motivo (os três nomes repetidos entre as metades
+  do PEVS) e o limite (a UI não mostra o eixo em banco de uma tabela — seria ruído).
+- `CLAUDE.md` aponta para a seção nova do guia.
+
+### Notas
+
+- Os datasets `dbt_dev_*` foram reconstruídos: o `dbt build --empty` que usei para validar
+  schema sem custo de leitura os deixou com 21 tabelas vazias, e um dev nesse estado veria
+  **dado vazio em silêncio**. Agora zero vazias, batendo com prod.
+- Verificações que vieram limpas e **não** viraram ação: nenhum código morto pela
+  refatoração (os 8 símbolos candidatos seguem em uso; um detector genérico deu 106 falsos
+  positivos, todos comandos de CLI registrados por decorator); e os 26 snapshots de backup
+  (10,2 GiB) já são cobertos por política de ciclo de vida do bucket — NEARLINE aos 30d,
+  COLDLINE aos 90d, apagados aos 365d.
+
+---
+
 ## [1.47.2] - 2026-08-30
 
 ### Modificado
