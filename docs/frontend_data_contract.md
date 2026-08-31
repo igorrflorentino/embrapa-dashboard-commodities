@@ -69,18 +69,35 @@ mix; `exp_weight` (`'mil t'`) never mixes with them.
 
 ## 3. `dataset_for(banco_id)` → snapshot (brief §2)
 
-### 3.1 `products` — `[{ code, name, unit, family }]`
+### 3.1 `products` — `[{ code, tabela, name, unit, family }]`
 `SELECT DISTINCT` the product key from the bank's Gold table.
 
 | field | PEVS | COMEX | COMTRADE |
 |---|---|---|---|
 | `code` | `product_code` | `ncm_code` | `cmd_code` (HS6) |
+| `tabela` | `289` / `291` | `comex_ncm` | `comtrade_hs` |
 | `name` | `product_description` | `ncm_description` | `cmd_description` |
 | `unit` | `base_unit` | `base_unit` | `base_unit` |
 | `family` | `family` → **en** (see §7) | idem | idem |
 
 > `code` MUST match the keys of `productTS`. They do — both come from the same Gold
 > product column.
+
+> **`tabela` travels for EVERY banco since v1.47.2** — including the single-table ones,
+> where the value is constant (PAM `5457`, COMEX `comex_ncm`, COMTRADE `comtrade_hs`). It
+> was emitted only for PEVS/PPM until then, behind a `_TABELA_SOURCES` set; that set was
+> the last *"does this banco have a table?"* branch on the read path, and it is gone. A
+> consumer reads the identity the same way in all five bancos — **constant is simpler than
+> absent**.
+>
+> Why it matters even where it looks redundant: a produto's identity is
+> `(banco, tabela, código)`, and in PEVS three products exist in BOTH halves under the same
+> NAME with different codes (Carvão vegetal, Lenha, Madeira em tora). Without the field the
+> Donut and the product comparison show two identical entries. `window.labelProductRows`
+> uses it to suffix a name only when it repeats.
+>
+> The UI does **not** show a table filter for single-table bancos — a one-option segment
+> would be noise. The symmetry is in the data and the code, not on screen.
 
 > **Livestock (IBGE PPM) adds two things.** (1) `products` carries an extra
 > **`measure_kind`** (`stock` | `flow`) — emitted ONLY for PPM (the gateway's

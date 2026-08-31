@@ -131,7 +131,35 @@ bq_bronze_<source>_<table>_table: str = Field(default="<table>_raw")
 # ...
 ```
 
-### 4. Register in the three registries (CLI + Doctor)
+### 4. Give the banco a TABLE ID — the product identity is `(banco, tabela, código)`
+
+**Do this before anything else touches a product code.** Since v1.47.0 the triple holds in
+**all five bancos**, including the ones with a single table — so a new source needs a table
+id even when it has only one. That is the point, not an oversight: with the triple holding
+everywhere, every identity function has ONE shape, and no consumer has to ask *"does this
+banco have a table?"* before reading an identity. That branch is what let the rule go
+unpropagated three times in one week (v1.46.1, v1.46.3, v1.46.5).
+
+Use the source's **real** table id if it has one (PEVS 289/291, PPM 3939/74, PAM 5457 are
+SIDRA ids). If the source has no such concept — COMEX and COMTRADE don't — pick a stable,
+readable **project-chosen** name (`comex_ncm`, `comtrade_hs`).
+
+| Where | What to add |
+|---|---|
+| `config.py` | `<source>_table_id: str = Field(default="…")` |
+| `dbt/dbt_project.yml` (`vars:`) | `<source>_table_id: "{{ env_var('<SOURCE>_TABLE_ID', '…') }}"` — parity with `config.py`, guarded by `embrapa doctor` |
+| `silver_<source>*.sql` | stamp `'{{ var("<source>_table_id") }}' as tabela` in the final select. **Silver**, not Gold: each Silver model knows which table it reads, so the value is born where it is known and Gold just carries it |
+| `gold_<source>_*.sql` | carry `tabela` through every CTE that aggregates, and project it in the final select — a `group by` alone is not enough |
+| `serving_<source>_*.sql` | `tabela` in the grain (`group by`) **and** projected |
+| `serving/sql.BANCO_TO_SOURCE` | the banco↔source pair (the inverse map derives from it) |
+| `tabela_com_padrao` (macro **and** `serving/sql.py`) | only if the banco has ONE table: the append-only curation logs predate the column, so the default is filled at the log→dim boundary. Multi-table bancos get **no** default — guessing a half would invent data |
+| `tests/test_trio_identidade_produto.py` | add the Gold model and the marts to `_GOLD_PRODUTO` / `_MARTS` |
+
+**Every one of these is test-guarded**, so a forgotten entry fails loudly rather than
+silently — but the failure message points at the test, not at this list, so work through it
+in order. Background: `docs/audits/chave_produto_audit_2026-08-30.md`.
+
+### 5. Register in the three registries (CLI + Doctor)
 
 | Registry | File | What to add |
 |---|---|---|
@@ -161,7 +189,7 @@ def ingest_<source>(full: bool = typer.Option(False, "--full")) -> None:
 
 For sources without a public API (NFe via batch XML), `_check_<source>` can be a stub: `return CheckResult("<source>", True, "no public probe (batch ingestion)")`.
 
-### 5. dbt Bronze source
+### 6. dbt Bronze source
 
 Location: [`dbt/models/_sources.yml`](../dbt/models/_sources.yml).
 
@@ -180,7 +208,7 @@ Add a `bronze_<source>` block mirroring the existing ones (lines 4-29):
         loaded_at_field: ingestion_timestamp
 ```
 
-### 6. dbt Silver
+### 7. dbt Silver
 
 Location: `dbt/models/silver/silver_<source>_<table>.sql`.
 
@@ -192,7 +220,7 @@ Copy [`silver_ibge_pevs.sql`](../dbt/models/silver/silver_ibge_pevs.sql) as the 
 
 Add tests in `dbt/models/silver/_silver.yml` following the same pattern as the existing ones — `unique_combination_of_columns`, `not_null`, `accepted_values` for closed domains.
 
-### 7. dbt Gold (its own lineage, ONE table per source)
+### 8. dbt Gold (its own lineage, ONE table per source)
 
 Location: `dbt/models/gold/gold_<source>_<form>.sql` — e.g. `gold_comex_flows.sql`, `gold_comtrade_flows.sql`, `gold_nfe_flows.sql`. `<form>` = `production` (output measurement, like PEVS) or `flows` (origin→destination flow, trade databases).
 
@@ -216,7 +244,7 @@ Apply the project's four monetary conventions (`val_yearfx_*`, `val_real_ipca_*`
 
 **Important:** after the `dbt build` in prod, the table shows up automatically in `make backup-gold` (introspection via `list_tables` + the `gold_` prefix). No manual list maintenance.
 
-### 8. Reference seeds (if applicable)
+### 9. Reference seeds (if applicable)
 
 Location: `dbt/seeds/`.
 
@@ -227,7 +255,7 @@ Typical mapping tables:
 
 YAML pattern in [`dbt/seeds/_seeds.yml`](../dbt/seeds/_seeds.yml) — declare explicit `column_types` and tests (`not_null`, `unique`).
 
-### 9. Python tests
+### 10. Python tests
 
 Locations: `tests/test_<source>_client.py` + `tests/test_<source>_pipeline.py`.
 
@@ -240,13 +268,13 @@ Minimum coverage:
 - Delta computes correctly for the cases: (a) empty Bronze → `configured_start`; (b) Bronze with data → overlap applied; (c) `--full` ignores delta.
 - HTTP transient (5xx) is returned as `<Source>TransientError`.
 
-### 10. Secret (per-source decision)
+### 11. Secret (per-source decision)
 
 - **Public API without auth** (COMEX, today): nothing to do. Mirrors IBGE/BCB.
 - **Non-sensitive API key** (COMTRADE, today): use an env var in `.env` (`COMTRADE_API_KEY=...`) + a GitHub Actions secret in CI. Add it to [`.gitignore`](../.gitignore) if it was never committed.
 - **Sensitive credential** (SEFAZ NFe A1/A3 cert; long-lived OAuth): **reopen the Secret Manager decision**. The project dropped Secret Manager in [`docs/iam_setup.md:70-73`](iam_setup.md) — for these cases it's worth consciously revisiting. Document the decision and the path here afterward.
 
-### 11. Light documentation
+### 12. Light documentation
 
 - Add the source to the pipeline diagram in [`README.md`](../README.md) and [`ARCHITECTURE.md`](../ARCHITECTURE.md) (update the Bronze and Consumption boxes).
 - Add the source's scope (`comex`, `comtrade`, `nfe`) to the list in [`CONTRIBUTING.md`](../CONTRIBUTING.md) → Common scopes (line 90).
