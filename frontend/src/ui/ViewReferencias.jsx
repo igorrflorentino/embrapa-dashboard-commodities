@@ -185,7 +185,7 @@ function ViewReferencias() {
             action={
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 {exportErr && <span className="caption" style={{ color: 'var(--err, #b71c1c)' }}>{exportErr}</span>}
-                <button type="button" className="seg-opt" onClick={exportCsv} disabled={!cols.length}>
+                <button type="button" className="btn-secondary" onClick={exportCsv} disabled={!cols.length}>
                   Exportar CSV (até {_RF_EXPORT_CAP})
                 </button>
               </span>
@@ -227,7 +227,7 @@ function ViewReferencias() {
                      onChange={(e) => setDraft((d) => ({ ...d, val: e.target.value }))}
                      onKeyDown={(e) => e.key === 'Enter' && addFilter()} />
             )}
-            <button type="button" className="seg-opt" onClick={addFilter} disabled={!draft.col}>Filtrar</button>
+            <button type="button" className="btn-secondary" onClick={addFilter} disabled={!draft.col}>Filtrar</button>
           </div>
           {filters.length > 0 && (
             <div className="dt-chips">
@@ -290,14 +290,14 @@ function ViewReferencias() {
           {/* Pagination */}
           {!page.loading && !page.error && total > 0 && (
             <div className="dt-pager">
-              <button type="button" className="seg-opt" disabled={offset === 0}
+              <button type="button" className="btn-secondary" disabled={offset === 0}
                       onClick={() => setOffset(Math.max(0, offset - _RF_PAGE))}>‹ Anterior</button>
               <span className="caption tnum">
                 Página {pageNum.toLocaleString('pt-BR')} de {pageCount.toLocaleString('pt-BR')} ·
                 {' '}linhas {(offset + 1).toLocaleString('pt-BR')}–{Math.min(offset + _RF_PAGE, total).toLocaleString('pt-BR')}
                 {' '}de {total.toLocaleString('pt-BR')}
               </span>
-              <button type="button" className="seg-opt" disabled={offset + _RF_PAGE >= total}
+              <button type="button" className="btn-secondary" disabled={offset + _RF_PAGE >= total}
                       onClick={() => setOffset(offset + _RF_PAGE)}>Próxima ›</button>
             </div>
           )}

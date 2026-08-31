@@ -959,7 +959,7 @@ function ViewCadastroProdutos() {
             ? `${achados.toLocaleString('pt-BR')} produto(s) em ${gruposVisiveis.length} agrupamento(s)`
             : `${data.entries.length.toLocaleString('pt-BR')} produtos · ${data.groups.length} agrupamentos`}
         </span>
-        <button type="button" className="seg-opt" disabled={buscando || !groupsSorted.length}
+        <button type="button" className="btn-secondary" disabled={buscando || !groupsSorted.length}
                 title={buscando ? 'Durante a busca os resultados ficam sempre abertos' : undefined}
                 onClick={() => setAbertos(todosAbertos ? new Set()
                   : new Set(groupsSorted.map((g) => g.group_id)))}>
@@ -973,11 +973,11 @@ function ViewCadastroProdutos() {
           <input type="text" value={newGroup} placeholder="Ex.: Castanha" disabled={locked}
                  onChange={(e) => setNewGroup(e.target.value)}
                  onKeyDown={(e) => { if (e.key === 'Enter') createGroup(); }} />
-          <button type="button" className="seg-opt" onClick={createGroup} disabled={locked || !newGroup.trim()}>
+          <button type="button" className="btn-secondary" onClick={createGroup} disabled={locked || !newGroup.trim()}>
             + Criar
           </button>
         </label>
-        <button type="button" className="seg-opt" disabled={locked}
+        <button type="button" className="btn-secondary" disabled={locked}
                 onClick={() => (showAdd ? cancelAdd() : setShowAdd(true))}>
           {showAdd ? 'Cancelar' : '+ Adicionar produto'}
         </button>
@@ -1126,9 +1126,9 @@ function ViewCadastroProdutos() {
                       ({buscando ? `${members.length} de ${g.n_members}` : g.n_members})
                     </small>
                   </button>
-                  <button type="button" className="seg-opt" disabled={locked}
+                  <button type="button" className="btn-secondary" disabled={locked}
                           onClick={() => renameGroup(g)} title="Renomear agrupamento">✎ Renomear</button>
-                  <button type="button" className="seg-opt" disabled={locked || g.n_members > 0}
+                  <button type="button" className="btn-secondary" disabled={locked || g.n_members > 0}
                           onClick={() => deleteGroup(g)}
                           title={g.n_members > 0 ? 'Reatribua ou remova os produtos antes de excluir' : 'Excluir agrupamento vazio'}>
                     🗑 Excluir
