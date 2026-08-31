@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.47.6] - 2026-08-31
+
+### Corrigido
+
+- **13 botões de AÇÃO renderizavam como texto solto.** `className="seg-opt"` nu, fora de
+  qualquer `.seg` — e essa classe é `border: none; background: transparent` porque a caixa
+  vem do contêiner. Medido em "Estrutura de dados": os quatro (*Exportar CSV*, *Filtrar*,
+  *‹ Anterior*, *Próxima ›*) tinham **14px** de altura, sem borda nem fundo. São comandos,
+  não legendas.
+
+  Passam a `.btn-secondary` — o conserto **já estabelecido e documentado** no projeto:
+  `ViewGeography.jsx:670` narra este exato diagnóstico desde antes. Consertaram **uma**
+  ocorrência, escreveram o porquê, e não varreram; este é o terceiro nível da mesma
+  história (v1.47.4 a tela, v1.47.5 o átomo, agora a classe inteira).
+
+  Distribuição: `ViewDados` 4 · `ViewReferencias` 4 · `ViewCadastroProdutos` 5.
+
+- **`.btn-secondary` ganhou estado desabilitado.** Todos os 13 têm condição `disabled` (sem
+  colunas para exportar, sem filtro montado, primeira/última página, agrupamento com
+  membros, modo somente-leitura). A classe não tinha `:disabled`, então a migração sozinha
+  teria trocado um defeito de afordância por outro — 13 botões inertes com cara de
+  clicáveis. Mesmo par (`opacity` + `not-allowed`) já usado nos chips.
+
+  Verificado no navegador nas três telas: **34px** em todos (eram 14), borda sólida,
+  desabilitados em `opacity 0.45`, e zero `.seg-opt` solto. O Cadastro rende 65 desses
+  botões (31 agrupamentos × ✎/🗑 mais os 3 do topo) sem quebrar o alinhamento do cabeçalho.
+
+### Modificado
+
+- `scopeSelect.test.js` cobre agora as duas formas: nenhum `<select>` e nenhum **botão**
+  usam `.seg-opt` solto. O critério que separa uso legítimo de defeito está no teste: dentro
+  de um `.seg` a classe SEMPRE alterna `on` (é o estado do segmentado), então
+  `className="seg-opt"` literal, sem concatenação, é botão solto.
+
+---
+
 ## [1.47.5] - 2026-08-31
 
 ### Corrigido

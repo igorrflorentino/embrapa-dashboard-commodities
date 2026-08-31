@@ -1877,7 +1877,14 @@ body.sb-resizing .sidebar-resizer { background: color-mix(in srgb, var(--embrapa
   font: 500 13px var(--font-body);
   cursor: pointer;
 }
-.btn-secondary:hover { background: var(--bg-surface-2); }
+.btn-secondary:hover:not(:disabled) { background: var(--bg-surface-2); }
+/* Estado desabilitado, acrescentado na v1.47.6 junto com os 13 botões que migraram de
+   `.seg-opt` para cá: TODOS eles têm condição `disabled` (sem colunas para exportar, sem
+   filtro montado, primeira/última página, agrupamento com membros…). Sem este estado a
+   troca teria deixado 13 botões desabilitados com cara de clicáveis — trocando um defeito
+   de afordância por outro. Mesmo par (`opacity` + `not-allowed`) já usado nos chips e no
+   `.cur-apply-actions .btn-primary:disabled`. */
+.btn-secondary:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-ghost {
   height: 34px; padding: 0 12px;
   background: transparent; color: var(--embrapa-green);

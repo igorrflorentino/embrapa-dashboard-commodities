@@ -82,6 +82,39 @@ describe('controles do "Território em análise"', () => {
     expect(infratores).toEqual([]);
   });
 
+  it('nenhum BOTÃO usa `.seg-opt` nu — a classe só vale dentro de um segmentado', () => {
+    // `.seg-opt` é `border: none; background: transparent` porque a caixa vem do `.seg`.
+    // Um botão que a usa SOLTO vira texto: medido em "Estrutura de dados", os quatro
+    // (Exportar CSV, Filtrar, ‹ Anterior, Próxima ›) tinham 14px de altura, sem borda nem
+    // fundo. O diagnóstico e o conserto (`btn-secondary`) já estavam escritos em
+    // ViewGeography.jsx desde antes — para UMA ocorrência, sem varredura.
+    //
+    // O que distingue uso legítimo de defeito: dentro de um `.seg` a classe SEMPRE alterna
+    // `on`, porque é o estado do segmentado. `className="seg-opt"` literal, sem
+    // concatenação, é botão solto.
+    const arquivos = readdirSync(AQUI).filter(
+      (f) => f.endsWith('.jsx') && !f.includes('.test.'),
+    );
+    const infratores = [];
+    let vistos = 0;
+    for (const f of arquivos) {
+      const src = readFileSync(join(AQUI, f), 'utf8');
+      for (const m of src.match(/className=\{?'?"?[^"'}]*seg-opt[^"'}]*"?'?\}?/g) || []) {
+        vistos += 1;
+        if (/className="seg-opt"/.test(m)) infratores.push(`${f}: ${m}`);
+      }
+    }
+    expect(vistos).toBeGreaterThan(10); // guarda o varredor
+    expect(infratores).toEqual([]);
+  });
+
+  it('`.btn-secondary` tem estado desabilitado', () => {
+    // Os 13 botões migrados têm TODOS uma condição `disabled`; sem este estado a migração
+    // teria trocado um defeito de afordância por outro.
+    expect(CSS).toMatch(/\.btn-secondary:disabled/);
+    expect(CSS).toMatch(/\.btn-secondary:hover:not\(:disabled\)/);
+  });
+
   it('o átomo compartilhado usa a classe delimitada', () => {
     // `UfScopePicker` é o único select fora das views — um átomo, logo o defeito nele
     // aparecia em cinco telas de uma vez.
