@@ -2612,19 +2612,22 @@ def test_fetch_products_requests_measure_kind_for_livestock(monkeypatch):
     [
         ("ibge_pevs", "serving_pevs_annual", True),
         ("ibge_ppm", "serving_ppm_annual", True),
-        ("ibge_pam", "serving_pam_annual", False),
-        ("mdic_comex", "serving_comex_annual", False),
+        ("ibge_pam", "serving_pam_annual", True),
+        ("mdic_comex", "serving_comex_annual", True),
+        ("un_comtrade", "serving_comtrade_annual", True),
     ],
 )
-def test_fetch_products_requests_the_sidra_table_for_multi_table_bancos(
-    monkeypatch, source, mart, pede_tabela
-):
-    """A TABELA viaja na lista de produtos dos bancos MULTI-TABELA, e só neles.
+def test_fetch_products_requests_the_table_for_every_banco(monkeypatch, source, mart, pede_tabela):
+    """A TABELA viaja na lista de produtos de TODOS os bancos, desde a v1.47.0.
 
-    É o elo que faltava: madeira, lenha e carvão existem nas duas tabelas do PEVS com o
-    mesmo nome, e sem a coluna o Donut "Participação por produto" e o comparativo entre
-    produtos mostram duas entradas idênticas. Num banco de tabela única a coluna não existe
-    no mart, e pedi-la quebraria a consulta — daí a varredura cobrir os dois lados."""
+    O elo original: madeira, lenha e carvão existem nas duas tabelas do PEVS com o mesmo
+    nome, e sem a coluna o Donut e o comparativo mostram duas entradas idênticas.
+
+    Antes esta lista tinha `False` para pam/comex — a coluna não existia no mart deles e
+    pedi-la quebrava a consulta. Agora existe nos cinco, e o `False` sumiu junto com o ramo
+    "este banco tem tabela?" que todo consumidor precisava fazer antes de ler a identidade.
+    Os cinco bancos estão parametrizados de propósito: é a varredura que acusa se um voltar
+    a ficar de fora."""
     pytest.importorskip("flask_caching")
     from embrapa_dashboard.serving import gateway
 

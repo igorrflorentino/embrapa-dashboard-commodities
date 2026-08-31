@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.47.2] - 2026-08-30
+
+### Modificado
+
+- **A API entrega a tabela nos CINCO bancos.** `_TABELA_SOURCES = {"ibge_pevs", "ibge_ppm"}`
+  era o último ramo *"este banco tem tabela / aquele não"* no caminho de leitura: o
+  serializer só emitia a coluna para os multi-tabela, e um consumidor tinha de saber o banco
+  antes de saber se podia ler a identidade. O conjunto existia porque comex/comtrade/pam não
+  tinham a coluna — desde a v1.47.0 têm.
+
+  Verificado contra prod, com as contagens de produtos intactas:
+  `pevs ['289','291'] · ppm ['3939','74'] · pam ['5457'] · comex ['comex_ncm'] ·
+  comtrade ['comtrade_hs']`. Nos bancos de uma tabela o valor é constante, o que não é
+  problema: **constante é mais simples que ausente.**
+
+  A UI não muda: o eixo de filtro segue oculto nos bancos de uma tabela, porque um segmento
+  de opção única seria ruído. A simetria é do dado e do código, não da tela.
+
+- Terceiro log migrado: **`catalog_lifecycle_log`** também tinha a coluna antiga. Meu
+  levantamento inicial conferiu dois nomes e não varreu o dataset — o `doctor` acusou, com
+  `CHECK QUEBRADO`, o que sem a v1.46.4 teria sido um ✓ verde silencioso.
+
+### Adicionado
+
+- `test_fetch_products_requests_the_table_for_every_banco` — os cinco bancos
+  parametrizados, todos exigindo a tabela. Substitui a versão que trazia `False` para
+  pam/comex.
+
+---
+
 ## [1.47.1] - 2026-08-30
 
 ### Corrigido
