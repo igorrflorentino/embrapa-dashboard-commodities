@@ -142,7 +142,9 @@ unpropagated three times in one week (v1.46.1, v1.46.3, v1.46.5).
 
 Use the source's **real** table id if it has one (PEVS 289/291, PPM 3939/74, PAM 5457 are
 SIDRA ids). If the source has no such concept — COMEX and COMTRADE don't — pick a stable,
-readable **project-chosen** name (`comex_ncm`, `comtrade_hs`).
+readable **project-chosen** name — SHORT, because the banco already sits beside it in
+the key and on screen (`ncm`, `hs`; not `comex_ncm`, which repeated its neighbour and
+overflowed the Cadastro's Tabela column).
 
 | Where | What to add |
 |---|---|

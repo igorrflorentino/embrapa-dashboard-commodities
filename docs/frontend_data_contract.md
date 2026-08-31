@@ -75,7 +75,7 @@ mix; `exp_weight` (`'mil t'`) never mixes with them.
 | field | PEVS | COMEX | COMTRADE |
 |---|---|---|---|
 | `code` | `product_code` | `ncm_code` | `cmd_code` (HS6) |
-| `tabela` | `289` / `291` | `comex_ncm` | `comtrade_hs` |
+| `tabela` | `289` / `291` | `ncm` | `hs` |
 | `name` | `product_description` | `ncm_description` | `cmd_description` |
 | `unit` | `base_unit` | `base_unit` | `base_unit` |
 | `family` | `family` → **en** (see §7) | idem | idem |
@@ -84,7 +84,7 @@ mix; `exp_weight` (`'mil t'`) never mixes with them.
 > product column.
 
 > **`tabela` travels for EVERY banco since v1.47.2** — including the single-table ones,
-> where the value is constant (PAM `5457`, COMEX `comex_ncm`, COMTRADE `comtrade_hs`). It
+> where the value is constant (PAM `5457`, COMEX `ncm`, COMTRADE `hs`). It
 > was emitted only for PEVS/PPM until then, behind a `_TABELA_SOURCES` set; that set was
 > the last *"does this banco have a table?"* branch on the read path, and it is gone. A
 > consumer reads the identity the same way in all five bancos — **constant is simpler than

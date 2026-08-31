@@ -39,12 +39,12 @@ const ENTRIES = {
     {
       // The seam always returns the EFFECTIVE coded axes (a legacy row is translated
       // server-side), so the fixture carries them like the real API does.
-      codigo_produto: '4403', banco: 'comex', tabela: 'comex_ncm', agrupamento: 'Madeira',
+      codigo_produto: '4403', banco: 'comex', tabela: 'ncm', agrupamento: 'Madeira',
       ingestao: 'ativa', visibilidade: 'visivel', agrupamento_id: 'madeira',
       descricao_fonte: 'Madeira em toras (NCM)', descricao_produto: 'Nota antiga',
     },
     {
-      codigo_produto: '4407', banco: 'comtrade', tabela: 'comtrade_hs', agrupamento: 'Madeira',
+      codigo_produto: '4407', banco: 'comtrade', tabela: 'hs', agrupamento: 'Madeira',
       ingestao: 'ativa', visibilidade: 'visivel', agrupamento_id: 'madeira',
       descricao_fonte: null,
     },
@@ -64,8 +64,8 @@ const GROUPS = {
 // entrada só e as duas linhas do editor mostravam o mesmo total.
 const STATUS = {
   status: {
-    'comex:comex_ncm:4403': { n_rows: 1234, year_start: 1997, year_end: 2023, has_data: true },
-    'comtrade:comtrade_hs:4407': { n_rows: 0, year_start: null, year_end: null, has_data: false },
+    'comex:ncm:4403': { n_rows: 1234, year_start: 1997, year_end: 2023, has_data: true },
+    'comtrade:hs:4407': { n_rows: 0, year_start: null, year_end: null, has_data: false },
   },
 };
 // The source's REAL codes for the add form (comex): includes 0801, so a valid add can fire.
@@ -445,23 +445,23 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     mockFetch({
       entries: {
         entries: [
-          { codigo_produto: '1', banco: 'comex', tabela: 'comex_ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          { codigo_produto: '1', banco: 'comex', tabela: 'ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
             ingestao: 'ativa', visibilidade: 'visivel' },
-          { codigo_produto: '2', banco: 'comex', tabela: 'comex_ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          { codigo_produto: '2', banco: 'comex', tabela: 'ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
             ingestao: 'ativa', visibilidade: 'oculto' },
-          { codigo_produto: '3', banco: 'comex', tabela: 'comex_ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          { codigo_produto: '3', banco: 'comex', tabela: 'ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
             ingestao: 'pausada', visibilidade: 'visivel' },
-          { codigo_produto: '4', banco: 'comex', tabela: 'comex_ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          { codigo_produto: '4', banco: 'comex', tabela: 'ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
             ingestao: 'pausada', visibilidade: 'visivel' },
         ],
         total: 4,
       },
       status: {
         status: {
-          'comex:comex_ncm:1': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
-          'comex:comex_ncm:2': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
-          'comex:comex_ncm:3': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
-          'comex:comex_ncm:4': { n_rows: 0, year_start: null, year_end: null, has_data: false },
+          'comex:ncm:1': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
+          'comex:ncm:2': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
+          'comex:ncm:3': { n_rows: 10, year_start: 2000, year_end: 2020, has_data: true },
+          'comex:ncm:4': { n_rows: 0, year_start: null, year_end: null, has_data: false },
         },
       },
     });
@@ -479,7 +479,7 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     mockFetch({
       entries: {
         entries: [{
-          codigo_produto: '4403', banco: 'comex', tabela: 'comex_ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
+          codigo_produto: '4403', banco: 'comex', tabela: 'ncm', agrupamento: 'Madeira', agrupamento_id: 'madeira',
           ciclo_de_vida: 'Fazer Ingestão e deixar disponível',
         }],
         total: 1,
@@ -529,15 +529,32 @@ describe('ViewCadastroProdutos — the Curadoria catalog editor', () => {
     expect(celula.className).toContain('tnum');
   });
 
-  it('omits the SIDRA tag for SINGLE-TABLE bancos', async () => {
-    // "non-PPM" until 2026-08-29; pevs joined ppm as multi-table, so what earns a tag is
-    // spanning two SIDRA tables, not being ppm.
+  it('mostra a tabela em TODOS os bancos, inclusive nos de tabela única', async () => {
+    // Histórico: até a v1.47.6 esta célula ramificava — `_CC_TABELAS[banco] ? valor : '—'` —
+    // e desenhava travessão SEM OLHAR o dado, porque comex/comtrade/pam não tinham tabela.
+    // Desde a v1.47.0 têm, e o backend manda: as 234 entradas de prod chegam com a coluna
+    // preenchida. A tela estava apagando um valor que recebia. O travessão fica só para
+    // ausência de verdade.
     const { container } = render(<ViewCadastroProdutos />);
     await abrirAgrupamentos(container);
-    // comex + comtrade: a coluna existe (senão o leitor não sabe se sumiu) mas vem vazia.
     const celulas = [...container.querySelectorAll('td[data-label="Tabela"]')];
     expect(celulas.length).toBeGreaterThan(0);
-    for (const c of celulas) expect(c.textContent.trim()).toBe('—');
+    // O fixture traz comex (`ncm`) e comtrade (`hs`) — bancos de UMA tabela.
+    const textos = celulas.map((c) => c.textContent.trim());
+    expect(textos).toContain('ncm');
+    expect(textos).toContain('hs');
+    expect(textos).not.toContain('—');
+  });
+
+  it('explica no title que o id dos bancos sem SIDRA é convenção do projeto', async () => {
+    // `ncm` não existe como tabela no site do IBGE. Sem essa nota, mostrar o valor trocaria um
+    // problema (apagar o dado) por outro (mandar o leitor procurar um id que não existe lá).
+    const { container } = render(<ViewCadastroProdutos />);
+    await abrirAgrupamentos(container);
+    const comex = [...container.querySelectorAll('td[data-label="Tabela"]')]
+      .find((c) => c.textContent.trim() === 'ncm');
+    expect(comex).toBeTruthy();
+    expect(comex.getAttribute('title')).toMatch(/convenção deste projeto/);
   });
 
   it('shows the existing manual descrição pre-filled, and edits it after creation via blur-commit', async () => {

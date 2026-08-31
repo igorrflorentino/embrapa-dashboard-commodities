@@ -9,7 +9,7 @@
   Esta macro NÃO reescreve o log; ela completa a leitura na fronteira. É o único ponto do
   projeto onde a ausência é tratada, e depois dela o trio `(banco, tabela, código)` é
   não-nulo em todas as camadas — que é o ponto: sem isto, o Gold do comex (que carrega
-  `tabela = 'comex_ncm'`) não casaria com um catálogo nulo e TODO produto comex perderia
+  `tabela = 'ncm'`) não casaria com um catálogo nulo e TODO produto comex perderia
   o seu agrupamento.
 
   Bancos multi-tabela (pevs, ppm) NÃO têm padrão, de propósito: adivinhar a metade seria
