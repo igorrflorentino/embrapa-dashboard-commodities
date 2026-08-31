@@ -147,12 +147,16 @@ def _product_source(source: str) -> tuple[str, str, str, str]:
 # request differing only by an un-keyed filter would otherwise serve a stale result.
 _MEASURE_KIND_SOURCES = {"ibge_ppm"}
 
-# Fontes cujo mart carrega o id da TABELA SIDRA — os bancos multi-tabela. `fetch_products`
-# o expõe porque a identidade de um produto é (banco, tabela, código) e duas tabelas de um
-# mesmo banco podem trazer o MESMO nome (madeira/lenha/carvão no PEVS): sem o id, a tela
-# não tem como distinguir duas entradas idênticas. Mesma nota de cache do conjunto acima —
-# o tratamento é DERIVADO de `source`, que já entra na chave de memoize de todo leitor.
-_TABELA_SOURCES = {"ibge_pevs", "ibge_ppm"}
+# TODA fonte carrega o id da tabela desde a v1.47.0 — não existe mais o ramo "este banco
+# tem tabela / aquele não". `fetch_products` a expõe sempre porque a identidade de um
+# produto é `(banco, tabela, código)` nos cinco bancos, e duas tabelas de um mesmo banco
+# podem trazer o MESMO nome (madeira/lenha/carvão no PEVS): sem o id, a tela não tem como
+# distinguir duas entradas idênticas.
+#
+# Era um conjunto de dois bancos. Ele existia porque comex/comtrade/pam não tinham a coluna
+# — e um consumidor que precisa perguntar "este banco tem tabela?" antes de ler a identidade
+# é exatamente a assimetria que a v1.47.0 removeu. Nos bancos de uma tabela o valor é
+# constante, o que não é problema: constante é mais simples que ausente.
 
 
 # Production sources whose marts are COLUMN-IDENTICAL (PEVS shape: product_code,
@@ -1196,7 +1200,7 @@ def fetch_products(source: str):
         code_column=code_col,
         name_column=name_col,
         with_measure_kind=source in _MEASURE_KIND_SOURCES,
-        with_tabela=source in _TABELA_SOURCES,
+        with_tabela=True,
     )
     return run_query(sql, params)
 

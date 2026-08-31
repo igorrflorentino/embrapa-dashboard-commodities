@@ -18,7 +18,7 @@
   coluna nas dims transforma isso num erro de build, caso deixe de ser verdade.
 
   Args:
-    tabela_col — a coluna de tabela no log (`sidra_tabela` até a migração, `tabela` depois).
+    tabela_col — a coluna de tabela no log.
     banco_col  — a coluna de banco/source do log.
 -#}
 {% macro tabela_com_padrao(tabela_col='tabela', banco_col='banco') -%}
