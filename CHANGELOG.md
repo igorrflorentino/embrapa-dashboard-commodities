@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.47.5] - 2026-08-31
+
+### Corrigido
+
+- **O mesmo defeito da v1.47.4 estava no átomo compartilhado.** `UfScopePicker`
+  (`Atoms.jsx`) trazia o código idêntico ao que a v1.47.4 corrigiu: `.seg-opt` num
+  `<select>` solto e `style={{ marginRight: 6 }}` inline. Medido na tela, em "Valor
+  agregado": `border: none 0px`, fundo transparente, **24px** de altura — contra os 34px
+  de um controle. Lia como legenda.
+
+  O átomo é renderizado em **cinco** pontos (`ViewCrossSource`, `ViewsMultiSource` ×3,
+  `ViewCuratedAnalyses`), então o conserto de uma linha arruma os cinco. Agora
+  `solid 1px` / branco / 34px, verificado no navegador.
+
+  A v1.47.4 tratou a tela **apontada** e não varreu — o padrão que este repositório repete,
+  desta vez cometido por mim na versão anterior.
+
+### Modificado
+
+- `scopeSelect.test.js` deixa de olhar uma view e passa a **varrer o domínio**: percorre
+  todo `src/ui/*.jsx` e reprova qualquer `<select>` com `.seg-opt`, com o irmão que guarda
+  o varredor (um regex quebrado veria zero selects e passaria para sempre). O teste é sobre
+  a classe, não sobre um arquivo.
+
+### Notas
+
+- **Achado maior, deixado fora de escopo de propósito.** A mesma classe está em **13
+  botões** com `className="seg-opt"` nu, fora de qualquer `.seg`. Medido em "Estrutura de
+  dados": **4 de 4** — *Exportar CSV*, *Filtrar*, *‹ Anterior*, *Próxima ›* — sem borda,
+  sem fundo, com **14px** de altura. São ações renderizadas como texto solto.
+
+  O conserto já está estabelecido e documentado no projeto: `ViewGeography.jsx:670` narra
+  exatamente este diagnóstico e usa `btn-secondary`. Consertaram uma ocorrência e não
+  varreram. Fica registrado para decisão, porque toca 4 telas e é escopo próprio.
+
+---
+
 ## [1.47.4] - 2026-08-31
 
 ### Corrigido

@@ -11,7 +11,7 @@
  * altura de um sem o outro, a linha desalinha e este teste acusa.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -58,13 +58,36 @@ describe('controles do "Território em análise"', () => {
     expect(CSS).toMatch(/\.scope-select:disabled/);
   });
 
-  it('a view usa `.scope-select` nos selects, nunca `.seg-opt`', () => {
-    const selects = JSX.match(/<select[^>]*className="[^"]*"/g) || [];
-    expect(selects.length).toBeGreaterThan(0); // guarda o extrator
-    for (const s of selects) {
-      expect(s).toContain('scope-select');
-      expect(s).not.toContain('seg-opt');
+  it('NENHUM select do projeto usa `.seg-opt` — a regra, não a tela', () => {
+    // Varredura de domínio. A versão anterior olhava só ViewTerritoryProfile, e o MESMO
+    // defeito estava no átomo compartilhado `UfScopePicker` (Atoms.jsx), renderizado em
+    // CINCO pontos: ViewCrossSource, ViewsMultiSource ×3 e ViewCuratedAnalyses. Consertar
+    // a tela onde o defeito foi APONTADO e não varrer o resto é o padrão que este
+    // repositório repete; o teste agora é sobre a classe, não sobre um arquivo.
+    const arquivos = readdirSync(AQUI).filter(
+      (f) => f.endsWith('.jsx') && !f.includes('.test.'),
+    );
+    const infratores = [];
+    let vistos = 0;
+    for (const f of arquivos) {
+      const src = readFileSync(join(AQUI, f), 'utf8');
+      // `<select …>` até o `>` que o fecha, com className em qualquer posição.
+      for (const m of src.match(/<select\b[^>]*>/g) || []) {
+        vistos += 1;
+        if (/\bseg-opt\b/.test(m)) infratores.push(`${f}: ${m.slice(0, 70)}`);
+      }
     }
+    // Guarda o varredor: um regex quebrado veria zero selects e passaria para sempre.
+    expect(vistos).toBeGreaterThan(5);
+    expect(infratores).toEqual([]);
+  });
+
+  it('o átomo compartilhado usa a classe delimitada', () => {
+    // `UfScopePicker` é o único select fora das views — um átomo, logo o defeito nele
+    // aparecia em cinco telas de uma vez.
+    const atoms = readFileSync(join(AQUI, 'Atoms.jsx'), 'utf8');
+    expect(atoms).toMatch(/className="scope-select"/);
+    expect(atoms).not.toMatch(/className="caption" style=\{\{ marginRight: 6 \}\}/);
   });
 
   it('o rótulo e o campo são um par, sem margem inline', () => {
