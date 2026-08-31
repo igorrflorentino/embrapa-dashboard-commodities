@@ -270,8 +270,10 @@ function ViewTerritoryProfile({ summary, database, conventions }) {
           </div>
         )}
         <label className="uf-scope">
-          <span className="caption" style={{ marginRight: 6 }}>UF</span>
-          <select className="seg-opt" style={{ padding: '4px 8px' }} value={uf}
+          <span className="caption">UF</span>
+          {/* `.scope-select`, não `.seg-opt`: aquela é transparente e sem borda porque vive
+              DENTRO da caixa do `.seg`. Solta, virava texto com uma setinha. */}
+          <select className="scope-select" value={uf}
                   aria-label="UF do território"
                   onChange={(e) => { setUfPick(e.target.value); setCityPick(null); }}>
             {canCombine && (
@@ -282,8 +284,8 @@ function ViewTerritoryProfile({ summary, database, conventions }) {
         </label>
         {activeLevel === 'municipio' && (
           <label className="uf-scope">
-            <span className="caption" style={{ marginRight: 6 }}>Município</span>
-            <select className="seg-opt" style={{ padding: '4px 8px', maxWidth: 260 }}
+            <span className="caption">Município</span>
+            <select className="scope-select"
                     value={city || ''} aria-label="Município do território"
                     onChange={(e) => setCityPick(e.target.value)} disabled={!cityOptions.length}>
               {cityCanCombine && (
