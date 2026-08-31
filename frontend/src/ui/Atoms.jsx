@@ -43,10 +43,14 @@ function UfScopePicker({ value, onChange, label = 'Recorte por UF' }) {
   const ufs = (window.UF_DATA || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   return (
     <label className="uf-scope">
-      <span className="caption" style={{ marginRight: 6 }}>{label}</span>
+      <span className="caption">{label}</span>
+      {/* `.scope-select`, não `.seg-opt`: aquela é `border: none; background: transparent`
+          porque foi feita para viver DENTRO da caixa do `.seg`, que fornece a borda. Solta,
+          o controle media 24px sem borda nem fundo — lia como legenda, não como campo. Este
+          átomo é renderizado em CINCO pontos (ViewCrossSource, ViewsMultiSource ×3,
+          ViewCuratedAnalyses), então o defeito aparecia nos cinco. */}
       <select
-        className="seg-opt"
-        style={{ padding: '4px 8px' }}
+        className="scope-select"
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
       >
