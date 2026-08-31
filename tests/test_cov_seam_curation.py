@@ -200,12 +200,12 @@ def test_catalog_status_joins_gold_stats_per_code(monkeypatch):
     def _catalog(banco=None):
         return pd.DataFrame(
             [
-                {"codigo_produto": "4403", "banco": "comtrade", "tabela": "comtrade_hs"},
+                {"codigo_produto": "4403", "banco": "comtrade", "tabela": "hs"},
                 # mesmo CÓDIGO, outra tabela: duas entradas legítimas do catálogo, que a
                 # chave por (banco, código) fundia numa só.
                 {"codigo_produto": "4403", "banco": "comtrade", "tabela": "outra"},
                 # cataloged, no Gold rows
-                {"codigo_produto": "9999", "banco": "comtrade", "tabela": "comtrade_hs"},
+                {"codigo_produto": "9999", "banco": "comtrade", "tabela": "hs"},
             ]
         )
 
@@ -215,7 +215,7 @@ def test_catalog_status_joins_gold_stats_per_code(monkeypatch):
             [
                 {
                     "code": "4403",
-                    "tabela": "comtrade_hs",
+                    "tabela": "hs",
                     "n_rows": 12,
                     "year_start": 2000,
                     "year_end": 2024,
@@ -234,7 +234,7 @@ def test_catalog_status_joins_gold_stats_per_code(monkeypatch):
     monkeypatch.setattr(gateway, "fetch_source_code_stats", _stats)
 
     status = seam_curation.catalog_status()["status"]
-    assert status["comtrade:comtrade_hs:4403"] == {
+    assert status["comtrade:hs:4403"] == {
         "n_rows": 12,
         "year_start": 2000,
         "year_end": 2024,
@@ -248,7 +248,7 @@ def test_catalog_status_joins_gold_stats_per_code(monkeypatch):
         "year_end": 2020,
         "has_data": True,
     }
-    assert status["comtrade:comtrade_hs:9999"] == {
+    assert status["comtrade:hs:9999"] == {
         "n_rows": 0,
         "year_start": None,
         "year_end": None,

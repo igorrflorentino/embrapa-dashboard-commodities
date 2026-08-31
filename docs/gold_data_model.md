@@ -83,7 +83,7 @@ erDiagram
     gold_produto_agrupamento {
         string   source             PK "pevs / pam / ppm / comex / comtrade"
         string   code               PK "PEVS code / NCM8 / HS6"
-        string   tabela             PK "289/291 · 3939/74 · 5457 · comex_ncm · comtrade_hs"
+        string   tabela             PK "289/291 · 3939/74 · 5457 · ncm · hs"
         string   agrupamento_id           "stable slug (castanha_do_para, …)"
         string   agrupamento_nome
     }
@@ -140,7 +140,7 @@ erDiagram
   incorrectly until v1.47.0; `assert_serving_conserved_gold` is the value-side guard.
 
   Every banco carries `tabela`, including the single-table ones (PAM `5457`, COMEX
-  `comex_ncm`, COMTRADE `comtrade_hs`) — deliberately, so a consumer never branches on
+  `ncm`, COMTRADE `hs`) — deliberately, so a consumer never branches on
   "does this banco have a table". See `docs/audits/chave_produto_audit_2026-08-30.md`.
 - **Brazilian geography** → join `state_acronym` to `dim_geo_br` for
   `state_name` / `region` / `region_abbrev`. (COMTRADE is country↔country — no UF.)

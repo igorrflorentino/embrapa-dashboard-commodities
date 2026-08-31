@@ -67,6 +67,18 @@ const _CC_SIDRA_LABEL = Object.fromEntries(
     banco, Object.fromEntries(cfg.opcoes.map((t) => [t.v, t.label])),
   ]),
 );
+// O que a TABELA significa nos bancos que têm uma só. O id existe nos cinco desde a v1.47.0
+// — a identidade de um produto é (banco, tabela, código) em todos —, mas a origem do id
+// difere e o leitor precisa saber disso: PAM tem um id SIDRA de verdade, consultável;
+// COMEX e COMTRADE não vêm do SIDRA e usam um nome que ESTE PROJETO escolheu. Dizer isso
+// no `title` é o que evita alguém sair procurando "ncm" no site do IBGE.
+const _CC_TABELA_NOTA = {
+  pam: 'Tabela SIDRA 5457 — a PAM tem uma só, então o valor é o mesmo em todas as linhas.',
+  comex: 'O COMEX não vem do SIDRA: este id é uma convenção deste projeto, para que a '
+       + 'identidade (banco, tabela, código) valha em todos os bancos.',
+  comtrade: 'O COMTRADE não vem do SIDRA: este id é uma convenção deste projeto, para que a '
+          + 'identidade (banco, tabela, código) valha em todos os bancos.',
+};
 // Busca do cadastro. Sem dobrar acento, "acai" não acha "Açaí" e "castanha do para" não acha
 // "castanha-do-pará" — e é exatamente assim que o pesquisador digita quando só quer saber se o
 // produto JÁ está cadastrado. Hífen e pontuação viram espaço pelo mesmo motivo.
@@ -91,7 +103,7 @@ const _CC_EMPTY_DRAFT = {
 // summary stay honest automatically. Order matches the table, left to right.
 const _CC_HELP_COLUNAS = [
   { k: 'Banco', d: 'A fonte oficial do dado (IBGE PEVS/PAM/PPM, MDIC COMEX, UN Comtrade).' },
-  { k: 'Tabela', d: 'O código da tabela SIDRA dentro do banco (passe o mouse para ver o nome). Só o PEVS (extração vegetal · silvicultura) e o PPM (rebanho · produção animal) reúnem duas tabelas sob um mesmo banco; nos demais aparece um travessão. Junto com o banco e o código, ela forma a identidade do produto — o mesmo código pode estar cadastrado nas duas tabelas e são produtos diferentes.' },
+  { k: 'Tabela', d: 'A tabela do banco a que o produto pertence (passe o mouse para ver o que ela significa). Junto com o banco e o código, forma a identidade do produto — o mesmo código pode estar cadastrado em duas tabelas do mesmo banco e são produtos diferentes. Só o PEVS (extração vegetal · silvicultura) e o PPM (rebanho · produção animal) reúnem duas; nos demais o valor é o mesmo em todas as linhas. PEVS, PPM e PAM usam o código SIDRA de verdade; COMEX e COMTRADE não vêm do SIDRA, e o id deles é uma convenção deste projeto — está aí para a identidade funcionar igual em todos os bancos.' },
   { k: 'Código', d: 'O código real da fonte (NCM, HS, código SIDRA). É ele, junto com o banco e a tabela, que identifica o produto no cadastro — não o nome.' },
   { k: 'Descrição (fonte)', d: 'O nome que a própria fonte dá a esse código; é somente leitura. Logo abaixo fica a sua anotação (✎), um texto livre seu que não altera nenhum dado.' },
   { k: 'Linhas', d: 'Quantas linhas esse produto tem hoje na camada Gold. Zero significa que ainda não foi ingerido.' },
@@ -709,18 +721,24 @@ function ViewCadastroProdutos() {
                     banco, o que escondia um terço da chave dentro de outro terço. Bancos de uma
                     tabela só mostram o travessão: a coluna não some, senão o leitor não sabe se
                     aquele banco não tem tabela ou se a tela deixou de mostrar. */}
-                {/* O CÓDIGO da tabela SIDRA, não o nome por extenso: é o identificador que a
-                    fonte usa e que aparece na URL do SIDRA, e a coluna vizinha já mostra o
-                    código do produto — os dois lidos juntos formam a chave. Mesma fonte,
-                    cor e tamanho do resto da tabela (a classe `tnum` das colunas numéricas),
-                    em vez do selo colorido: um selo dizia "isto é outra coisa", quando é
-                    apenas mais um pedaço da identidade. O nome por extenso vira `title`, de
-                    modo que ninguém precise decorar que 289 é extração vegetal. */}
+                {/* O CÓDIGO da tabela, não o nome por extenso: é o identificador que a fonte
+                    usa e que aparece na URL do SIDRA, e a coluna vizinha já mostra o código
+                    do produto — os dois lidos juntos formam a chave. Mesma fonte, cor e
+                    tamanho do resto da tabela (a classe `tnum`), em vez de um selo colorido:
+                    um selo dizia "isto é outra coisa", quando é apenas mais um pedaço da
+                    identidade. O significado vira `title`, para ninguém decorar que 289 é
+                    extração vegetal.
+
+                    Mostra o valor em TODOS os bancos. Antes ramificava — `_CC_TABELAS[banco]
+                    ? valor : '—'` — e desenhava travessão sem sequer olhar o dado, porque
+                    comex/comtrade/pam não tinham tabela. Desde a v1.47.0 têm, e o backend
+                    manda: as 234 entradas chegam com a coluna preenchida. A tela estava
+                    APAGANDO um valor que recebia, que é o mesmo ramo "este banco tem tabela?"
+                    que a v1.47.x removeu em todo o resto. O travessão fica só para o caso
+                    real de ausência. */}
                 <td className="tnum" data-label="Tabela"
-                    title={_CC_SIDRA_LABEL[e.banco]?.[e.tabela] || undefined}>
-                  {_CC_TABELAS[e.banco]
-                    ? (e.tabela || <span className="dt-null">—</span>)
-                    : <span className="dt-null">—</span>}
+                    title={_CC_SIDRA_LABEL[e.banco]?.[e.tabela] || _CC_TABELA_NOTA[e.banco]}>
+                  {e.tabela || <span className="dt-null">—</span>}
                 </td>
                 <td className="tnum" data-label="Código">{e.codigo_produto}</td>
                 <td data-label="Descrição">

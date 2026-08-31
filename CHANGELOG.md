@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/pt-BR/
 
 ---
 
+## [1.48.0] - 2026-08-31
+
+### Corrigido
+
+- **A coluna Tabela do Cadastro apagava um valor que recebia.** Ela decidia
+  `_CC_TABELAS[banco] ? valor : '—'` — desenhava travessão **sem olhar o dado** — porque
+  comex/comtrade/pam não tinham tabela. Desde a v1.47.0 têm, e medi
+  `/api/catalog/entries`: **as 234 entradas** chegam com a coluna preenchida. Era o mesmo
+  ramo *"este banco tem tabela?"* que a v1.47.x removeu em todo o resto, deixado para trás
+  por mim neste ponto de renderização.
+
+  Agora mostra o valor em todos os bancos. O travessão fica só para ausência real.
+
+- **A legenda da coluna afirmava duas coisas falsas**: que o id é "da tabela SIDRA" (COMEX e
+  COMTRADE não vêm do SIDRA) e que "nos demais aparece um travessão". Reescrita, com a
+  distinção que o leitor precisa: PEVS/PPM/PAM usam o código SIDRA de verdade; COMEX e
+  COMTRADE usam uma convenção deste projeto. O `title` de cada célula diz o mesmo, para
+  ninguém sair procurando o id no site do IBGE.
+
+### Modificado
+
+- **Os ids inventados encurtaram: `comex_ncm` → `ncm`, `comtrade_hs` → `hs`.** Mostrar os
+  valores longos quebrava a coluna, dimensionada para um id como `3939`: medi **199 das 234
+  linhas transbordando**, com a altura saltando de 56 para 76px. As duas saídas eram alargar
+  a coluna (roubando 4,23% de "Descrição (fonte)", a única coluna de prosa aberta, que já
+  quebra linha nas descrições longas — teria piorado justamente essas) ou encurtar o id.
+
+  Encurtar é também melhor projeto: a coluna Banco já diz "MDIC COMEX", então `comex_` só
+  repetia o vizinho. Em `(comex, ncm, 20079921)` o termo do meio não é redundante. Medido:
+  `ncm` (31px) e `hs` (17px) cabem nos 62px como `3939` (34px).
+
+  Resultado, verificado no navegador com as 234 linhas de prod: **zero** transbordamentos,
+  **zero** travessões. As linhas que continuam altas são a coluna de prosa quebrando texto
+  longo — comportamento pretendido dela, e confirmado célula a célula.
+
+### Notas
+
+- **Não houve migração de dado, ao contrário do que eu supus.** Os logs em `research_inputs`
+  guardam **NULL** para os bancos de tabela única — o id vinha do `tabela_com_padrao` em
+  tempo de leitura, não do log. Bastou o default novo. Medi antes e depois: o `UPDATE` que
+  eu tinha preparado não casou nenhuma linha.
+- ⚠ `comex_ncm` e `comtrade_hs` são **também os nomes de dois seeds** (as tabelas de
+  descrição de código). Um find/replace cego teria corrompido `ref('comex_ncm')` e a
+  sucessão de códigos — o mesmo tipo de incidente que o `CLAUDE.md` registra. A troca foi
+  cirúrgica, e os seeds seguem intactos.
+- Prod reconstruído: `PASS=372 WARN=2 ERROR=0`, com o join do agrupamento casando as 234
+  entradas do catálogo (nenhuma perdida).
+
+---
+
 ## [1.47.6] - 2026-08-31
 
 ### Corrigido

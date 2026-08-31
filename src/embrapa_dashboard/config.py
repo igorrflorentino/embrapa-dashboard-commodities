@@ -322,7 +322,14 @@ class Settings(BaseSettings):
     #
     # PEVS (289/291), PPM (3939/74) e PAM (5457) usam o id SIDRA de verdade; só estes dois
     # são inventados.
-    comex_table_id: str = Field(default="comex_ncm")
+    #
+    # CURTOS de propósito (`ncm`, não `comex_ncm`): o banco já vem ao lado na chave e na
+    # tela, então o prefixo repetia o vizinho — e `comex_ncm` não cabia na coluna Tabela do
+    # Cadastro, dimensionada para um id como `3939`: 199 das 234 linhas transbordavam e a
+    # linha crescia de 56 para 76px (medido 2026-08-31). Em `(comex, ncm, 20079921)` o termo
+    # do meio não é redundante. NÃO confundir com os SEEDS `comex_ncm` / `comtrade_hs`, que
+    # são as tabelas de descrição de código e nada têm a ver com este id.
+    comex_table_id: str = Field(default="ncm")
     comex_flows: str = Field(default="export,import")
     # CODE:LABEL of full 8-digit NCMs to keep regardless of chapter. Codes verified
     # against the official Siscomex NCM table (Res. Gecex 812/2025). Used ONLY for
@@ -416,7 +423,7 @@ class Settings(BaseSettings):
     # / serving / dashboard only ever expose current codes.
     # Ver `comex_table_id`: o id de TABELA do banco, nome do PROJETO (o COMTRADE não é
     # SIDRA), para que o trio `(banco, tabela, código)` valha em todos os cinco bancos.
-    comtrade_table_id: str = Field(default="comtrade_hs")
+    comtrade_table_id: str = Field(default="hs")
     comtrade_cmd_codes: str = Field(
         default=(
             "080121:castanha_com_casca,080122:castanha_sem_casca,"
